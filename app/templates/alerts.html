@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Alerte - SchoolSec{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h2 class="text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Alerte de Securitate</h2>
+    </div>
+    <div class="col-auto">
+        <span class="badge bg-danger me-2">{{ stats.active }} Active</span>
+        <span class="badge bg-warning text-dark me-2">{{ stats.high }} High</span>
+        <span class="badge bg-danger me-2">{{ stats.critical }} Critical</span>
+    </div>
+</div>
+
+<!-- Filtre -->
+<div class="card bg-black border-secondary mb-4">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-center">
+            <div class="col-auto">
+                <label class="text-muted small">Stare:</label>
+                <select name="status" class="form-select form-select-sm bg-dark text-light border-secondary ms-1"
+                        onchange="this.form.submit()">
+                    <option value="">Toate</option>
+                    <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
+                    <option value="resolved" {% if status == 'resolved' %}selected{% endif %}>Rezolvate</option>
+                    <option value="dismissed" {% if status == 'dismissed' %}selected{% endif %}>Respinse</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="text-muted small">Severitate:</label>
+                <select name="severity" class="form-select form-select-sm bg-dark text-light border-secondary ms-1"
+                        onchange="this.form.submit()">
+                    <option value="">Toate</option>
+                    <option value="critical" {% if severity == 'critical' %}selected{% endif %}>Critical</option>
+                    <option value="high" {% if severity == 'high' %}selected{% endif %}>High</option>
+                    <option value="medium" {% if severity == 'medium' %}selected{% endif %}>Medium</option>
+                    <option value="low" {% if severity == 'low' %}selected{% endif %}>Low</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="text-muted small">Tip:</label>
+                <select name="type" class="form-select form-select-sm bg-dark text-light border-secondary ms-1"
+                        onchange="this.form.submit()">
+                    <option value="">Toate</option>
+                    <option value="port_scan" {% if alert_type == 'port_scan' %}selected{% endif %}>Port Scan</option>
+                    <option value="brute_force" {% if alert_type == 'brute_force' %}selected{% endif %}>Brute Force</option>
+                    <option value="high_traffic" {% if alert_type == 'high_traffic' %}selected{% endif %}>Trafic Anormal</option>
+                    <option value="arp_sweep" {% if alert_type == 'arp_sweep' %}selected{% endif %}>ARP Sweep</option>
+                </select>
+            </div>
+            {% if status or severity or alert_type %}
+            <div class="col-auto">
+                <a href="{{ url_for('alerts.index') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-x-circle me-1"></i>Resetare filtre
+                </a>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<!-- Lista de alerte -->
+{% if alerts.items %}
+<div class="card bg-black border-secondary">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Severitate</th>
+                        <th>Tip</th>
+                        <th>IP Sursă</th>
+                        <th>IP Destinație</th>
+                        <th>Port</th>
+                        <th>Mesaj</th>
+                        <th>Timestamp</th>
+                        <th>Stare</th>
+                        {% if current_user.is_admin() %}
+                        <th>Acțiuni</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for alert in alerts.items %}
+                    <tr>
+                        <td><small class="text-muted">{{ alert.id }}</small></td>
+                        <td>
+                            <span class="badge severity-{{ alert.severity }}">
+                                {{ alert.severity | upper }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if alert.alert_type == 'port_scan' %}
+                                <i class="bi bi-radar text-warning me-1"></i>
+                            {% elif alert.alert_type == 'brute_force' %}
+                                <i class="bi bi-key text-danger me-1"></i>
+                            {% elif alert.alert_type == 'high_traffic' %}
+                                <i class="bi bi-graph-up text-info me-1"></i>
+                            {% elif alert.alert_type == 'arp_sweep' %}
+                                <i class="bi bi-broadcast text-danger me-1"></i>
+                            {% endif %}
+                            <small>{{ alert.alert_type | replace('_', ' ') | title }}</small>
+                        </td>
+                        <td><code class="text-danger small">{{ alert.source_ip }}</code></td>
+                        <td>
+                            <code class="text-muted small">{{ alert.destination_ip or '-' }}</code>
+                        </td>
+                        <td><small class="text-muted">{{ alert.port or '-' }}</small></td>
+                        <td>
+                            <small class="text-light" title="{{ alert.message }}">
+                                {{ alert.message[:60] }}{% if alert.message|length > 60 %}...{% endif %}
+                            </small>
+                        </td>
+                        <td><small class="text-muted">{{ alert.timestamp.strftime('%d.%m %H:%M:%S') }}</small></td>
+                        <td>
+                            {% if alert.status == 'active' %}
+                                <span class="badge bg-danger">Activă</span>
+                            {% elif alert.status == 'resolved' %}
+                                <span class="badge bg-success">Rezolvată</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Respinsă</span>
+                            {% endif %}
+                            {% if alert.is_blocked %}
+                                <span class="badge bg-warning text-dark ms-1">IP Blocat</span>
+                            {% endif %}
+                        </td>
+                        {% if current_user.is_admin() %}
+                        <td>
+                            {% if alert.status == 'active' %}
+                            <div class="btn-group btn-group-sm">
+                                <form method="POST" action="{{ url_for('alerts.resolve_alert', alert_id=alert.id) }}"
+                                      class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-success"
+                                            title="Marchează ca rezolvată">
+                                        <i class="bi bi-check"></i>
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('alerts.dismiss_alert', alert_id=alert.id) }}"
+                                      class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                            title="Respinge (fals pozitiv)">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </form>
+                                {% if not alert.is_blocked %}
+                                <form method="POST" action="{{ url_for('alerts.block_ip', alert_id=alert.id) }}"
+                                      class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            title="Blochează IP-ul"
+                                            onclick="return confirm('Ești sigur că vrei să blochezi IP-ul {{ alert.source_ip }}?')">
+                                        <i class="bi bi-shield-x"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Paginare -->
+{% if alerts.pages > 1 %}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center">
+        {% if alerts.has_prev %}
+        <li class="page-item">
+            <a class="page-link bg-dark text-light border-secondary"
+               href="{{ url_for('alerts.index', page=alerts.prev_num, status=status, severity=severity, type=alert_type) }}">
+                &laquo;
+            </a>
+        </li>
+        {% endif %}
+        {% for page_num in alerts.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if page_num %}
+            <li class="page-item {% if page_num == alerts.page %}active{% endif %}">
+                <a class="page-link bg-dark text-light border-secondary"
+                   href="{{ url_for('alerts.index', page=page_num, status=status, severity=severity, type=alert_type) }}">
+                    {{ page_num }}
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link bg-dark border-secondary">...</span></li>
+            {% endif %}
+        {% endfor %}
+        {% if alerts.has_next %}
+        <li class="page-item">
+            <a class="page-link bg-dark text-light border-secondary"
+               href="{{ url_for('alerts.index', page=alerts.next_num, status=status, severity=severity, type=alert_type) }}">
+                &raquo;
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="text-center text-muted py-5">
+    <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+    <h5 class="mt-3">Nicio alertă găsită</h5>
+    <p>{% if status or severity or alert_type %}Niciun rezultat pentru filtrele selectate.{% else %}Rețeaua este sigură momentan.{% endif %}</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,313 @@
+"""
+Modulul de captură a pachetelor de rețea.
+Folosește Scapy pentru captură reală sau generează trafic simulat pentru testare.
+"""
+import threading
+import time
+import random
+import socket
+from datetime import datetime, timezone
+from collections import defaultdict
+
+# Statistici globale despre trafic (în memorie)
+traffic_stats = {
+    'total_packets': 0,
+    'protocols': defaultdict(int),
+    'top_sources': defaultdict(int),
+    'top_destinations': defaultdict(int),
+    'bytes_total': 0,
+    'last_packets': [],  # Ultimele 100 pachete
+    'start_time': datetime.now(timezone.utc).isoformat(),
+}
+
+# Lock pentru acces thread-safe la statistici
+_stats_lock = threading.Lock()
+
+# Flag pentru oprirea snifferului
+_running = False
+_sniffer_thread = None
+
+
+def _update_stats(packet_info):
+    """Actualizează statisticile globale cu informațiile unui pachet."""
+    with _stats_lock:
+        traffic_stats['total_packets'] += 1
+        traffic_stats['bytes_total'] += packet_info.get('size', 0)
+        traffic_stats['protocols'][packet_info.get('protocol', 'Unknown')] += 1
+
+        src = packet_info.get('src_ip', '')
+        dst = packet_info.get('dst_ip', '')
+        if src:
+            traffic_stats['top_sources'][src] += 1
+        if dst:
+            traffic_stats['top_destinations'][dst] += 1
+
+        # Păstrăm doar ultimele 100 de pachete
+        traffic_stats['last_packets'].append({
+            'timestamp': packet_info.get('timestamp', ''),
+            'src_ip': src,
+            'dst_ip': dst,
+            'protocol': packet_info.get('protocol', ''),
+            'src_port': packet_info.get('src_port'),
+            'dst_port': packet_info.get('dst_port'),
+            'size': packet_info.get('size', 0),
+        })
+        if len(traffic_stats['last_packets']) > 100:
+            traffic_stats['last_packets'].pop(0)
+
+
+def _process_packet(packet_info, app):
+    """Procesează un pachet: actualizează statisticile și analizează pentru IDS."""
+    _update_stats(packet_info)
+
+    # Analizăm pachetul cu detectorul IDS
+    with app.app_context():
+        from app.ids.detector import detector
+        detector.analyze_packet(packet_info)
+
+
+def _real_sniffer(app, interface=None):
+    """
+    Capturează pachete reale de rețea folosind Scapy.
+    Necesită privilegii root/administrator.
+    """
+    try:
+        from scapy.all import sniff, IP, TCP, UDP, ICMP, ARP, DNS
+    except ImportError:
+        print("[Sniffer] Scapy nu este disponibil. Treceți la modul simulat.")
+        return
+
+    def process_scapy_packet(pkt):
+        """Callback pentru fiecare pachet capturat de Scapy."""
+        if not _running:
+            return
+
+        packet_info = {
+            'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+            'src_ip': '',
+            'dst_ip': '',
+            'protocol': 'Unknown',
+            'src_port': None,
+            'dst_port': None,
+            'size': len(pkt),
+        }
+
+        # Extragem informații din stratul IP
+        if pkt.haslayer(IP):
+            packet_info['src_ip'] = pkt[IP].src
+            packet_info['dst_ip'] = pkt[IP].dst
+
+            if pkt.haslayer(TCP):
+                packet_info['protocol'] = 'TCP'
+                packet_info['src_port'] = pkt[TCP].sport
+                packet_info['dst_port'] = pkt[TCP].dport
+                # Detectăm HTTP/HTTPS pe baza portului
+                if pkt[TCP].dport in (80, 8080) or pkt[TCP].sport in (80, 8080):
+                    packet_info['protocol'] = 'HTTP'
+                elif pkt[TCP].dport == 443 or pkt[TCP].sport == 443:
+                    packet_info['protocol'] = 'HTTPS'
+
+            elif pkt.haslayer(UDP):
+                packet_info['protocol'] = 'UDP'
+                packet_info['src_port'] = pkt[UDP].sport
+                packet_info['dst_port'] = pkt[UDP].dport
+                # Detectăm DNS pe portul 53
+                if pkt[UDP].dport == 53 or pkt[UDP].sport == 53:
+                    packet_info['protocol'] = 'DNS'
+
+            elif pkt.haslayer(ICMP):
+                packet_info['protocol'] = 'ICMP'
+
+        elif pkt.haslayer(ARP):
+            packet_info['protocol'] = 'ARP'
+            packet_info['src_ip'] = pkt[ARP].psrc
+            packet_info['dst_ip'] = pkt[ARP].pdst
+
+        _process_packet(packet_info, app)
+
+    print(f"[Sniffer] Pornesc captura pe interfața: {interface or 'auto'}")
+    sniff(
+        iface=interface,
+        prn=process_scapy_packet,
+        store=False,
+        stop_filter=lambda _: not _running
+    )
+
+
+def _simulated_sniffer(app):
+    """
+    Generează trafic simulat pentru testare pe sisteme fără Scapy sau drepturi root.
+    Util pentru demonstrații și dezvoltare.
+    """
+    # IP-uri simulate în rețeaua școlii
+    school_ips = [
+        '192.168.1.' + str(i) for i in range(10, 50)
+    ]
+    external_ips = [
+        '8.8.8.8', '1.1.1.1', '185.60.216.35',
+        '104.26.10.228', '172.67.68.228'
+    ]
+    protocols = ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'DNS']
+    ports = [80, 443, 22, 53, 8080, 3306, 3389, 25, 110]
+
+    # Generăm ocazional trafic suspect pentru demonstrație
+    suspicious_counter = 0
+
+    print("[Sniffer] Modul simulat activat. Generez trafic fictiv pentru demonstrație.")
+
+    while _running:
+        suspicious_counter += 1
+
+        # Generăm un pachet normal
+        src = random.choice(school_ips + external_ips)
+        dst = random.choice(school_ips + external_ips)
+        while dst == src:
+            dst = random.choice(school_ips + external_ips)
+
+        proto = random.choice(protocols)
+        sport = random.randint(1024, 65535)
+        dport = random.choice(ports)
+        size = random.randint(64, 1500)
+
+        packet_info = {
+            'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+            'src_ip': src,
+            'dst_ip': dst,
+            'protocol': proto,
+            'src_port': sport,
+            'dst_port': dport,
+            'size': size,
+        }
+        _process_packet(packet_info, app)
+
+        # La fiecare 200 pachete, simulăm un atac de port scanning
+        if suspicious_counter % 200 == 0:
+            attacker_ip = '10.0.0.' + str(random.randint(1, 20))
+            target_ip = random.choice(school_ips)
+            print(f"[Sniffer] Simulez port scan de la {attacker_ip}")
+            for scan_port in random.sample(range(1, 1024), 20):
+                scan_info = {
+                    'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+                    'src_ip': attacker_ip,
+                    'dst_ip': target_ip,
+                    'protocol': 'TCP',
+                    'src_port': random.randint(1024, 65535),
+                    'dst_port': scan_port,
+                    'size': 40,
+                }
+                _process_packet(scan_info, app)
+
+        # La fiecare 300 pachete, simulăm un atac brute force pe SSH
+        if suspicious_counter % 300 == 0:
+            brute_ip = '172.16.0.' + str(random.randint(1, 10))
+            target_ip = random.choice(school_ips)
+            print(f"[Sniffer] Simulez brute force SSH de la {brute_ip}")
+            for _ in range(15):
+                brute_info = {
+                    'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+                    'src_ip': brute_ip,
+                    'dst_ip': target_ip,
+                    'protocol': 'TCP',
+                    'src_port': random.randint(1024, 65535),
+                    'dst_port': 22,
+                    'size': 60,
+                }
+                _process_packet(brute_info, app)
+
+        time.sleep(0.1)  # 10 pachete pe secundă în modul simulat
+
+
+def start_sniffer(app):
+    """
+    Pornește snifferul de rețea într-un thread separat.
+    Alege automat între modul real (Scapy) și modul simulat.
+    """
+    global _running, _sniffer_thread
+
+    if _running:
+        print("[Sniffer] Snifferul este deja pornit.")
+        return
+
+    _running = True
+
+    # Înregistrăm callback-ul pentru salvarea alertelor în baza de date
+    with app.app_context():
+        from app.ids.detector import detector
+        from app.models import Alert, SecurityLog
+        from app import db
+
+        def save_alert(alert_data):
+            """Salvează alerta în baza de date."""
+            with app.app_context():
+                try:
+                    alert = Alert(
+                        alert_type=alert_data['alert_type'],
+                        source_ip=alert_data['source_ip'],
+                        destination_ip=alert_data.get('destination_ip'),
+                        port=alert_data.get('port'),
+                        message=alert_data['message'],
+                        severity=alert_data['severity'],
+                        status='active'
+                    )
+                    db.session.add(alert)
+
+                    # Salvăm și în loguri
+                    log = SecurityLog(
+                        event_type='alert_generated',
+                        source_ip=alert_data['source_ip'],
+                        destination_ip=alert_data.get('destination_ip'),
+                        port=alert_data.get('port'),
+                        message=alert_data['message'],
+                        severity=alert_data['severity'],
+                    )
+                    db.session.add(log)
+                    db.session.commit()
+                    print(f"[IDS] Alertă salvată: {alert_data['alert_type']} de la {alert_data['source_ip']}")
+                except Exception as e:
+                    print(f"[IDS] Eroare la salvarea alertei: {e}")
+                    db.session.rollback()
+
+        # Adăugăm callback-ul o singură dată
+        if not detector.has_callbacks():
+            detector.add_alert_callback(save_alert)
+
+    # Determinăm modul de funcționare
+    simulation_mode = app.config.get('SIMULATION_MODE', True)
+    interface = app.config.get('NETWORK_INTERFACE')
+
+    if simulation_mode:
+        target_func = lambda: _simulated_sniffer(app)
+    else:
+        target_func = lambda: _real_sniffer(app, interface)
+
+    _sniffer_thread = threading.Thread(target=target_func, daemon=True)
+    _sniffer_thread.start()
+    print(f"[Sniffer] Thread pornit în modul: {'simulat' if simulation_mode else 'real'}")
+
+
+def stop_sniffer():
+    """Oprește snifferul de rețea."""
+    global _running
+    _running = False
+    print("[Sniffer] Sniffer oprit.")
+
+
+def get_stats():
+    """Returnează statisticile curente ale traficului."""
+    with _stats_lock:
+        # Returnăm o copie pentru thread safety
+        return {
+            'total_packets': traffic_stats['total_packets'],
+            'protocols': dict(traffic_stats['protocols']),
+            'top_sources': dict(
+                sorted(traffic_stats['top_sources'].items(),
+                       key=lambda x: x[1], reverse=True)[:10]
+            ),
+            'top_destinations': dict(
+                sorted(traffic_stats['top_destinations'].items(),
+                       key=lambda x: x[1], reverse=True)[:10]
+            ),
+            'bytes_total': traffic_stats['bytes_total'],
+            'last_packets': traffic_stats['last_packets'][-20:],
+            'start_time': traffic_stats['start_time'],
+        }

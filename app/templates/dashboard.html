@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - SchoolSec{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h2 class="text-success"><i class="bi bi-speedometer2 me-2"></i>Dashboard</h2>
+        <small class="text-muted">Monitorizare trafic rețea în timp real</small>
+    </div>
+    <div class="col-auto">
+        <span class="badge bg-success" id="statusBadge">
+            <i class="bi bi-circle-fill me-1"></i>Live
+        </span>
+    </div>
+</div>
+
+<!-- Carduri statistici principale -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card bg-black border-success h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">Total Pachete</p>
+                        <h3 class="text-success fw-bold" id="totalPackets">{{ stats.total_packets }}</h3>
+                    </div>
+                    <i class="bi bi-diagram-3 text-success" style="font-size: 2rem; opacity: 0.5;"></i>
+                </div>
+                <small class="text-muted">
+                    <i class="bi bi-hdd me-1"></i>
+                    {{ "%.1f"|format(stats.bytes_total / 1024 / 1024) }} MB transferați
+                </small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-black border-danger h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">Alerte Active</p>
+                        <h3 class="text-danger fw-bold" id="activeAlerts">{{ active_alerts }}</h3>
+                    </div>
+                    <i class="bi bi-exclamation-triangle text-danger" style="font-size: 2rem; opacity: 0.5;"></i>
+                </div>
+                <a href="{{ url_for('alerts.index') }}" class="small text-muted">
+                    <i class="bi bi-arrow-right me-1"></i>Vezi alertele
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-black border-warning h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">IP-uri Blocate</p>
+                        <h3 class="text-warning fw-bold" id="blockedIPs">{{ blocked_ips_count }}</h3>
+                    </div>
+                    <i class="bi bi-shield-x text-warning" style="font-size: 2rem; opacity: 0.5;"></i>
+                </div>
+                <a href="{{ url_for('alerts.blocked_ips') }}" class="small text-muted">
+                    <i class="bi bi-arrow-right me-1"></i>Gestionare IP-uri
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-black border-info h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">Protocoale Active</p>
+                        <h3 class="text-info fw-bold">{{ stats.protocols | length }}</h3>
+                    </div>
+                    <i class="bi bi-layers text-info" style="font-size: 2rem; opacity: 0.5;"></i>
+                </div>
+                <small class="text-muted">
+                    <i class="bi bi-clock me-1"></i>
+                    Monitorizare continuă
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <!-- Grafic protocoale -->
+    <div class="col-md-5">
+        <div class="card bg-black border-secondary h-100">
+            <div class="card-header border-secondary">
+                <h6 class="mb-0"><i class="bi bi-pie-chart me-2"></i>Distribuție Protocoale</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="protocolChart" style="max-height: 250px;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top surse de trafic -->
+    <div class="col-md-7">
+        <div class="card bg-black border-secondary h-100">
+            <div class="card-header border-secondary">
+                <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Top Surse Trafic</h6>
+            </div>
+            <div class="card-body">
+                {% if stats.top_sources %}
+                <div class="table-responsive">
+                    <table class="table table-dark table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>IP Sursă</th>
+                                <th>Pachete</th>
+                                <th>Procent</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set total = stats.total_packets if stats.total_packets > 0 else 1 %}
+                            {% for ip, count in stats.top_sources.items() %}
+                            <tr>
+                                <td><code class="text-success">{{ ip }}</code></td>
+                                <td>{{ count }}</td>
+                                <td>
+                                    <div class="progress bg-secondary" style="height: 6px;">
+                                        <div class="progress-bar bg-success"
+                                             style="width: {{ (count/total*100)|int }}%"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-hourglass-split" style="font-size: 2rem;"></i>
+                    <p class="mt-2">Se colectează date...</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Alerte recente -->
+    <div class="col-md-6">
+        <div class="card bg-black border-secondary">
+            <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-bell me-2"></i>Alerte Recente</h6>
+                <a href="{{ url_for('alerts.index') }}" class="btn btn-sm btn-outline-secondary">
+                    Toate alertele
+                </a>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_alerts %}
+                <div class="list-group list-group-flush">
+                    {% for alert in recent_alerts %}
+                    <div class="list-group-item bg-black border-secondary py-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <span class="badge severity-{{ alert.severity }} me-2">
+                                    {{ alert.severity | upper }}
+                                </span>
+                                <small class="text-light">{{ alert.alert_type | replace('_', ' ') | title }}</small>
+                                <br>
+                                <small class="text-muted">
+                                    <i class="bi bi-geo-alt me-1"></i>{{ alert.source_ip }}
+                                    &mdash; {{ alert.timestamp.strftime('%H:%M:%S') }}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-check-circle text-success" style="font-size: 2rem;"></i>
+                    <p class="mt-2">Nicio alertă activă</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Ultimele pachete -->
+    <div class="col-md-6">
+        <div class="card bg-black border-secondary">
+            <div class="card-header border-secondary">
+                <h6 class="mb-0"><i class="bi bi-activity me-2"></i>Trafic Recent</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-dark table-sm mb-0" id="recentPacketsTable">
+                        <thead class="sticky-top bg-black">
+                            <tr>
+                                <th>Timp</th>
+                                <th>Sursă</th>
+                                <th>Destinație</th>
+                                <th>Protocol</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pkt in stats.last_packets | reverse %}
+                            <tr>
+                                <td><small class="text-muted">{{ pkt.timestamp[-8:] }}</small></td>
+                                <td><code class="text-success small">{{ pkt.src_ip }}</code></td>
+                                <td><code class="text-info small">{{ pkt.dst_ip }}</code></td>
+                                <td><span class="badge bg-secondary">{{ pkt.protocol }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Datele pentru grafice (JSON inline) -->
+<script id="protocolData" type="application/json">
+{{ stats.protocols | tojson }}
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Actualizare automată a statisticilor la fiecare 5 secunde
+    setInterval(updateStats, 5000);
+
+    // Inițializare grafic protocoale
+    const protocolData = JSON.parse(document.getElementById('protocolData').textContent);
+    initProtocolChart(protocolData);
+</script>
+{% endblock %}
