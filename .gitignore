@@ -1,0 +1,36 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Mediu virtual
+venv/
+env/
+.env/
+.venv/
+
+# Baza de date SQLite (generată la rulare)
+*.db
+*.sqlite
+
+# Loguri (generate la rulare)
+logs/
+
+# Fișiere IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Variabile de mediu
+.env
+
+# Distribuție Python
+dist/
+build/
+*.egg-info/

@@ -1,2 +1,229 @@
-# school-network-security
-Aplicație de securitate pentru rețeaua școlii
+# SchoolSec - Sistem de Securitate pentru Rețeaua Școlii
+
+> **Aplicație educațională** pentru monitorizarea și securizarea rețelei unei școli, construită cu Python (Flask + Scapy).
+
+---
+
+## 📋 Descriere
+
+**SchoolSec** este un sistem complet de securitate pentru rețeaua școlii care oferă:
+
+- **Monitorizare trafic** în timp real cu capturarea pachetelor (Scapy)
+- **Detectare intruziuni (IDS)** - port scanning, brute force, trafic anormal
+- **Dashboard web** modern cu Bootstrap 5 și actualizare live
+- **Sistem de autentificare** cu roluri (Admin și Monitor)
+- **Loguri de securitate** cu export CSV
+- **Modul simulat** pentru testare pe Windows fără privilegii root
+
+---
+
+## 🗂️ Structura Proiectului
+
+```
+school-network-security/
+├── app/
+│   ├── __init__.py          # Factory Flask + extensii
+│   ├── models.py            # Modele SQLite (User, Alert, Log, BlockedIP)
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── auth.py          # Login/logout
+│   │   ├── dashboard.py     # Dashboard + loguri + export CSV
+│   │   ├── alerts.py        # Gestionare alerte + IP-uri blocate
+│   │   └── users.py         # Gestionare utilizatori (admin)
+│   ├── ids/
+│   │   ├── __init__.py
+│   │   ├── sniffer.py       # Captură trafic (Scapy sau simulat)
+│   │   ├── detector.py      # Logica IDS de detectare
+│   │   └── rules.py         # Reguli configurabile
+│   ├── static/
+│   │   ├── css/style.css    # Stiluri dark theme
+│   │   └── js/dashboard.js  # Actualizare live + grafice
+│   └── templates/
+│       ├── base.html        # Template de bază cu navbar
+│       ├── login.html       # Pagina de autentificare
+│       ├── dashboard.html   # Dashboard principal
+│       ├── alerts.html      # Lista de alerte
+│       ├── logs.html        # Loguri de securitate
+│       ├── users.html       # Gestionare utilizatori
+│       └── blocked_ips.html # IP-uri blocate
+├── config.py                # Configurare aplicație
+├── run.py                   # Punct de intrare
+├── init_db.py               # Inițializare bază de date
+├── requirements.txt         # Dependențe Python
+└── README.md
+```
+
+---
+
+## 🚀 Instalare și Rulare
+
+### Cerințe
+
+- Python 3.10+
+- pip
+
+### Instalare
+
+```bash
+# 1. Clonează repository-ul
+git clone https://github.com/eduardstefan2006/school-network-security.git
+cd school-network-security
+
+# 2. Creează un mediu virtual
+python -m venv venv
+
+# Windows:
+venv\Scripts\activate
+
+# Linux/Mac:
+source venv/bin/activate
+
+# 3. Instalează dependențele
+pip install -r requirements.txt
+
+# 4. Inițializează baza de date
+python init_db.py
+
+# 5. Pornește aplicația
+python run.py
+```
+
+### Accesare
+
+Deschide browserul la: **http://localhost:5000**
+
+Credențiale implicite:
+- **Admin**: `admin` / `admin123`
+- **Monitor**: `monitor` / `monitor123`
+
+---
+
+## ⚙️ Configurare
+
+### Modul Simulat (implicit)
+
+Aplicația pornește implicit în **modul simulat** - generează trafic fictiv pentru demonstrație, fără a necesita Scapy sau privilegii root.
+
+### Modul Real (Linux cu privilegii root)
+
+```bash
+# Dezactivează modul simulat
+export SIMULATION_MODE=false
+
+# Specifică interfața de rețea (opțional)
+export NETWORK_INTERFACE=eth0
+
+# Rulează cu sudo pentru captură de pachete
+sudo python run.py
+```
+
+### Variabile de Mediu
+
+| Variabilă | Implicit | Descriere |
+|-----------|----------|-----------|
+| `FLASK_ENV` | `default` | Mediul de execuție (`development`, `production`) |
+| `SECRET_KEY` | (valoare implicită) | Cheia secretă pentru sesiuni Flask |
+| `SIMULATION_MODE` | `true` | Modul simulat (fără Scapy) |
+| `NETWORK_INTERFACE` | auto | Interfața de rețea pentru captură |
+| `PORT` | `5000` | Portul serverului web |
+
+---
+
+## 🔍 Funcționalități
+
+### 1. Monitorizare Trafic
+
+- Captură pachete în timp real (TCP, UDP, ICMP, HTTP, HTTPS, DNS, ARP)
+- Statistici live: total pachete, volume de date, top surse
+- Grafic interactiv cu distribuția protocoalelor
+- Tabel cu ultimele pachete capturate
+
+### 2. Detectare Intruziuni (IDS)
+
+| Tip Amenințare | Descriere | Severitate |
+|---------------|-----------|------------|
+| **Port Scan** | Un IP accesează >15 porturi în 10 secunde | High |
+| **Brute Force** | >10 conexiuni la SSH/RDP/FTP în 30 secunde | High |
+| **Trafic Anormal** | Un IP transmite >10 MB în 60 secunde | Medium |
+| **ARP Sweep** | >20 cereri ARP în 5 secunde | Critical |
+
+### 3. Gestionare Utilizatori
+
+**Roluri disponibile:**
+
+| Rol | Permisiuni |
+|-----|-----------|
+| **Admin** | Toate funcționalitățile, gestionare utilizatori, blocare IP-uri |
+| **Monitor** | Vizualizare trafic, alerte și loguri (doar citire) |
+
+### 4. Dashboard Web
+
+- Statistici live actualizate automat la 5 secunde
+- Grafic interactiv protocoale (Chart.js)
+- Top 10 surse de trafic
+- Alerte recente și trafic recent
+
+### 5. Loguri de Securitate
+
+- Înregistrare automată a tuturor evenimentelor
+- Filtrare după severitate, tip eveniment, IP
+- Export CSV cu filtre aplicate
+- Severități: `info`, `warning`, `error`, `critical`
+
+---
+
+## 🛡️ Arhitectura Securității
+
+```
+Internet/Rețea școlii
+        │
+        ▼
+┌───────────────────┐
+│   Scapy Sniffer   │  ← Captură pachete în timp real
+└────────┬──────────┘
+         │
+         ▼
+┌───────────────────┐
+│  IDS Detector     │  ← Analiză comportament (port scan, brute force)
+└────────┬──────────┘
+         │
+    ┌────┴────┐
+    ▼         ▼
+┌───────┐ ┌────────┐
+│Alerte │ │  Log   │  ← Stocare în SQLite
+└───┬───┘ └────────┘
+    │
+    ▼
+┌───────────────────┐
+│  Flask Dashboard  │  ← Interfața web pentru administratori
+└───────────────────┘
+```
+
+---
+
+## 📚 Utilizare pentru Elevi
+
+Acest proiect demonstrează:
+
+1. **Flask** - Framework web Python
+2. **SQLAlchemy** - ORM pentru baze de date
+3. **Flask-Login** - Autentificare și sesiuni
+4. **Scapy** - Captură și analiză pachete de rețea
+5. **Bootstrap 5** - Interfață responsive modernă
+6. **Chart.js** - Vizualizare date în timp real
+7. **Design Pattern**: Application Factory, Blueprint, Observer
+
+---
+
+## ⚠️ Note Importante
+
+- Aplicația este destinată **exclusiv uzului educațional**
+- Capturarea pachetelor necesită privilegii de administrator (Linux/Mac)
+- Pe Windows, folosiți modul simulat (`SIMULATION_MODE=true`)
+- Nu utilizați în rețele de producție fără configurare suplimentară de securitate
+
+---
+
+## 📄 Licență
+
+Proiect educațional - Uz liber în scop academic.

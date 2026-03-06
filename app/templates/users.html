@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Utilizatori - SchoolSec{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h2 class="text-warning"><i class="bi bi-people me-2"></i>Gestionare Utilizatori</h2>
+        <small class="text-muted">Administrare conturi și permisiuni</small>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="bi bi-person-plus me-1"></i>Adaugă Utilizator
+        </button>
+    </div>
+</div>
+
+<!-- Tabelul utilizatorilor -->
+<div class="card bg-black border-secondary">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Utilizator</th>
+                        <th>Email</th>
+                        <th>Rol</th>
+                        <th>Creat La</th>
+                        <th>Stare</th>
+                        <th>Acțiuni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr {% if not user.is_active %}class="opacity-50"{% endif %}>
+                        <td><small class="text-muted">{{ user.id }}</small></td>
+                        <td>
+                            <i class="bi bi-person-circle me-2 text-muted"></i>
+                            <strong>{{ user.username }}</strong>
+                            {% if user.id == current_user.id %}
+                                <span class="badge bg-info text-dark ms-1">Tu</span>
+                            {% endif %}
+                        </td>
+                        <td><small class="text-muted">{{ user.email or '-' }}</small></td>
+                        <td>
+                            <span class="badge {% if user.role == 'admin' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                <i class="bi {% if user.role == 'admin' %}bi-shield-fill{% else %}bi-eye-fill{% endif %} me-1"></i>
+                                {{ user.role | title }}
+                            </span>
+                        </td>
+                        <td><small class="text-muted">{{ user.created_at.strftime('%d.%m.%Y') }}</small></td>
+                        <td>
+                            {% if user.is_active %}
+                                <span class="badge bg-success">Activ</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactiv</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.id != current_user.id %}
+                            <div class="btn-group btn-group-sm">
+                                <!-- Toggle activ/inactiv -->
+                                <form method="POST"
+                                      action="{{ url_for('users.toggle_user', user_id=user.id) }}"
+                                      class="d-inline">
+                                    <button type="submit"
+                                            class="btn btn-sm {% if user.is_active %}btn-outline-warning{% else %}btn-outline-success{% endif %}"
+                                            title="{% if user.is_active %}Dezactivează{% else %}Activează{% endif %}">
+                                        <i class="bi {% if user.is_active %}bi-pause{% else %}bi-play{% endif %}"></i>
+                                    </button>
+                                </form>
+                                <!-- Schimbă parola -->
+                                <button type="button" class="btn btn-sm btn-outline-info"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#changePasswordModal"
+                                        data-user-id="{{ user.id }}"
+                                        data-username="{{ user.username }}"
+                                        title="Schimbă parola">
+                                    <i class="bi bi-key"></i>
+                                </button>
+                                <!-- Șterge utilizatorul -->
+                                <form method="POST"
+                                      action="{{ url_for('users.delete_user', user_id=user.id) }}"
+                                      class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            title="Șterge utilizatorul"
+                                            onclick="return confirm('Ești sigur că vrei să ștergi utilizatorul {{ user.username }}?')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                            {% else %}
+                            <small class="text-muted">Contul tău</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Informații despre roluri -->
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card bg-black border-danger">
+            <div class="card-header border-danger">
+                <h6 class="mb-0 text-danger">
+                    <i class="bi bi-shield-fill me-2"></i>Rol: Admin
+                </h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled small text-muted mb-0">
+                    <li><i class="bi bi-check2 text-success me-2"></i>Vede toate alertele și logurile</li>
+                    <li><i class="bi bi-check2 text-success me-2"></i>Poate bloca/debloca IP-uri</li>
+                    <li><i class="bi bi-check2 text-success me-2"></i>Gestionează utilizatorii</li>
+                    <li><i class="bi bi-check2 text-success me-2"></i>Configurează regulile IDS</li>
+                    <li><i class="bi bi-check2 text-success me-2"></i>Exportă date CSV</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card bg-black border-secondary">
+            <div class="card-header border-secondary">
+                <h6 class="mb-0 text-light">
+                    <i class="bi bi-eye-fill me-2"></i>Rol: Monitor
+                </h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled small text-muted mb-0">
+                    <li><i class="bi bi-check2 text-success me-2"></i>Vede traficul de rețea</li>
+                    <li><i class="bi bi-check2 text-success me-2"></i>Vede alertele și logurile</li>
+                    <li><i class="bi bi-x text-danger me-2"></i>Nu poate bloca IP-uri</li>
+                    <li><i class="bi bi-x text-danger me-2"></i>Nu gestionează utilizatori</li>
+                    <li><i class="bi bi-x text-danger me-2"></i>Nu configurează reguli</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Adaugă Utilizator -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">
+                    <i class="bi bi-person-plus me-2"></i>Adaugă Utilizator Nou
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('users.add_user') }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Nume utilizator *</label>
+                        <input type="text" name="username" class="form-control bg-dark text-light border-secondary"
+                               required placeholder="Introduceți username-ul">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="email" class="form-control bg-dark text-light border-secondary"
+                               placeholder="email@scoala.ro">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Parolă *</label>
+                        <input type="password" name="password" class="form-control bg-dark text-light border-secondary"
+                               required placeholder="Minim 6 caractere">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rol *</label>
+                        <select name="role" class="form-select bg-dark text-light border-secondary">
+                            <option value="monitor">Monitor</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulare</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check me-1"></i>Creează Utilizator
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Schimbă Parola -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">
+                    <i class="bi bi-key me-2"></i>Schimbă Parola
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="changePasswordForm" action="">
+                <div class="modal-body">
+                    <p class="text-muted">Schimbă parola pentru utilizatorul: <strong id="changePasswordUsername"></strong></p>
+                    <div class="mb-3">
+                        <label class="form-label">Parola Nouă *</label>
+                        <input type="password" name="new_password"
+                               class="form-control bg-dark text-light border-secondary"
+                               required placeholder="Minim 6 caractere">
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulare</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-key me-1"></i>Schimbă Parola
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Actualizăm forma de schimbare parolă cu ID-ul utilizatorului
+document.getElementById('changePasswordModal').addEventListener('show.bs.modal', function (event) {
+    const button = event.relatedTarget;
+    const userId = button.getAttribute('data-user-id');
+    const username = button.getAttribute('data-username');
+
+    document.getElementById('changePasswordUsername').textContent = username;
+    document.getElementById('changePasswordForm').action =
+        '/users/' + userId + '/change-password';
+});
+</script>
+{% endblock %}
