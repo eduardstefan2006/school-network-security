@@ -55,6 +55,12 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint and 'network' in request.endpoint %}active{% endif %}"
+                       href="{{ url_for('network.index') }}">
+                        <i class="bi bi-diagram-3 me-1"></i>Hartă Rețea
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link {% if request.endpoint == 'alerts.blocked_ips' %}active{% endif %}"
                        href="{{ url_for('alerts.blocked_ips') }}">
                         <i class="bi bi-shield-x me-1"></i>IP Blocate

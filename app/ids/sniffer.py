@@ -6,6 +6,7 @@ import threading
 import time
 import random
 import socket
+import ipaddress
 from datetime import datetime, timezone
 from collections import defaultdict
 
@@ -26,6 +27,163 @@ _stats_lock = threading.Lock()
 # Flag pentru oprirea snifferului
 _running = False
 _sniffer_thread = None
+
+# =============================================================================
+# Buffer pentru actualizarea dispozitivelor (flush la DB la fiecare 30 secunde)
+# =============================================================================
+# Structura: { ip: {'mac': str|None, 'packets': int, 'bytes': int, 'last_seen': datetime} }
+_device_buffer = {}
+_device_buffer_lock = threading.Lock()
+_last_device_flush = time.monotonic()
+_DEVICE_FLUSH_INTERVAL = 30  # secunde
+
+
+def _is_private_ip(ip_str):
+    """Verifică dacă un IP este privat (RFC1918)."""
+    try:
+        return ipaddress.ip_address(ip_str).is_private
+    except ValueError:
+        return False
+
+
+def _detect_device_type(ip_str):
+    """Auto-detectează tipul dispozitivului pe baza intervalelor de IP din rețeaua școlii."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return 'unknown'
+
+    ip_int = int(ip)
+
+    def _ip_int(addr):
+        return int(ipaddress.ip_address(addr))
+
+    # Router principal
+    if ip_str == '192.168.2.1':
+        return 'router'
+    # Switch-uri și Cisco router
+    if ip_str in ('192.168.2.5', '192.168.2.8', '192.168.2.9', '192.168.2.10'):
+        return 'switch'
+    # Access points: .160-.169 și .177-.178
+    if _ip_int('192.168.2.160') <= ip_int <= _ip_int('192.168.2.169'):
+        return 'ap'
+    if ip_str in ('192.168.2.177', '192.168.2.178'):
+        return 'ap'
+    # Camere: .80, .91-.96, .170-.176
+    if ip_str == '192.168.2.80':
+        return 'camera'
+    if _ip_int('192.168.2.91') <= ip_int <= _ip_int('192.168.2.96'):
+        return 'camera'
+    if _ip_int('192.168.2.170') <= ip_int <= _ip_int('192.168.2.176'):
+        return 'camera'
+    # Servere: .241-.243
+    if _ip_int('192.168.2.241') <= ip_int <= _ip_int('192.168.2.243'):
+        return 'server'
+
+    return 'client'
+
+
+def _update_device_buffer(ip, mac, size):
+    """Actualizează buffer-ul de dispozitive în memorie (non-blocant)."""
+    if not ip or not _is_private_ip(ip):
+        return
+    now = datetime.utcnow()
+    with _device_buffer_lock:
+        if ip in _device_buffer:
+            entry = _device_buffer[ip]
+            entry['packets'] += 1
+            entry['bytes'] += size
+            entry['last_seen'] = now
+            if mac and not entry.get('mac'):
+                entry['mac'] = mac
+        else:
+            _device_buffer[ip] = {
+                'mac': mac,
+                'packets': 1,
+                'bytes': size,
+                'last_seen': now,
+                'is_new': True,
+            }
+
+
+def _flush_device_buffer(app):
+    """Scrie buffer-ul de dispozitive în baza de date."""
+    global _last_device_flush
+    with _device_buffer_lock:
+        # Facem o copie profundă a valorilor înainte de a reseta contoarele
+        snapshot = {ip: dict(entry) for ip, entry in _device_buffer.items()}
+        # Resetăm contoarele incrementale (păstrăm intrările, dar resetăm delta)
+        for entry in _device_buffer.values():
+            entry['packets'] = 0
+            entry['bytes'] = 0
+            entry['is_new'] = False
+
+    if not snapshot:
+        return
+
+    try:
+        with app.app_context():
+            from app.models import NetworkDevice, Alert, SecurityLog
+            from app import db
+            from app.ids.rules import WHITELIST_IPS
+
+            for ip, data in snapshot.items():
+                try:
+                    device = NetworkDevice.query.filter_by(ip_address=ip).first()
+                    if device:
+                        device.last_seen = data['last_seen']
+                        device.total_packets = (device.total_packets or 0) + data['packets']
+                        device.total_bytes = (device.total_bytes or 0) + data['bytes']
+                        if data.get('mac') and not device.mac_address:
+                            device.mac_address = data['mac']
+                    else:
+                        is_known = ip in WHITELIST_IPS
+                        device_type = _detect_device_type(ip)
+                        device = NetworkDevice(
+                            ip_address=ip,
+                            mac_address=data.get('mac'),
+                            device_type=device_type,
+                            first_seen=data['last_seen'],
+                            last_seen=data['last_seen'],
+                            total_packets=data['packets'],
+                            total_bytes=data['bytes'],
+                            is_known=is_known,
+                        )
+                        db.session.add(device)
+                        # Alertă pentru dispozitiv nou necunoscut
+                        if not is_known:
+                            alert = Alert(
+                                alert_type='new_device',
+                                source_ip=ip,
+                                message=f'Dispozitiv nou detectat în rețea: {ip}',
+                                severity='medium',
+                                status='active',
+                            )
+                            db.session.add(alert)
+                            log = SecurityLog(
+                                event_type='new_device',
+                                source_ip=ip,
+                                message=f'Dispozitiv nou necunoscut detectat: {ip}',
+                                severity='warning',
+                            )
+                            db.session.add(log)
+                except Exception as e:
+                    print(f"[Sniffer] Eroare la actualizarea dispozitivului {ip}: {e}")
+                    db.session.rollback()
+                    continue
+
+            db.session.commit()
+    except Exception as e:
+        print(f"[Sniffer] Eroare la flush dispozitive: {e}")
+
+    _last_device_flush = time.monotonic()
+
+
+def _maybe_flush_devices(app):
+    """Apelează flush-ul dacă a trecut intervalul de timp."""
+    global _last_device_flush
+    if time.monotonic() - _last_device_flush >= _DEVICE_FLUSH_INTERVAL:
+        _flush_device_buffer(app)
 
 
 def _update_stats(packet_info):
@@ -60,6 +218,15 @@ def _process_packet(packet_info, app):
     """Procesează un pachet: actualizează statisticile și analizează pentru IDS."""
     _update_stats(packet_info)
 
+    # Actualizăm buffer-ul de dispozitive pentru IP-ul sursă
+    src_ip = packet_info.get('src_ip', '')
+    src_mac = packet_info.get('src_mac')
+    size = packet_info.get('size', 0)
+    _update_device_buffer(src_ip, src_mac, size)
+
+    # Flush periodic la baza de date (non-blocant când nu e momentul)
+    _maybe_flush_devices(app)
+
     # Analizăm pachetul cu detectorul IDS
     with app.app_context():
         from app.ids.detector import detector
@@ -82,6 +249,7 @@ def _real_sniffer(app, interface=None):
         if not _running:
             return
 
+        from scapy.all import Ether
         packet_info = {
             'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
             'src_ip': '',
@@ -90,6 +258,7 @@ def _real_sniffer(app, interface=None):
             'src_port': None,
             'dst_port': None,
             'size': len(pkt),
+            'src_mac': pkt[Ether].src if pkt.haslayer(Ether) else None,
         }
 
         # Extragem informații din stratul IP
@@ -310,6 +479,7 @@ def _tzsp_sniffer(app):
                     'src_port': None,
                     'dst_port': None,
                     'size': len(raw_frame),
+                    'src_mac': pkt.src if pkt.haslayer(Ether) else None,
                 }
 
                 if pkt.haslayer(IP):
