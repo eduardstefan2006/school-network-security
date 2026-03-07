@@ -62,6 +62,7 @@ def api_devices():
         'is_known': d.is_known,
         'is_online': (now - d.last_seen).total_seconds() < 300,
         'alert_count': d.alert_count,
+        'vlan': d.vlan or '-',
     } for d in devices])
 
 

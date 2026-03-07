@@ -89,17 +89,17 @@ WHITELIST_IPS = [
     '192.168.2.8',      # Switch Corp A Parter
     '192.168.2.9',      # Switch Corp A Etaj 2
     '192.168.2.10',     # Switch Corp B
-    # Access points și routere VLAN
-    '192.168.2.160',    # NVR Access
-    '192.168.2.161',    # AP Etajul 1 Stânga
-    '192.168.2.162',    # AP Parter Dreapta
-    '192.168.2.163',    # AP Etaj Grădiniță
-    '192.168.2.164',    # AP Intrare Secretariat
-    '192.168.2.165',    # AP Parter Stânga
-    '192.168.2.166',    # AP Etajul 1 Dreapta
-    '192.168.2.167',    # AP Intrare Elevi
-    '192.168.2.168',    # AP Etaj 2 Dreapta
-    '192.168.2.169',    # AP Etaj 2 Stânga
+    # Camere supraveghere (fost etichetat greșit ca AP)
+    '192.168.2.160',    # Camera NVR Access
+    '192.168.2.161',    # Camera Etajul 1 Stânga
+    '192.168.2.162',    # Camera Parter Dreapta
+    '192.168.2.163',    # Camera Etaj Grădiniță
+    '192.168.2.164',    # Camera Intrare Secretariat
+    '192.168.2.165',    # Camera Parter Stânga
+    '192.168.2.166',    # Camera Etajul 1 Dreapta
+    '192.168.2.167',    # Camera Intrare Elevi
+    '192.168.2.168',    # Camera Etaj 2 Dreapta
+    '192.168.2.169',    # Camera Etaj 2 Stânga
     '192.168.2.170',    # Cameră Sală Sport
     '192.168.2.171',    # Cameră Intrare Profesori
     '192.168.2.172',    # Cameră Teren Baschet
@@ -107,8 +107,8 @@ WHITELIST_IPS = [
     '192.168.2.174',    # Cameră Teren Sport
     '192.168.2.175',    # Cameră Poartă
     '192.168.2.176',    # Cameră Sală Sport intrare spate
-    '192.168.2.177',    # AP Parter/Etajul1
-    '192.168.2.178',    # AP Etaj1/Etaj2
+    '192.168.2.177',    # Camera Parter/Etajul1
+    '192.168.2.178',    # Camera Etaj1/Etaj2
     # DNS extern
     '1.1.1.1',          # Cloudflare DNS
     '8.8.8.8',          # Google DNS

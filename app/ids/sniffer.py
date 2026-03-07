@@ -64,17 +64,12 @@ def _detect_device_type(ip_str):
     # Switch-uri și Cisco router
     if ip_str in ('192.168.2.5', '192.168.2.8', '192.168.2.9', '192.168.2.10'):
         return 'switch'
-    # Access points: .160-.169 și .177-.178
-    if _ip_int('192.168.2.160') <= ip_int <= _ip_int('192.168.2.169'):
-        return 'ap'
-    if ip_str in ('192.168.2.177', '192.168.2.178'):
-        return 'ap'
-    # Camere: .80, .91-.96, .170-.176
+    # NVR și Camere supraveghere: .80, .91-.96, .160-.178
     if ip_str == '192.168.2.80':
         return 'camera'
     if _ip_int('192.168.2.91') <= ip_int <= _ip_int('192.168.2.96'):
         return 'camera'
-    if _ip_int('192.168.2.170') <= ip_int <= _ip_int('192.168.2.176'):
+    if _ip_int('192.168.2.160') <= ip_int <= _ip_int('192.168.2.178'):
         return 'camera'
     # Servere: .241-.243
     if _ip_int('192.168.2.241') <= ip_int <= _ip_int('192.168.2.243'):
@@ -83,7 +78,7 @@ def _detect_device_type(ip_str):
     return 'client'
 
 
-def _update_device_buffer(ip, mac, size):
+def _update_device_buffer(ip, mac, size, vlan_id=None):
     """Actualizează buffer-ul de dispozitive în memorie (non-blocant)."""
     if not ip or not _is_private_ip(ip):
         return
@@ -96,6 +91,8 @@ def _update_device_buffer(ip, mac, size):
             entry['last_seen'] = now
             if mac and not entry.get('mac'):
                 entry['mac'] = mac
+            if vlan_id is not None:
+                entry['vlan_id'] = vlan_id
         else:
             _device_buffer[ip] = {
                 'mac': mac,
@@ -103,6 +100,7 @@ def _update_device_buffer(ip, mac, size):
                 'bytes': size,
                 'last_seen': now,
                 'is_new': True,
+                'vlan_id': vlan_id,
             }
 
 
@@ -136,6 +134,8 @@ def _flush_device_buffer(app):
                         device.total_bytes = (device.total_bytes or 0) + data['bytes']
                         if data.get('mac') and not device.mac_address:
                             device.mac_address = data['mac']
+                        if data.get('vlan_id') is not None:
+                            device.vlan = str(data['vlan_id'])
                     else:
                         is_known = ip in WHITELIST_IPS
                         device_type = _detect_device_type(ip)
@@ -148,6 +148,7 @@ def _flush_device_buffer(app):
                             total_packets=data['packets'],
                             total_bytes=data['bytes'],
                             is_known=is_known,
+                            vlan=str(data['vlan_id']) if data.get('vlan_id') is not None else None,
                         )
                         db.session.add(device)
                         # Alertă pentru dispozitiv nou necunoscut
@@ -222,7 +223,8 @@ def _process_packet(packet_info, app):
     src_ip = packet_info.get('src_ip', '')
     src_mac = packet_info.get('src_mac')
     size = packet_info.get('size', 0)
-    _update_device_buffer(src_ip, src_mac, size)
+    vlan_id = packet_info.get('vlan_id')
+    _update_device_buffer(src_ip, src_mac, size, vlan_id=vlan_id)
 
     # Flush periodic la baza de date (non-blocant când nu e momentul)
     _maybe_flush_devices(app)
@@ -249,7 +251,7 @@ def _real_sniffer(app, interface=None):
         if not _running:
             return
 
-        from scapy.all import Ether
+        from scapy.all import Ether, Dot1Q
         packet_info = {
             'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
             'src_ip': '',
@@ -259,6 +261,7 @@ def _real_sniffer(app, interface=None):
             'dst_port': None,
             'size': len(pkt),
             'src_mac': pkt[Ether].src if pkt.haslayer(Ether) else None,
+            'vlan_id': pkt[Dot1Q].vlan if pkt.haslayer(Dot1Q) else None,
         }
 
         # Extragem informații din stratul IP
@@ -393,7 +396,7 @@ def _tzsp_sniffer(app):
     Nu necesită privilegii root (portul 37008 > 1024).
     """
     try:
-        from scapy.all import Ether, IP, TCP, UDP as ScapyUDP, ICMP, ARP, DNS
+        from scapy.all import Ether, IP, TCP, UDP as ScapyUDP, ICMP, ARP, DNS, Dot1Q
     except ImportError:
         print("[Sniffer] Scapy nu este disponibil. Modul TZSP necesită Scapy.")
         return
@@ -480,6 +483,7 @@ def _tzsp_sniffer(app):
                     'dst_port': None,
                     'size': len(raw_frame),
                     'src_mac': pkt.src if pkt.haslayer(Ether) else None,
+                    'vlan_id': pkt[Dot1Q].vlan if pkt.haslayer(Dot1Q) else None,
                 }
 
                 if pkt.haslayer(IP):
@@ -535,8 +539,25 @@ def start_sniffer(app):
     # Înregistrăm callback-ul pentru salvarea alertelor în baza de date
     with app.app_context():
         from app.ids.detector import detector
-        from app.models import Alert, SecurityLog
+        from app.models import Alert, SecurityLog, NetworkDevice
         from app import db
+
+        # Corectăm dispozitivele clasificate greșit ca AP (sunt camere în intervalul .160-.178)
+        try:
+            misclassified = NetworkDevice.query.filter_by(device_type='ap').all()
+            range_start = int(ipaddress.ip_address('192.168.2.160'))
+            range_end = int(ipaddress.ip_address('192.168.2.178'))
+            for dev in misclassified:
+                try:
+                    ip_int = int(ipaddress.ip_address(dev.ip_address))
+                    if range_start <= ip_int <= range_end:
+                        dev.device_type = 'camera'
+                except ValueError:
+                    pass
+            db.session.commit()
+        except Exception as e:
+            print(f"[Sniffer] Eroare la corectarea dispozitivelor AP: {e}")
+            db.session.rollback()
 
         def save_alert(alert_data):
             """Salvează alerta în baza de date și trimite notificare Telegram."""
