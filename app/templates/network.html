@@ -120,6 +120,7 @@
                     <th class="sortable" data-col="last_seen">Ultima dată</th>
                     <th class="sortable text-end" data-col="packets">Pachete</th>
                     <th class="text-end">Alerte</th>
+                    <th>VLAN</th>
                     <th>Cunoscut</th>
                     {% if current_user.is_admin() %}
                     <th>Acțiuni</th>
@@ -182,6 +183,13 @@
                             <span class="badge bg-danger">{{ device.alert_count }}</span>
                         {% else %}
                             <small class="text-muted">0</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if device.vlan %}
+                            <span class="badge bg-info text-dark">VLAN {{ device.vlan }}</span>
+                        {% else %}
+                            <small class="text-muted">-</small>
                         {% endif %}
                     </td>
                     <td>
