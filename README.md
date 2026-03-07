@@ -139,6 +139,84 @@ python run.py
 
 ---
 
+## 🔔 Notificări Telegram
+
+SchoolSec poate trimite notificări instant pe Telegram atunci când IDS-ul detectează alerte critice sau de severitate ridicată.
+
+### Creare bot Telegram
+
+1. Deschide Telegram și caută **@BotFather**
+2. Trimite comanda `/newbot` și urmează instrucțiunile
+3. BotFather îți va oferi un **token** de forma `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
+
+### Obținere Chat ID
+
+1. Adaugă bot-ul în grupul/chat-ul dorit (sau începe o conversație privată)
+2. Trimite un mesaj în acel chat
+3. Accesează `https://api.telegram.org/bot<TOKEN>/getUpdates` în browser
+4. Găsește câmpul `"chat": {"id": ...}` — acesta este **Chat ID**-ul
+
+### Variabile de mediu
+
+| Variabilă | Implicit | Descriere |
+|-----------|----------|-----------|
+| `TELEGRAM_ENABLED` | `false` | Activează notificările Telegram (`true`/`false`) |
+| `TELEGRAM_BOT_TOKEN` | `` | Token-ul bot-ului Telegram |
+| `TELEGRAM_CHAT_ID` | `` | ID-ul chat-ului/grupului unde se trimit notificările |
+| `TELEGRAM_MIN_SEVERITY` | `high` | Severitatea minimă pentru notificări: `low`, `medium`, `high`, `critical` |
+
+### Exemplu de configurare
+
+```bash
+export TELEGRAM_ENABLED=true
+export TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+export TELEGRAM_CHAT_ID=-1001234567890
+export TELEGRAM_MIN_SEVERITY=high
+```
+
+### Testare configurație
+
+Folosind endpoint-ul dedicat (necesită autentificare ca administrator):
+
+```bash
+curl -X POST http://localhost:5000/api/telegram/test \
+     -H "Content-Type: application/json" \
+     --cookie "session=<sesiunea_ta>"
+```
+
+Sau direct din panoul web al administratorului.
+
+### Actualizare serviciu systemd
+
+Adaugă variabilele Telegram în fișierul `schoolsec.service`:
+
+```ini
+[Unit]
+Description=SchoolSec Network Security Monitor
+After=network.target
+
+[Service]
+User=schoolsec
+WorkingDirectory=/opt/school-network-security
+ExecStart=/opt/school-network-security/venv/bin/python run.py
+Restart=always
+Environment=FLASK_ENV=production
+Environment=SNIFFER_MODE=tzsp
+Environment=TZSP_LISTEN_ADDRESS=0.0.0.0
+Environment=TZSP_PORT=37008
+Environment=TELEGRAM_ENABLED=true
+Environment=TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+Environment=TELEGRAM_CHAT_ID=-1001234567890
+Environment=TELEGRAM_MIN_SEVERITY=high
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> **Rate limiting:** Maximum o notificare per combinație (IP sursă, tip alertă) la fiecare 5 minute, pentru a evita spam-ul.
+
+---
+
 ## 🔌 Integrare MikroTik TZSP
 
 ### Ce este TZSP?

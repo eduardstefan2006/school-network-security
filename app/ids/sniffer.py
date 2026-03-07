@@ -369,7 +369,7 @@ def start_sniffer(app):
         from app import db
 
         def save_alert(alert_data):
-            """Salvează alerta în baza de date."""
+            """Salvează alerta în baza de date și trimite notificare Telegram."""
             with app.app_context():
                 try:
                     alert = Alert(
@@ -395,6 +395,10 @@ def start_sniffer(app):
                     db.session.add(log)
                     db.session.commit()
                     print(f"[IDS] Alertă salvată: {alert_data['alert_type']} de la {alert_data['source_ip']}")
+
+                    # Trimitem notificare Telegram (non-blocant)
+                    from app.notifications.telegram import send_alert_notification
+                    send_alert_notification(alert_data, app.config)
                 except Exception as e:
                     print(f"[IDS] Eroare la salvarea alertei: {e}")
                     db.session.rollback()

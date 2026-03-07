@@ -40,11 +40,13 @@ def create_app(config_name=None):
     from app.routes.dashboard import dashboard_bp
     from app.routes.alerts import alerts_bp
     from app.routes.users import users_bp
+    from app.routes.telegram import telegram_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(alerts_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(telegram_bp)
 
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():

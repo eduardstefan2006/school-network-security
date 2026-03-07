@@ -48,6 +48,12 @@ class Config:
     TZSP_LISTEN_ADDRESS = os.environ.get('TZSP_LISTEN_ADDRESS', '0.0.0.0')
     TZSP_PORT = int(os.environ.get('TZSP_PORT', 37008))
 
+    # Notificări Telegram
+    TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+    TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
+    TELEGRAM_ENABLED = os.environ.get('TELEGRAM_ENABLED', 'false').lower() == 'true'
+    TELEGRAM_MIN_SEVERITY = os.environ.get('TELEGRAM_MIN_SEVERITY', 'high')  # 'low', 'medium', 'high', 'critical'
+
 
 class DevelopmentConfig(Config):
     """Configurare pentru dezvoltare."""
