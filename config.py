@@ -51,19 +51,6 @@ class ProductionConfig(Config):
     """Configurare pentru producție."""
     DEBUG = False
 
-    @property
-    def SECRET_KEY(self):
-        key = os.environ.get('SECRET_KEY')
-        if not key:
-            import warnings
-            warnings.warn(
-                "SECRET_KEY nu este setat ca variabilă de mediu! "
-                "Utilizați o cheie secretă puternică în producție.",
-                RuntimeWarning
-            )
-            return 'school-security-secret-key-2024'
-        return key
-
 
 # Dicționar de configurări disponibile
 config = {
