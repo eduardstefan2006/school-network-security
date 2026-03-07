@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block title %}Statistici – SchoolSec{% endblock %}
+
+{% block content %}
+<!-- Selector de perioadă -->
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <h4 class="text-light mb-0">
+        <i class="bi bi-graph-up me-2 text-success"></i>Statistici Istorice
+    </h4>
+    <div class="btn-group" role="group" aria-label="Perioadă">
+        <a href="{{ url_for('statistics.index', period='24h') }}"
+           class="btn btn-sm {% if period == '24h' %}btn-success{% else %}btn-outline-secondary text-light{% endif %}">
+            Ultimele 24h
+        </a>
+        <a href="{{ url_for('statistics.index', period='7d') }}"
+           class="btn btn-sm {% if period == '7d' %}btn-success{% else %}btn-outline-secondary text-light{% endif %}">
+            Ultimele 7 zile
+        </a>
+        <a href="{{ url_for('statistics.index', period='30d') }}"
+           class="btn btn-sm {% if period == '30d' %}btn-success{% else %}btn-outline-secondary text-light{% endif %}">
+            Ultimele 30 zile
+        </a>
+        <a href="{{ url_for('statistics.index', period='all') }}"
+           class="btn btn-sm {% if period == 'all' %}btn-success{% else %}btn-outline-secondary text-light{% endif %}">
+            Tot
+        </a>
+    </div>
+</div>
+
+<!-- Rând 1 — Carduri sumar -->
+<div class="row g-3 mb-4" id="summary-row">
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card bg-black border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">Total alerte</div>
+                <div class="fs-3 fw-bold text-light" id="stat-total">—</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card bg-black border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">Critice</div>
+                <div class="fs-3 fw-bold" style="color:#da3633;" id="stat-critical">—</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card bg-black border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">HIGH</div>
+                <div class="fs-3 fw-bold" style="color:#f78166;" id="stat-high">—</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card bg-black border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">IP-uri unice</div>
+                <div class="fs-3 fw-bold text-info" id="stat-ips">—</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card bg-black border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">Rezolvate</div>
+                <div class="fs-3 fw-bold text-success" id="stat-resolved">—</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card bg-black border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">Active</div>
+                <div class="fs-3 fw-bold text-warning" id="stat-active">—</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rând 2 — Grafice -->
+<div class="row g-3 mb-4">
+    <!-- Grafic linie: alerte pe timp -->
+    <div class="col-12 col-xl-8">
+        <div class="card bg-black border-secondary h-100">
+            <div class="card-header border-secondary text-light">
+                <i class="bi bi-activity me-2 text-success"></i>
+                Alerte în timp
+            </div>
+            <div class="card-body">
+                <canvas id="chartTimeline" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grafic doughnut: distribuție pe tip -->
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card bg-black border-secondary h-100">
+            <div class="card-header border-secondary text-light">
+                <i class="bi bi-pie-chart me-2 text-info"></i>
+                Distribuție pe tip
+            </div>
+            <div class="card-body d-flex align-items-center justify-content-center">
+                <canvas id="chartByType" style="max-height:220px;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grafic bar orizontal: Top 10 IP-uri -->
+    <div class="col-12 col-md-6 col-xl-8">
+        <div class="card bg-black border-secondary h-100">
+            <div class="card-header border-secondary text-light">
+                <i class="bi bi-bar-chart-steps me-2 text-warning"></i>
+                Top 10 IP-uri suspecte
+            </div>
+            <div class="card-body">
+                <canvas id="chartTopIPs" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grafic doughnut: distribuție pe severitate -->
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card bg-black border-secondary h-100">
+            <div class="card-header border-secondary text-light">
+                <i class="bi bi-pie-chart-fill me-2 text-danger"></i>
+                Distribuție pe severitate
+            </div>
+            <div class="card-body d-flex align-items-center justify-content-center">
+                <canvas id="chartBySeverity" style="max-height:220px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rând 3 — Tabel alerte critice/high recente -->
+<div class="row g-3">
+    <div class="col-12">
+        <div class="card bg-black border-secondary">
+            <div class="card-header border-secondary text-light d-flex justify-content-between align-items-center">
+                <span>
+                    <i class="bi bi-exclamation-triangle me-2 text-danger"></i>
+                    Top 10 alerte critice/HIGH recente
+                </span>
+                <a href="{{ url_for('alerts.index') }}" class="btn btn-sm btn-outline-secondary text-light">
+                    <i class="bi bi-arrow-right me-1"></i>Toate alertele
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Timestamp</th>
+                                <th>Tip</th>
+                                <th>IP sursă</th>
+                                <th>Severitate</th>
+                                <th>Status</th>
+                                <th>Mesaj</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent-critical-tbody">
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-3">Se încarcă...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+
+    const PERIOD = "{{ period }}";
+    const API_URL = "/api/statistics?period=" + PERIOD;
+
+    // Culori tematice
+    const COLORS = {
+        critical: '#da3633',
+        high:     '#f78166',
+        medium:   '#d29922',
+        low:      '#3fb950',
+        blue:     '#58a6ff',
+        purple:   '#bc8cff',
+    };
+
+    const TYPE_COLORS = ['#58a6ff', '#f78166', '#3fb950', '#d29922', '#da3633', '#bc8cff', '#79c0ff', '#ffa657'];
+
+    Chart.defaults.color = '#adbac7';
+    Chart.defaults.borderColor = '#30363d';
+
+    let chartTimeline = null;
+    let chartByType = null;
+    let chartTopIPs = null;
+    let chartBySeverity = null;
+
+    function severityBadge(sev) {
+        const map = {
+            critical: 'danger',
+            high:     'warning',
+            medium:   'info',
+            low:      'success',
+        };
+        return `<span class="badge bg-${map[sev] || 'secondary'}">${sev}</span>`;
+    }
+
+    function statusBadge(st) {
+        const map = {
+            active:    'danger',
+            resolved:  'success',
+            dismissed: 'secondary',
+        };
+        return `<span class="badge bg-${map[st] || 'secondary'}">${st}</span>`;
+    }
+
+    function loadStats() {
+        fetch(API_URL)
+            .then(r => r.json())
+            .then(data => {
+                updateSummary(data.summary);
+                renderTimeline(data.timeline);
+                renderTopIPs(data.top_ips);
+                renderByType(data.by_type);
+                renderBySeverity(data.by_severity);
+                renderRecentCritical(data.recent_critical);
+            })
+            .catch(err => console.error('Eroare la încărcarea statisticilor:', err));
+    }
+
+    function updateSummary(s) {
+        document.getElementById('stat-total').textContent    = s.total;
+        document.getElementById('stat-critical').textContent = s.critical;
+        document.getElementById('stat-high').textContent     = s.high;
+        document.getElementById('stat-ips').textContent      = s.unique_ips;
+        document.getElementById('stat-resolved').textContent = s.resolved_percentage + '%';
+        document.getElementById('stat-active').textContent   = s.total - Math.round(s.total * s.resolved_percentage / 100);
+    }
+
+    function renderTimeline(tl) {
+        const ctx = document.getElementById('chartTimeline').getContext('2d');
+        const datasets = [
+            { label: 'Critical', data: tl.critical, borderColor: COLORS.critical, backgroundColor: COLORS.critical + '33', tension: 0.3, fill: false },
+            { label: 'High',     data: tl.high,     borderColor: COLORS.high,     backgroundColor: COLORS.high     + '33', tension: 0.3, fill: false },
+            { label: 'Medium',   data: tl.medium,   borderColor: COLORS.medium,   backgroundColor: COLORS.medium   + '33', tension: 0.3, fill: false },
+            { label: 'Low',      data: tl.low,      borderColor: COLORS.low,      backgroundColor: COLORS.low      + '33', tension: 0.3, fill: false },
+        ];
+        if (chartTimeline) chartTimeline.destroy();
+        chartTimeline = new Chart(ctx, {
+            type: 'line',
+            data: { labels: tl.labels, datasets },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'top' } },
+                scales: {
+                    x: { grid: { color: '#30363d' } },
+                    y: { grid: { color: '#30363d' }, beginAtZero: true, ticks: { stepSize: 1 } },
+                },
+            },
+        });
+    }
+
+    function renderTopIPs(topIPs) {
+        const ctx = document.getElementById('chartTopIPs').getContext('2d');
+        const labels = topIPs.map(d => d.ip);
+        const counts = topIPs.map(d => d.count);
+        if (chartTopIPs) chartTopIPs.destroy();
+        chartTopIPs = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Alerte',
+                    data: counts,
+                    backgroundColor: COLORS.blue + 'cc',
+                    borderColor: COLORS.blue,
+                    borderWidth: 1,
+                }],
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { color: '#30363d' }, beginAtZero: true },
+                    y: { grid: { color: '#30363d' } },
+                },
+            },
+        });
+    }
+
+    function renderByType(byType) {
+        const ctx = document.getElementById('chartByType').getContext('2d');
+        const labels = Object.keys(byType);
+        const values = Object.values(byType);
+        if (chartByType) chartByType.destroy();
+        chartByType = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: TYPE_COLORS.slice(0, labels.length),
+                    borderColor: '#161b22',
+                    borderWidth: 2,
+                }],
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+            },
+        });
+    }
+
+    function renderBySeverity(bySev) {
+        const ctx = document.getElementById('chartBySeverity').getContext('2d');
+        const labels = ['Critical', 'High', 'Medium', 'Low'];
+        const values = [bySev.critical, bySev.high, bySev.medium, bySev.low];
+        const colors = [COLORS.critical, COLORS.high, COLORS.medium, COLORS.low];
+        if (chartBySeverity) chartBySeverity.destroy();
+        chartBySeverity = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors,
+                    borderColor: '#161b22',
+                    borderWidth: 2,
+                }],
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+            },
+        });
+    }
+
+    function renderRecentCritical(alerts) {
+        const tbody = document.getElementById('recent-critical-tbody');
+        if (!alerts || alerts.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Nu există alerte critice/HIGH recente.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = alerts.map(a => `
+            <tr>
+                <td><a href="/alerts" class="text-info">#${a.id}</a></td>
+                <td class="text-muted small">${a.timestamp}</td>
+                <td><code class="text-warning">${a.alert_type}</code></td>
+                <td><code>${a.source_ip}</code></td>
+                <td>${severityBadge(a.severity)}</td>
+                <td>${statusBadge(a.status)}</td>
+                <td class="text-muted small">${a.message.substring(0, 80)}${a.message.length > 80 ? '…' : ''}</td>
+            </tr>
+        `).join('');
+    }
+
+    loadStats();
+})();
+</script>
+{% endblock %}

@@ -43,6 +43,12 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint and 'statistics' in request.endpoint %}active{% endif %}"
+                       href="{{ url_for('statistics.index') }}">
+                        <i class="bi bi-graph-up me-1"></i>Statistici
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link {% if request.endpoint == 'alerts.blocked_ips' %}active{% endif %}"
                        href="{{ url_for('alerts.blocked_ips') }}">
                         <i class="bi bi-shield-x me-1"></i>IP Blocate
