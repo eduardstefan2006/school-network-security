@@ -4,22 +4,23 @@
    Variabile și Baza
    ===================================================================== */
 :root {
-    --color-bg: #0d1117;
-    --color-card: #0d1117;
-    --color-border: #30363d;
-    --color-success: #238636;
-    --color-danger: #da3633;
-    --color-warning: #d29922;
-    --color-info: #1f6feb;
-    --color-text: #c9d1d9;
-    --color-muted: #8b949e;
+    --color-bg: #1a1f2e;
+    --color-card: #1e2535;
+    --color-border: #3d4a5c;
+    --color-success: #2ea043;
+    --color-danger: #f85149;
+    --color-warning: #e3b341;
+    --color-info: #388bfd;
+    --color-text: #e8edf5;
+    --color-muted: #a8b3c1;
 }
 
 body {
     background-color: var(--color-bg);
     color: var(--color-text);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-size: 0.9rem;
+    font-size: 1rem;
+    line-height: 1.6;
 }
 
 /* =====================================================================
@@ -30,7 +31,7 @@ body {
 }
 
 .card-header {
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     padding: 0.6rem 1rem;
 }
 
@@ -38,33 +39,33 @@ body {
    Badge-uri de severitate (pentru alerte)
    ===================================================================== */
 .severity-critical {
-    background-color: #9b1c1c !important;
-    color: #fca5a5 !important;
+    background-color: #7f1d1d !important;
+    color: #fecaca !important;
 }
 
 .severity-high {
-    background-color: #92400e !important;
-    color: #fcd34d !important;
+    background-color: #78350f !important;
+    color: #fde68a !important;
 }
 
 .severity-medium {
-    background-color: #1e40af !important;
-    color: #93c5fd !important;
+    background-color: #1e3a8a !important;
+    color: #bfdbfe !important;
 }
 
 .severity-low {
-    background-color: #064e3b !important;
-    color: #6ee7b7 !important;
+    background-color: #065f46 !important;
+    color: #a7f3d0 !important;
 }
 
 .severity-info {
     background-color: #1f2937 !important;
-    color: #9ca3af !important;
+    color: #d1d5db !important;
 }
 
 .severity-warning {
-    background-color: #78350f !important;
-    color: #fcd34d !important;
+    background-color: #92400e !important;
+    color: #fde68a !important;
 }
 
 /* =====================================================================
@@ -76,7 +77,7 @@ body {
 }
 
 .nav-link {
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     transition: color 0.2s;
 }
 
@@ -93,23 +94,23 @@ body {
    Tabele
    ===================================================================== */
 .table {
-    font-size: 0.82rem;
+    font-size: 0.9rem;
 }
 
 .table-dark {
-    --bs-table-bg: #0d1117;
-    --bs-table-striped-bg: #161b22;
-    --bs-table-hover-bg: #161b22;
+    --bs-table-bg: #1a1f2e;
+    --bs-table-striped-bg: #1e2535;
+    --bs-table-hover-bg: #222b3d;
 }
 
 .table thead th {
-    background-color: #161b22;
-    color: #8b949e;
+    background-color: #1e2535;
+    color: #a8b3c1;
     font-weight: 600;
-    font-size: 0.75rem;
+    font-size: 0.82rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    border-bottom: 1px solid #30363d !important;
+    border-bottom: 1px solid #3d4a5c !important;
     position: sticky;
     top: 0;
     z-index: 1;
@@ -161,43 +162,43 @@ code {
    Scroll personalizat
    ===================================================================== */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-    background: #0d1117;
+    background: #1a1f2e;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #30363d;
-    border-radius: 3px;
+    background: #3d4a5c;
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #484f58;
+    background: #5a6a7e;
 }
 
 /* =====================================================================
    Footer
    ===================================================================== */
 footer {
-    font-size: 0.75rem;
-    background-color: #0d1117;
+    font-size: 0.8rem;
+    background-color: #1a1f2e;
 }
 
 /* =====================================================================
    Progress bar animat
    ===================================================================== */
 .progress {
-    background-color: #21262d;
+    background-color: #1e2535;
 }
 
 /* =====================================================================
    Alert flash messages
    ===================================================================== */
 .alert {
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     border-radius: 6px;
 }
 
@@ -206,11 +207,11 @@ footer {
    ===================================================================== */
 @media (max-width: 768px) {
     .navbar-brand {
-        font-size: 0.95rem;
+        font-size: 1rem;
     }
 
     h2 {
-        font-size: 1.3rem;
+        font-size: 1.4rem;
     }
 
     .card {
