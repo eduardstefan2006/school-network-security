@@ -7,12 +7,99 @@
     <div class="col">
         <h2 class="text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Alerte de Securitate</h2>
     </div>
-    <div class="col-auto">
-        <span class="badge bg-danger me-2">{{ stats.active }} Active</span>
-        <span class="badge bg-warning text-dark me-2">{{ stats.high }} High</span>
+    <div class="col-auto d-flex align-items-center gap-2 flex-wrap">
+        <span class="badge bg-danger me-1">{{ stats.active }} Active</span>
+        <span class="badge bg-warning text-dark me-1">{{ stats.high }} High</span>
         <span class="badge bg-danger me-2">{{ stats.critical }} Critical</span>
+        {% if current_user.is_admin() %}
+        <div class="btn-group" role="group">
+            <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#modalResolveAll">
+                <i class="bi bi-check-all me-1"></i>Rezolvă Toate
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" data-bs-toggle="modal" data-bs-target="#modalDismissAll">
+                <i class="bi bi-x-circle me-1"></i>Respinge Toate
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#modalDeleteResolved">
+                <i class="bi bi-trash me-1"></i>Șterge Rezolvate
+            </button>
+        </div>
+        {% endif %}
     </div>
 </div>
+
+{% if current_user.is_admin() %}
+<!-- Modal: Rezolvă Toate -->
+<div class="modal fade" id="modalResolveAll" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border-secondary text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-check-all me-2 text-success"></i>Rezolvă Toate Alertele</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Ești sigur că vrei să marchezi <strong>toate alertele active</strong> ca rezolvate?</p>
+                <p class="text-muted small">Această acțiune va schimba statusul tuturor alertelor active în "Rezolvată".</p>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                <form method="POST" action="{{ url_for('alerts.resolve_all') }}" class="d-inline">
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-check-all me-1"></i>Rezolvă Toate
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Respinge Toate -->
+<div class="modal fade" id="modalDismissAll" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border-secondary text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-x-circle me-2 text-secondary"></i>Respinge Toate Alertele</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Ești sigur că vrei să <strong>respingi toate alertele active</strong>?</p>
+                <p class="text-muted small">Această acțiune va marca toate alertele active ca fals pozitive (Respinse).</p>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                <form method="POST" action="{{ url_for('alerts.dismiss_all') }}" class="d-inline">
+                    <button type="submit" class="btn btn-secondary">
+                        <i class="bi bi-x-circle me-1"></i>Respinge Toate
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Șterge Rezolvate -->
+<div class="modal fade" id="modalDeleteResolved" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark border-secondary text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-trash me-2 text-danger"></i>Șterge Alertele Rezolvate</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Ești sigur că vrei să <strong>ștergi definitiv</strong> toate alertele rezolvate și respinse?</p>
+                <p class="text-danger small"><i class="bi bi-exclamation-triangle me-1"></i>Această acțiune este ireversibilă. Alertele șterse nu pot fi recuperate.</p>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                <form method="POST" action="{{ url_for('alerts.delete_resolved') }}" class="d-inline">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash me-1"></i>Șterge Definitiv
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Filtre -->
 <div class="card bg-black border-secondary mb-4">

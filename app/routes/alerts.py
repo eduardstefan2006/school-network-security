@@ -133,6 +133,45 @@ def unblock_ip(ip_id):
     return redirect(url_for('alerts.blocked_ips'))
 
 
+@alerts_bp.route('/alerts/dismiss-all', methods=['POST'])
+@login_required
+def dismiss_all():
+    """Respinge toate alertele active."""
+    if not current_user.is_admin():
+        flash('Acces interzis.', 'danger')
+        return redirect(url_for('alerts.index'))
+    count = Alert.query.filter_by(status='active').update({'status': 'dismissed'})
+    db.session.commit()
+    flash(f'{count} alerte au fost respinse.', 'info')
+    return redirect(url_for('alerts.index'))
+
+
+@alerts_bp.route('/alerts/resolve-all', methods=['POST'])
+@login_required
+def resolve_all():
+    """Marchează toate alertele active ca rezolvate."""
+    if not current_user.is_admin():
+        flash('Acces interzis.', 'danger')
+        return redirect(url_for('alerts.index'))
+    count = Alert.query.filter_by(status='active').update({'status': 'resolved'})
+    db.session.commit()
+    flash(f'{count} alerte au fost marcate ca rezolvate.', 'success')
+    return redirect(url_for('alerts.index'))
+
+
+@alerts_bp.route('/alerts/delete-resolved', methods=['POST'])
+@login_required
+def delete_resolved():
+    """Șterge toate alertele rezolvate și respinse."""
+    if not current_user.is_admin():
+        flash('Acces interzis.', 'danger')
+        return redirect(url_for('alerts.index'))
+    count = Alert.query.filter(Alert.status.in_(['resolved', 'dismissed'])).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f'{count} alerte au fost șterse.', 'success')
+    return redirect(url_for('alerts.index'))
+
+
 @alerts_bp.route('/api/alerts/recent')
 @login_required
 def api_recent_alerts():
