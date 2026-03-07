@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Rapoarte – SchoolSec{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <h4 class="text-light mb-0">
+        <i class="bi bi-file-earmark-pdf me-2 text-success"></i>Rapoarte de Securitate
+    </h4>
+</div>
+
+<div class="row g-4">
+    <!-- Coloana stânga: formular generare -->
+    <div class="col-12 col-lg-5">
+        <div class="card bg-black border-secondary">
+            <div class="card-header border-secondary text-light">
+                <i class="bi bi-sliders me-2 text-success"></i>Opțiuni raport
+            </div>
+            <div class="card-body">
+                <form id="reportForm" method="POST" action="{{ url_for('reports.generate') }}">
+                    <div class="mb-4">
+                        <label class="form-label text-muted small text-uppercase fw-semibold mb-2">
+                            Perioadă raport
+                        </label>
+                        <div class="d-flex flex-column gap-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="period"
+                                       id="period24h" value="24h" checked>
+                                <label class="form-check-label text-light" for="period24h">
+                                    <i class="bi bi-clock me-1 text-info"></i>Ultimele 24 de ore
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="period"
+                                       id="period7d" value="7d">
+                                <label class="form-check-label text-light" for="period7d">
+                                    <i class="bi bi-calendar-week me-1 text-info"></i>Ultimele 7 zile
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="period"
+                                       id="period30d" value="30d">
+                                <label class="form-check-label text-light" for="period30d">
+                                    <i class="bi bi-calendar-month me-1 text-info"></i>Ultimele 30 de zile
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="period"
+                                       id="periodAll" value="all">
+                                <label class="form-check-label text-light" for="periodAll">
+                                    <i class="bi bi-infinity me-1 text-info"></i>Toată perioada
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="border-secondary">
+
+                    <button type="submit" class="btn btn-success btn-lg w-100" id="generateBtn">
+                        <i class="bi bi-file-earmark-pdf me-2"></i>Generează Raport PDF
+                    </button>
+                    <p class="text-muted small text-center mt-2 mb-0">
+                        Raportul va fi descărcat automat în browser.
+                    </p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Info card -->
+        <div class="card bg-black border-secondary mt-3">
+            <div class="card-body">
+                <h6 class="text-light mb-3">
+                    <i class="bi bi-info-circle me-2 text-info"></i>Ce conține raportul?
+                </h6>
+                <ul class="list-unstyled text-muted small mb-0">
+                    <li class="mb-1"><i class="bi bi-check-circle me-2 text-success"></i>Rezumat executiv cu statistici</li>
+                    <li class="mb-1"><i class="bi bi-check-circle me-2 text-success"></i>Grafic de tendință alerte în timp</li>
+                    <li class="mb-1"><i class="bi bi-check-circle me-2 text-success"></i>Top 10 IP-uri suspecte</li>
+                    <li class="mb-1"><i class="bi bi-check-circle me-2 text-success"></i>Distribuție pe tip și severitate</li>
+                    <li class="mb-1"><i class="bi bi-check-circle me-2 text-success"></i>Ultimele 20 alerte critice/high</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Coloana dreapta: previzualizare statistici -->
+    <div class="col-12 col-lg-7">
+        <div class="card bg-black border-secondary">
+            <div class="card-header border-secondary text-light d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-eye me-2 text-info"></i>Previzualizare statistici</span>
+                <span class="badge bg-secondary" id="previewPeriodLabel">Ultimele 24 de ore</span>
+            </div>
+            <div class="card-body">
+                <div class="row g-3" id="previewStats">
+                    <div class="col-6 col-sm-4">
+                        <div class="card bg-dark border-secondary text-center py-3">
+                            <div class="text-muted small mb-1">Total alerte</div>
+                            <div class="fs-3 fw-bold text-light" id="prev-total">—</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4">
+                        <div class="card bg-dark border-secondary text-center py-3">
+                            <div class="text-muted small mb-1">Critice</div>
+                            <div class="fs-3 fw-bold" style="color:#da3633;" id="prev-critical">—</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4">
+                        <div class="card bg-dark border-secondary text-center py-3">
+                            <div class="text-muted small mb-1">High</div>
+                            <div class="fs-3 fw-bold" style="color:#f78166;" id="prev-high">—</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4">
+                        <div class="card bg-dark border-secondary text-center py-3">
+                            <div class="text-muted small mb-1">Medium</div>
+                            <div class="fs-3 fw-bold" style="color:#d29922;" id="prev-medium">—</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4">
+                        <div class="card bg-dark border-secondary text-center py-3">
+                            <div class="text-muted small mb-1">IP-uri unice</div>
+                            <div class="fs-3 fw-bold text-info" id="prev-ips">—</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-sm-4">
+                        <div class="card bg-dark border-secondary text-center py-3">
+                            <div class="text-muted small mb-1">Rezolvate</div>
+                            <div class="fs-3 fw-bold text-success" id="prev-resolved">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 text-center text-muted small" id="previewNote">
+                    Selectați o perioadă pentru a vedea statisticile.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+
+    const PERIOD_LABELS = {
+        '24h':  'Ultimele 24 de ore',
+        '7d':   'Ultimele 7 zile',
+        '30d':  'Ultimele 30 de zile',
+        'all':  'Toată perioada',
+    };
+
+    function loadPreview(period) {
+        document.getElementById('previewPeriodLabel').textContent = PERIOD_LABELS[period] || period;
+        document.getElementById('previewNote').textContent = 'Se încarcă...';
+
+        fetch('/api/statistics?period=' + period)
+            .then(r => r.json())
+            .then(data => {
+                const s = data.summary;
+                document.getElementById('prev-total').textContent    = s.total;
+                document.getElementById('prev-critical').textContent = s.critical;
+                document.getElementById('prev-high').textContent     = s.high;
+                document.getElementById('prev-medium').textContent   = s.medium;
+                document.getElementById('prev-ips').textContent      = s.unique_ips;
+                document.getElementById('prev-resolved').textContent = s.resolved_percentage + '%';
+                document.getElementById('previewNote').textContent   =
+                    s.total > 0
+                        ? 'Date disponibile pentru perioada selectată.'
+                        : 'Nu există alerte în perioada selectată.';
+            })
+            .catch(() => {
+                document.getElementById('previewNote').textContent = 'Eroare la încărcarea datelor.';
+            });
+    }
+
+    // Actualizare previzualizare la schimbarea perioadei
+    document.querySelectorAll('input[name="period"]').forEach(function (radio) {
+        radio.addEventListener('change', function () {
+            loadPreview(this.value);
+        });
+    });
+
+    // Spinner la submit
+    document.getElementById('reportForm').addEventListener('submit', function () {
+        const btn = document.getElementById('generateBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Se generează...';
+        // Re-enable after a few seconds in case of error redirect
+        setTimeout(function () {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-file-earmark-pdf me-2"></i>Generează Raport PDF';
+        }, 15000);
+    });
+
+    // Încarcă previzualizarea inițială
+    loadPreview('24h');
+})();
+</script>
+{% endblock %}
