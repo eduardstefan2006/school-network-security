@@ -6,7 +6,7 @@ Rulați o singură dată înainte de prima pornire:
     python init_db.py
 """
 from app import create_app, db
-from app.models import User, Alert, SecurityLog, BlockedIP
+from app.models import User, Alert, SecurityLog, BlockedIP, NetworkDevice
 
 
 def init_database():

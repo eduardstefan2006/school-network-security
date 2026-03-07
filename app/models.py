@@ -173,6 +173,34 @@ class BlockedIP(db.Model):
 
 
 # =============================================================================
+# Model Dispozitiv Rețea
+# =============================================================================
+class NetworkDevice(db.Model):
+    """Model pentru dispozitivele detectate în rețea."""
+    __tablename__ = 'network_devices'
+
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(45), unique=True, nullable=False, index=True)
+    mac_address = db.Column(db.String(17), nullable=True)
+    hostname = db.Column(db.String(255), nullable=True)
+    # Tipul dispozitivului: router, switch, ap, camera, server, client, unknown
+    device_type = db.Column(db.String(50), default='unknown')
+    description = db.Column(db.String(255), nullable=True)
+    first_seen = db.Column(db.DateTime, default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime, default=datetime.utcnow)
+    total_packets = db.Column(db.Integer, default=0)
+    total_bytes = db.Column(db.BigInteger, default=0)
+    # True pentru dispozitivele cunoscute (din whitelist / infrastructură)
+    is_known = db.Column(db.Boolean, default=False)
+    is_online = db.Column(db.Boolean, default=True)
+    vlan = db.Column(db.String(20), nullable=True)
+    alert_count = db.Column(db.Integer, default=0)
+
+    def __repr__(self):
+        return f'<NetworkDevice {self.ip_address} ({self.device_type})>'
+
+
+# =============================================================================
 # Model Statistici Pachete
 # =============================================================================
 class PacketStat(db.Model):
