@@ -43,6 +43,7 @@ def create_app(config_name=None):
     from app.routes.telegram import telegram_bp
     from app.routes.statistics import statistics_bp
     from app.routes.settings import settings_bp
+    from app.routes.reports import reports_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -51,6 +52,7 @@ def create_app(config_name=None):
     app.register_blueprint(telegram_bp)
     app.register_blueprint(statistics_bp)
     app.register_blueprint(settings_bp)
+    app.register_blueprint(reports_bp)
 
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():
