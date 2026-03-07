@@ -523,6 +523,24 @@ def _tzsp_sniffer(app):
         sock.close()
 
 
+def _fix_device_types(app):
+    """Reclasifică dispozitivele cu tip greșit folosind _detect_device_type()."""
+    from app.models import NetworkDevice
+    from app import db
+
+    try:
+        devices = NetworkDevice.query.all()
+        for device in devices:
+            correct_type = _detect_device_type(device.ip_address)
+            if correct_type != device.device_type:
+                print(f"[Sniffer] Dispozitiv reclasificat: {device.ip_address} {device.device_type} → {correct_type}")
+                device.device_type = correct_type
+        db.session.commit()
+    except Exception as e:
+        print(f"[Sniffer] Eroare la reclasificarea dispozitivelor: {e}")
+        db.session.rollback()
+
+
 def start_sniffer(app):
     """
     Pornește snifferul de rețea într-un thread separat.
@@ -536,28 +554,15 @@ def start_sniffer(app):
 
     _running = True
 
+    # Reclasificăm dispozitivele cu tip greșit la pornire
+    with app.app_context():
+        _fix_device_types(app)
+
     # Înregistrăm callback-ul pentru salvarea alertelor în baza de date
     with app.app_context():
         from app.ids.detector import detector
         from app.models import Alert, SecurityLog, NetworkDevice
         from app import db
-
-        # Corectăm dispozitivele clasificate greșit ca AP (sunt camere în intervalul .160-.178)
-        try:
-            misclassified = NetworkDevice.query.filter_by(device_type='ap').all()
-            range_start = int(ipaddress.ip_address('192.168.2.160'))
-            range_end = int(ipaddress.ip_address('192.168.2.178'))
-            for dev in misclassified:
-                try:
-                    ip_int = int(ipaddress.ip_address(dev.ip_address))
-                    if range_start <= ip_int <= range_end:
-                        dev.device_type = 'camera'
-                except ValueError:
-                    pass
-            db.session.commit()
-        except Exception as e:
-            print(f"[Sniffer] Eroare la corectarea dispozitivelor AP: {e}")
-            db.session.rollback()
 
         def save_alert(alert_data):
             """Salvează alerta în baza de date și trimite notificare Telegram."""
