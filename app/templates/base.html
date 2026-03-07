@@ -11,11 +11,11 @@
     <!-- CSS personalizat -->
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
-<body class="bg-dark text-light">
+<body class="text-light" style="background-color: var(--color-bg);">
 
 <!-- Bara de navigare -->
 {% if current_user.is_authenticated %}
-<nav class="navbar navbar-expand-lg navbar-dark bg-black border-bottom border-secondary">
+<nav class="navbar navbar-expand-lg navbar-dark border-bottom" style="background-color: #12182a;">
     <div class="container-fluid">
         <a class="navbar-brand fw-bold text-success" href="{{ url_for('dashboard.index') }}">
             <i class="bi bi-shield-lock-fill me-2"></i>

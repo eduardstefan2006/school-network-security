@@ -101,6 +101,8 @@ body {
     --bs-table-bg: #1a1f2e;
     --bs-table-striped-bg: #1e2535;
     --bs-table-hover-bg: #222b3d;
+    --bs-table-color: #e8edf5;
+    --bs-table-border-color: #3d4a5c;
 }
 
 .table thead th {
@@ -200,6 +202,25 @@ footer {
 .alert {
     font-size: 0.9rem;
     border-radius: 6px;
+}
+
+/* =====================================================================
+   Clase personalizate pentru carduri și inputuri (înlocuiesc bg-black/bg-dark Bootstrap)
+   ===================================================================== */
+.schoolsec-card {
+    background-color: #1e2535 !important;
+    color: var(--color-text);
+}
+
+.schoolsec-input {
+    background-color: #1e2535 !important;
+    color: var(--color-text) !important;
+    border-color: #3d4a5c !important;
+}
+
+.schoolsec-input:focus {
+    background-color: #252d40 !important;
+    color: var(--color-text) !important;
 }
 
 /* =====================================================================

@@ -18,7 +18,7 @@
 <!-- Rând 1: Carduri sumare -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
-        <div class="card bg-black border-secondary h-100">
+        <div class="card schoolsec-card border-secondary h-100">
             <div class="card-body text-center">
                 <div class="display-6 fw-bold text-light" id="stat-total">{{ total }}</div>
                 <small class="text-muted"><i class="bi bi-hdd-network me-1"></i>Total Dispozitive</small>
@@ -26,7 +26,7 @@
         </div>
     </div>
     <div class="col-6 col-md-3">
-        <div class="card bg-black border-success h-100">
+        <div class="card schoolsec-card border-success h-100">
             <div class="card-body text-center">
                 <div class="display-6 fw-bold text-success" id="stat-online">{{ online }}</div>
                 <small class="text-muted"><i class="bi bi-circle-fill text-success me-1"></i>Online</small>
@@ -34,7 +34,7 @@
         </div>
     </div>
     <div class="col-6 col-md-3">
-        <div class="card bg-black border-warning h-100">
+        <div class="card schoolsec-card border-warning h-100">
             <div class="card-body text-center">
                 <div class="display-6 fw-bold text-warning" id="stat-unknown">{{ unknown }}</div>
                 <small class="text-muted"><i class="bi bi-question-circle me-1"></i>Necunoscute</small>
@@ -42,7 +42,7 @@
         </div>
     </div>
     <div class="col-6 col-md-3">
-        <div class="card bg-black border-danger h-100">
+        <div class="card schoolsec-card border-danger h-100">
             <div class="card-body text-center">
                 <div class="display-6 fw-bold text-danger" id="stat-alerts">{{ new_device_alerts }}</div>
                 <small class="text-muted"><i class="bi bi-bell me-1"></i>Alerte Dispozitive Noi</small>
@@ -52,7 +52,7 @@
 </div>
 
 <!-- Rând 2: Badge-uri pe tipuri de dispozitive -->
-<div class="card bg-black border-secondary mb-4">
+<div class="card schoolsec-card border-secondary mb-4">
     <div class="card-body py-2">
         <div class="d-flex flex-wrap gap-2 align-items-center">
             <small class="text-muted me-2">Tipuri:</small>
@@ -82,7 +82,7 @@
 </div>
 
 <!-- Rând 3: Tabel dispozitive -->
-<div class="card bg-black border-secondary">
+<div class="card schoolsec-card border-secondary">
     <div class="card-body pb-0">
         <!-- Căutare și filtre -->
         <div class="row g-2 mb-3">
