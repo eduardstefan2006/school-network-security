@@ -9,7 +9,7 @@ Aceste reguli sunt configurabile și definesc pragurile pentru detectarea amenin
 PORT_SCAN_RULES = {
     'enabled': True,
     # Numărul minim de porturi diferite accesate pentru a considera că este un scan
-    'threshold': 15,
+    'threshold': 25,           # Crescut de la 15 - routerele VLAN accesează legitim mai multe porturi
     # Fereastra de timp în secunde
     'window_seconds': 10,
     # Severitatea alertei
@@ -27,15 +27,15 @@ BRUTE_FORCE_RULES = {
     'monitored_ports': {
         22: 'SSH',
         21: 'FTP',
+        23: 'Telnet',       # Protocol nesecurizat (text simplu) - monitorizat pentru detectarea accesului neautorizat
         3389: 'RDP',
-        80: 'HTTP',
-        443: 'HTTPS',
-        8080: 'HTTP-Alt',
+        5900: 'VNC',
+        # 80, 443, 8080 ELIMINATE - navigarea web normală declanșează fals pozitive
     },
     # Numărul de conexiuni eșuate / rapide pentru a declanșa alerta
-    'threshold': 10,
+    'threshold': 20,          # Crescut de la 10 - mai realist pentru o rețea școlară
     # Fereastra de timp în secunde
-    'window_seconds': 30,
+    'window_seconds': 60,     # Crescut de la 30 - oferă o fereastră de timp mai mare
     # Severitatea alertei
     'severity': 'high',
 }
@@ -59,7 +59,7 @@ HIGH_TRAFFIC_RULES = {
 ARP_RULES = {
     'enabled': True,
     # Numărul de cereri ARP pentru a detecta un sweep
-    'threshold': 20,
+    'threshold': 50,           # Crescut de la 20 - routerul MikroTik și switch-urile fac cereri ARP legitime
     # Fereastra de timp în secunde
     'window_seconds': 5,
     # Severitatea alertei
@@ -72,7 +72,46 @@ ARP_RULES = {
 WHITELIST_IPS = [
     '127.0.0.1',
     '::1',
-    # Adaugă IP-urile serverelor de rețea ale școlii
+    # Router principal
+    '192.168.2.1',      # MikroTik RB3011 "Scoala 2 Liesti"
+    # Servere infrastructură
+    '192.168.2.241',    # PiHole (server DNS)
+    '192.168.2.242',    # LibreNMS (monitorizare SNMP)
+    '192.168.2.243',    # SchoolSec (acest server)
+    # NVR și camere supraveghere
+    '192.168.2.80',     # NVR (Network Video Recorder)
+    '192.168.2.91',     # Camera 1
+    '192.168.2.92',     # Camera 2
+    '192.168.2.93',     # Camera 3
+    '192.168.2.96',     # Camera 6
+    # Echipamente rețea (switch-uri)
+    '192.168.2.5',      # Router Cisco
+    '192.168.2.8',      # Switch Corp A Parter
+    '192.168.2.9',      # Switch Corp A Etaj 2
+    '192.168.2.10',     # Switch Corp B
+    # Access points și routere VLAN
+    '192.168.2.160',    # NVR Access
+    '192.168.2.161',    # AP Etajul 1 Stânga
+    '192.168.2.162',    # AP Parter Dreapta
+    '192.168.2.163',    # AP Etaj Grădiniță
+    '192.168.2.164',    # AP Intrare Secretariat
+    '192.168.2.165',    # AP Parter Stânga
+    '192.168.2.166',    # AP Etajul 1 Dreapta
+    '192.168.2.167',    # AP Intrare Elevi
+    '192.168.2.168',    # AP Etaj 2 Dreapta
+    '192.168.2.169',    # AP Etaj 2 Stânga
+    '192.168.2.170',    # Cameră Sală Sport
+    '192.168.2.171',    # Cameră Intrare Profesori
+    '192.168.2.172',    # Cameră Teren Baschet
+    '192.168.2.173',    # Cameră Intrare Elevi
+    '192.168.2.174',    # Cameră Teren Sport
+    '192.168.2.175',    # Cameră Poartă
+    '192.168.2.176',    # Cameră Sală Sport intrare spate
+    '192.168.2.177',    # AP Parter/Etajul1
+    '192.168.2.178',    # AP Etaj1/Etaj2
+    # DNS extern
+    '1.1.1.1',          # Cloudflare DNS
+    '8.8.8.8',          # Google DNS
 ]
 
 # =============================================================================
