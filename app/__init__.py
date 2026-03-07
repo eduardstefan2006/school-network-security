@@ -3,6 +3,7 @@ Inițializarea aplicației Flask.
 Folosim pattern-ul Application Factory pentru a crea instanța Flask.
 """
 import os
+from datetime import datetime, timezone
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
@@ -59,5 +60,10 @@ def create_app(config_name=None):
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():
         db.create_all()
+
+    @app.context_processor
+    def inject_now():
+        """Injectează data curentă în toate template-urile Jinja2."""
+        return {'now': datetime.now(timezone.utc)}
 
     return app
