@@ -64,12 +64,17 @@ def _detect_device_type(ip_str):
     # Switch-uri și Cisco router
     if ip_str in ('192.168.2.5', '192.168.2.8', '192.168.2.9', '192.168.2.10'):
         return 'switch'
-    # NVR și Camere supraveghere: .80, .91-.96, .160-.178
-    if ip_str == '192.168.2.80':
+    # Puncte de acces wireless: .161-.169 și .177-.178
+    if _ip_int('192.168.2.161') <= ip_int <= _ip_int('192.168.2.169'):
+        return 'ap'
+    if ip_str in ('192.168.2.177', '192.168.2.178'):
+        return 'ap'
+    # NVR și Camere supraveghere: .80, .91-.96, .160, .170-.176
+    if ip_str in ('192.168.2.80', '192.168.2.160'):
         return 'camera'
     if _ip_int('192.168.2.91') <= ip_int <= _ip_int('192.168.2.96'):
         return 'camera'
-    if _ip_int('192.168.2.160') <= ip_int <= _ip_int('192.168.2.178'):
+    if _ip_int('192.168.2.170') <= ip_int <= _ip_int('192.168.2.176'):
         return 'camera'
     # Servere: .241-.243
     if _ip_int('192.168.2.241') <= ip_int <= _ip_int('192.168.2.243'):
