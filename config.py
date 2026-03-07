@@ -40,6 +40,14 @@ class Config:
     # Modul simulat (fără Scapy/drepturi root)
     SIMULATION_MODE = os.environ.get('SIMULATION_MODE', 'false').lower() == 'true'
 
+    # Modul sniffer: 'simulated' | 'interface' | 'tzsp'
+    # Dacă SNIFFER_MODE este setat, are prioritate față de SIMULATION_MODE
+    SNIFFER_MODE = os.environ.get('SNIFFER_MODE', 'simulated')
+
+    # Adresa și portul pentru listener-ul TZSP (TaZmen Sniffer Protocol)
+    TZSP_LISTEN_ADDRESS = os.environ.get('TZSP_LISTEN_ADDRESS', '0.0.0.0')
+    TZSP_PORT = int(os.environ.get('TZSP_PORT', 37008))
+
 
 class DevelopmentConfig(Config):
     """Configurare pentru dezvoltare."""
