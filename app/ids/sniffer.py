@@ -217,6 +217,138 @@ def _simulated_sniffer(app):
         time.sleep(0.1)  # 10 pachete pe secundă în modul simulat
 
 
+def _tzsp_sniffer(app):
+    """
+    Ascultă pachete TZSP (TaZmen Sniffer Protocol) pe UDP trimise de routerul MikroTik.
+    Decodifică antetul TZSP, extrage frame-ul Ethernet original și îl procesează cu Scapy.
+    Nu necesită privilegii root (portul 37008 > 1024).
+    """
+    try:
+        from scapy.all import Ether, IP, TCP, UDP as ScapyUDP, ICMP, ARP, DNS
+    except ImportError:
+        print("[Sniffer] Scapy nu este disponibil. Modul TZSP necesită Scapy.")
+        return
+
+    listen_addr = app.config.get('TZSP_LISTEN_ADDRESS', '0.0.0.0')
+    listen_port = app.config.get('TZSP_PORT', 37008)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.settimeout(1.0)
+    try:
+        sock.bind((listen_addr, listen_port))
+    except OSError as e:
+        print(f"[Sniffer] Nu pot lega socket-ul TZSP la {listen_addr}:{listen_port}: {e}")
+        sock.close()
+        return
+
+    print(f"[Sniffer] Modul TZSP activat. Ascult pachete MikroTik pe {listen_addr}:{listen_port}")
+
+    # Constante TZSP
+    TZSP_TAG_END = 0x01
+    TZSP_ENCAP_ETHERNET = 0x0001
+
+    try:
+        while _running:
+            try:
+                data, _ = sock.recvfrom(65535)
+            except socket.timeout:
+                continue
+            except OSError as e:
+                if _running:
+                    print(f"[Sniffer] Eroare socket TZSP: {e}")
+                break
+
+            try:
+                # Antet TZSP: Version (1) + Type (1) + Encapsulated Protocol (2)
+                if len(data) < 4:
+                    continue
+
+                version = data[0]
+                pkt_type = data[1]
+                encap_proto = (data[2] << 8) | data[3]
+
+                if version != 1 or pkt_type != 0:
+                    # Ignorăm pachetele care nu sunt tip 0 (packet for capture)
+                    continue
+
+                if encap_proto != TZSP_ENCAP_ETHERNET:
+                    # Suportăm doar Ethernet encapsulat
+                    continue
+
+                # Parcurgem câmpurile tagged până la TAG_END (0x01)
+                offset = 4
+                while offset < len(data):
+                    tag = data[offset]
+                    offset += 1
+                    if tag == TZSP_TAG_END:
+                        # S-a găsit TAG_END; restul este frame-ul original
+                        break
+                    if tag == 0x00:
+                        # TAG_PADDING - fără date
+                        continue
+                    # Celelalte tag-uri au un byte lungime urmat de date
+                    if offset >= len(data):
+                        break
+                    tag_len = data[offset]
+                    offset += 1 + tag_len  # sărim peste date
+                else:
+                    # Nu s-a găsit TAG_END valid
+                    continue
+
+                raw_frame = data[offset:]
+                if not raw_frame:
+                    continue
+
+                pkt = Ether(raw_frame)
+
+                packet_info = {
+                    'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+                    'src_ip': '',
+                    'dst_ip': '',
+                    'protocol': 'Unknown',
+                    'src_port': None,
+                    'dst_port': None,
+                    'size': len(raw_frame),
+                }
+
+                if pkt.haslayer(IP):
+                    packet_info['src_ip'] = pkt[IP].src
+                    packet_info['dst_ip'] = pkt[IP].dst
+
+                    if pkt.haslayer(TCP):
+                        packet_info['protocol'] = 'TCP'
+                        packet_info['src_port'] = pkt[TCP].sport
+                        packet_info['dst_port'] = pkt[TCP].dport
+                        if pkt[TCP].dport in (80, 8080) or pkt[TCP].sport in (80, 8080):
+                            packet_info['protocol'] = 'HTTP'
+                        elif pkt[TCP].dport == 443 or pkt[TCP].sport == 443:
+                            packet_info['protocol'] = 'HTTPS'
+
+                    elif pkt.haslayer(ScapyUDP):
+                        packet_info['protocol'] = 'UDP'
+                        packet_info['src_port'] = pkt[ScapyUDP].sport
+                        packet_info['dst_port'] = pkt[ScapyUDP].dport
+                        if pkt[ScapyUDP].dport == 53 or pkt[ScapyUDP].sport == 53:
+                            packet_info['protocol'] = 'DNS'
+
+                    elif pkt.haslayer(ICMP):
+                        packet_info['protocol'] = 'ICMP'
+
+                elif pkt.haslayer(ARP):
+                    packet_info['protocol'] = 'ARP'
+                    packet_info['src_ip'] = pkt[ARP].psrc
+                    packet_info['dst_ip'] = pkt[ARP].pdst
+
+                _process_packet(packet_info, app)
+
+            except Exception as e:
+                print(f"[Sniffer] Pachet TZSP malformat, ignorat: {e}")
+                continue
+    finally:
+        sock.close()
+
+
 def start_sniffer(app):
     """
     Pornește snifferul de rețea într-un thread separat.
@@ -272,17 +404,26 @@ def start_sniffer(app):
             detector.add_alert_callback(save_alert)
 
     # Determinăm modul de funcționare
+    # SNIFFER_MODE are prioritate față de SIMULATION_MODE (compatibilitate inversă)
+    sniffer_mode = app.config.get('SNIFFER_MODE', 'simulated')
     simulation_mode = app.config.get('SIMULATION_MODE', True)
     interface = app.config.get('NETWORK_INTERFACE')
 
-    if simulation_mode:
-        target_func = lambda: _simulated_sniffer(app)
-    else:
+    # Dacă SNIFFER_MODE nu a fost setat explicit prin variabila de mediu,
+    # folosim SIMULATION_MODE pentru compatibilitate inversă
+    if sniffer_mode == 'simulated' and not simulation_mode:
+        sniffer_mode = 'interface'
+
+    if sniffer_mode == 'tzsp':
+        target_func = lambda: _tzsp_sniffer(app)
+    elif sniffer_mode == 'interface':
         target_func = lambda: _real_sniffer(app, interface)
+    else:
+        target_func = lambda: _simulated_sniffer(app)
 
     _sniffer_thread = threading.Thread(target=target_func, daemon=True)
     _sniffer_thread.start()
-    print(f"[Sniffer] Thread pornit în modul: {'simulat' if simulation_mode else 'real'}")
+    print(f"[Sniffer] Thread pornit în modul: {sniffer_mode}")
 
 
 def stop_sniffer():

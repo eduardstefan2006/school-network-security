@@ -16,7 +16,11 @@ if __name__ == '__main__':
     print("=" * 60)
     print("  SchoolSec - Sistem de Securitate pentru Rețeaua Școlii")
     print("=" * 60)
-    print(f"  Mod: {'SIMULAT' if app.config['SIMULATION_MODE'] else 'REAL'}")
+    sniffer_mode = app.config.get('SNIFFER_MODE', 'simulated')
+    simulation_mode = app.config.get('SIMULATION_MODE', True)
+    if sniffer_mode == 'simulated' and not simulation_mode:
+        sniffer_mode = 'interface'
+    print(f"  Mod sniffer: {sniffer_mode.upper()}")
     print(f"  Debug: {app.config.get('DEBUG', False)}")
     print(f"  Baza de date: {app.config['SQLALCHEMY_DATABASE_URI']}")
     print("  Acces: http://localhost:5000")

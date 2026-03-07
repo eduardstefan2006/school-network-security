@@ -108,7 +108,7 @@ Aplicația pornește implicit în **modul simulat** - generează trafic fictiv p
 
 ```bash
 # Dezactivează modul simulat
-export SIMULATION_MODE=false
+export SNIFFER_MODE=interface
 
 # Specifică interfața de rețea (opțional)
 export NETWORK_INTERFACE=eth0
@@ -117,15 +117,82 @@ export NETWORK_INTERFACE=eth0
 sudo python run.py
 ```
 
+### Modul TZSP (MikroTik streaming)
+
+```bash
+export SNIFFER_MODE=tzsp
+python run.py
+```
+
 ### Variabile de Mediu
 
 | Variabilă | Implicit | Descriere |
 |-----------|----------|-----------|
 | `FLASK_ENV` | `default` | Mediul de execuție (`development`, `production`) |
 | `SECRET_KEY` | (valoare implicită) | Cheia secretă pentru sesiuni Flask |
-| `SIMULATION_MODE` | `true` | Modul simulat (fără Scapy) |
-| `NETWORK_INTERFACE` | auto | Interfața de rețea pentru captură |
+| `SIMULATION_MODE` | `true` | Modul simulat (fără Scapy) - deprecat, folosiți `SNIFFER_MODE` |
+| `SNIFFER_MODE` | `simulated` | Modul sniffer: `simulated`, `interface`, sau `tzsp` |
+| `NETWORK_INTERFACE` | auto | Interfața de rețea pentru captură (modul `interface`) |
+| `TZSP_LISTEN_ADDRESS` | `0.0.0.0` | Adresa IP pe care ascultă listener-ul TZSP |
+| `TZSP_PORT` | `37008` | Portul UDP pentru primirea pachetelor TZSP de la MikroTik |
 | `PORT` | `5000` | Portul serverului web |
+
+---
+
+## 🔌 Integrare MikroTik TZSP
+
+### Ce este TZSP?
+
+**TZSP** (TaZmen Sniffer Protocol) este un protocol care permite unui router MikroTik să trimită o copie a traficului de rețea (mirroring) către un server extern prin UDP. SchoolSec poate primi și analiza acest trafic fără a fi necesar acces direct la interfața de rețea.
+
+### Configurare MikroTik
+
+Pe routerul MikroTik (RouterOS), activați streaming-ul TZSP:
+
+```routeros
+/tool sniffer
+set filter-interface=RETEA \
+    streaming-enabled=yes \
+    streaming-server=192.168.2.243 \
+    filter-stream=yes
+```
+
+Înlocuiți `RETEA` cu numele bridge-ului/interfeței dorite și `192.168.2.243` cu IP-ul mașinii pe care rulează SchoolSec.
+
+### Rulare cu modul TZSP
+
+```bash
+# Setați modul TZSP
+export SNIFFER_MODE=tzsp
+
+# Opțional: personalizați adresa și portul de ascultare
+export TZSP_LISTEN_ADDRESS=0.0.0.0
+export TZSP_PORT=37008
+
+# Porniți aplicația (nu necesită root, portul 37008 > 1024)
+python run.py
+```
+
+### Exemplu fișier systemd (`schoolsec.service`)
+
+```ini
+[Unit]
+Description=SchoolSec Network Security Monitor
+After=network.target
+
+[Service]
+User=schoolsec
+WorkingDirectory=/opt/school-network-security
+ExecStart=/opt/school-network-security/venv/bin/python run.py
+Restart=always
+Environment=FLASK_ENV=production
+Environment=SNIFFER_MODE=tzsp
+Environment=TZSP_LISTEN_ADDRESS=0.0.0.0
+Environment=TZSP_PORT=37008
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ---
 
