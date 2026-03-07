@@ -17,6 +17,9 @@ env/
 # Loguri (generate la rulare)
 logs/
 
+# Date runtime (generate la rulare)
+data/
+
 # Fișiere IDE
 .idea/
 .vscode/
