@@ -24,6 +24,21 @@ body {
 }
 
 /* =====================================================================
+   Îmbunătățire text-muted — mai vizibil pe fundal întunecat
+   ===================================================================== */
+.text-muted {
+    color: #b8c5d4 !important;  /* era ~#6c757d Bootstrap — mult mai vizibil */
+}
+
+/* Etichete mici din carduri (p.small, small.text-muted) */
+.card-body p.text-muted,
+.card-body small.text-muted,
+.card-body .small.text-muted {
+    color: #c8d4e0 !important;
+    font-size: 0.85rem !important;
+}
+
+/* =====================================================================
    Carduri
    ===================================================================== */
 .card {
