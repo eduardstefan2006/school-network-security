@@ -196,6 +196,44 @@ def _is_private_ip(ip_str):
         return False
 
 
+# Mapare statică subnet → VLAN-ID (din configurația MikroTik setari.rsc)
+_VLAN_MAP = [
+    (ipaddress.ip_network('192.168.231.0/26'), 200),  # LaboratorInfo
+    (ipaddress.ip_network('192.168.221.0/28'), 201),  # Sala1Parter
+    (ipaddress.ip_network('192.168.222.0/27'), 202),  # Sala2Parter
+    (ipaddress.ip_network('192.168.223.0/28'), 203),  # Sala3Parter
+    (ipaddress.ip_network('192.168.224.0/28'), 204),  # Sala1Etaj1
+    (ipaddress.ip_network('192.168.225.0/28'), 205),  # Sala2Etaj1
+    (ipaddress.ip_network('192.168.226.0/28'), 206),  # Sala3Etaj1
+    (ipaddress.ip_network('192.168.227.0/28'), 207),  # BiologieEtaj1
+    (ipaddress.ip_network('192.168.228.0/28'), 208),  # Sala1Etaj2
+    (ipaddress.ip_network('192.168.229.0/28'), 209),  # Sala2Etaj2
+    (ipaddress.ip_network('192.168.230.0/28'), 210),  # Fizica/ChimieEtaj2
+    (ipaddress.ip_network('192.168.232.0/28'), 212),  # Sala1CorpB
+    (ipaddress.ip_network('192.168.233.0/28'), 213),  # Sala2CorpB
+    (ipaddress.ip_network('192.168.234.0/27'), 214),  # Gradinita
+    (ipaddress.ip_network('192.168.235.0/27'), 215),  # SalaSport
+    (ipaddress.ip_network('192.168.236.0/27'), 216),  # Secretariat
+    (ipaddress.ip_network('192.168.237.0/28'), 217),  # Psiholog
+]
+
+
+def _get_vlan_from_ip(ip_str):
+    """Returnează VLAN-ID-ul pentru un IP pe baza mapării statice subnet→VLAN.
+
+    Returnează None dacă IP-ul nu aparține niciunui subnet VLAN cunoscut
+    (ex: 192.168.2.x - rețea principală fără tag VLAN, sau 192.168.239.x - Cancelarie).
+    """
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return None
+    for network, vlan_id in _VLAN_MAP:
+        if ip in network:
+            return vlan_id
+    return None
+
+
 def _detect_device_type(ip_str):
     """Auto-detectează tipul dispozitivului pe baza intervalelor de IP din rețeaua școlii."""
     try:
@@ -233,6 +271,8 @@ def _update_device_buffer(ip, mac, size, vlan_id=None):
     if not ip or not _is_private_ip(ip):
         return
     now = datetime.utcnow()
+    # Dacă VLAN-ul nu a fost detectat din Dot1Q, calculăm fallback-ul static
+    static_vlan = _get_vlan_from_ip(ip) if vlan_id is None else None
     with _device_buffer_lock:
         if ip in _device_buffer:
             entry = _device_buffer[ip]
@@ -242,7 +282,11 @@ def _update_device_buffer(ip, mac, size, vlan_id=None):
             if mac and not entry.get('mac'):
                 entry['mac'] = mac
             if vlan_id is not None:
+                # Dot1Q are prioritate - actualizăm întotdeauna
                 entry['vlan_id'] = vlan_id
+            elif entry.get('vlan_id') is None and static_vlan is not None:
+                # Aplicăm maparea statică doar dacă nu există deja un VLAN setat
+                entry['vlan_id'] = static_vlan
         else:
             _device_buffer[ip] = {
                 'mac': mac,
@@ -250,7 +294,7 @@ def _update_device_buffer(ip, mac, size, vlan_id=None):
                 'bytes': size,
                 'last_seen': now,
                 'is_new': True,
-                'vlan_id': vlan_id,
+                'vlan_id': vlan_id if vlan_id is not None else static_vlan,
             }
 
 
@@ -286,9 +330,16 @@ def _flush_device_buffer(app):
                             device.mac_address = data['mac']
                         if data.get('vlan_id') is not None:
                             device.vlan = str(data['vlan_id'])
+                        elif device.vlan is None:
+                            fallback_vlan = _get_vlan_from_ip(ip)
+                            if fallback_vlan is not None:
+                                device.vlan = str(fallback_vlan)
                     else:
                         is_known = ip in WHITELIST_IPS
                         device_type = _detect_device_type(ip)
+                        vlan_val = data.get('vlan_id')
+                        if vlan_val is None:
+                            vlan_val = _get_vlan_from_ip(ip)
                         device = NetworkDevice(
                             ip_address=ip,
                             mac_address=data.get('mac'),
@@ -298,7 +349,7 @@ def _flush_device_buffer(app):
                             total_packets=data['packets'],
                             total_bytes=data['bytes'],
                             is_known=is_known,
-                            vlan=str(data['vlan_id']) if data.get('vlan_id') is not None else None,
+                            vlan=str(vlan_val) if vlan_val is not None else None,
                         )
                         db.session.add(device)
                         # Alertă pentru dispozitiv nou necunoscut
@@ -727,6 +778,24 @@ def _fix_device_types(app):
         db.session.rollback()
 
 
+def _fix_device_vlans(app):
+    """Setează VLAN-ul pentru dispozitivele din DB care nu au VLAN, pe baza mapării IP→VLAN."""
+    from app.models import NetworkDevice
+    from app import db
+
+    try:
+        devices = NetworkDevice.query.filter_by(vlan=None).all()
+        for device in devices:
+            vlan_id = _get_vlan_from_ip(device.ip_address)
+            if vlan_id is not None:
+                print(f"[Sniffer] VLAN setat pentru {device.ip_address}: VLAN {vlan_id}")
+                device.vlan = str(vlan_id)
+        db.session.commit()
+    except Exception as e:
+        print(f"[Sniffer] Eroare la setarea VLAN-urilor: {e}")
+        db.session.rollback()
+
+
 def start_sniffer(app):
     """
     Pornește snifferul de rețea într-un thread separat.
@@ -740,9 +809,10 @@ def start_sniffer(app):
 
     _running = True
 
-    # Reclasificăm dispozitivele cu tip greșit la pornire
+    # Reclasificăm dispozitivele cu tip greșit și setăm VLAN-urile la pornire
     with app.app_context():
         _fix_device_types(app)
+        _fix_device_vlans(app)
 
     # Înregistrăm callback-ul pentru salvarea alertelor în baza de date
     with app.app_context():
