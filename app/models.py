@@ -201,6 +201,28 @@ class NetworkDevice(db.Model):
 
 
 # =============================================================================
+# Model Conexiuni per IP
+# =============================================================================
+class IPConnection(db.Model):
+    """Conexiuni detectate per IP sursă — hostname-uri accesate și consum bandă."""
+    __tablename__ = 'ip_connections'
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_ip = db.Column(db.String(45), nullable=False, index=True)
+    hostname = db.Column(db.String(255), nullable=False)   # ex: facebook.com, tiktok.com
+    app_name = db.Column(db.String(100), nullable=True)    # ex: Facebook, TikTok, WhatsApp
+    bytes_total = db.Column(db.BigInteger, default=0)
+    packets_count = db.Column(db.Integer, default=0)
+    first_seen = db.Column(db.DateTime, default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('source_ip', 'hostname', name='uq_ip_hostname'),)
+
+    def __repr__(self):
+        return f'<IPConnection {self.source_ip} -> {self.hostname}>'
+
+
+# =============================================================================
 # Model Statistici Pachete
 # =============================================================================
 class PacketStat(db.Model):

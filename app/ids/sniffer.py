@@ -10,6 +10,76 @@ import ipaddress
 from datetime import datetime, timezone
 from collections import defaultdict
 
+# =============================================================================
+# Mapare hostname → nume aplicație (cu emoji-uri)
+# =============================================================================
+_APP_NAMES = {
+    'facebook.com': '📘 Facebook',
+    'fbcdn.net': '📘 Facebook',
+    'fb.com': '📘 Facebook',
+    'instagram.com': '📸 Instagram',
+    'cdninstagram.com': '📸 Instagram',
+    'tiktok.com': '🎵 TikTok',
+    'tiktokcdn.com': '🎵 TikTok',
+    'musical.ly': '🎵 TikTok',
+    'whatsapp.com': '💬 WhatsApp',
+    'whatsapp.net': '💬 WhatsApp',
+    'youtube.com': '▶️ YouTube',
+    'ytimg.com': '▶️ YouTube',
+    'googlevideo.com': '▶️ YouTube',
+    'yt3.ggpht.com': '▶️ YouTube',
+    'google.com': '🔍 Google',
+    'googleapis.com': '🔍 Google',
+    'gstatic.com': '🔍 Google',
+    'gmail.com': '📧 Gmail',
+    'googlemail.com': '📧 Gmail',
+    'twitter.com': '🐦 Twitter/X',
+    'twimg.com': '🐦 Twitter/X',
+    't.co': '🐦 Twitter/X',
+    'x.com': '🐦 Twitter/X',
+    'snapchat.com': '👻 Snapchat',
+    'snap.com': '👻 Snapchat',
+    'netflix.com': '🎬 Netflix',
+    'nflxvideo.net': '🎬 Netflix',
+    'spotify.com': '🎵 Spotify',
+    'scdn.co': '🎵 Spotify',
+    'discord.com': '🎮 Discord',
+    'discordapp.com': '🎮 Discord',
+    'discord.gg': '🎮 Discord',
+    'telegram.org': '✈️ Telegram',
+    'microsoft.com': '🪟 Microsoft',
+    'office.com': '🪟 Microsoft',
+    'live.com': '🪟 Microsoft',
+    'outlook.com': '🪟 Microsoft',
+    'windows.com': '🪟 Microsoft',
+    'apple.com': '🍎 Apple',
+    'icloud.com': '🍎 iCloud',
+    'akamai.net': '☁️ CDN/Akamai',
+    'cloudflare.com': '☁️ Cloudflare',
+    'twitch.tv': '🎮 Twitch',
+    'amazon.com': '📦 Amazon',
+    'amazonaws.com': '☁️ AWS',
+    'zoom.us': '📹 Zoom',
+    'teams.microsoft.com': '🪟 Microsoft Teams',
+    'linkedin.com': '💼 LinkedIn',
+    'pinterest.com': '📌 Pinterest',
+    'reddit.com': '🤖 Reddit',
+    'redd.it': '🤖 Reddit',
+    'wikipedia.org': '📖 Wikipedia',
+    'wikimedia.org': '📖 Wikipedia',
+}
+
+
+def _get_app_name(hostname: str):
+    """Returnează numele aplicației pentru un hostname dat."""
+    if not hostname:
+        return None
+    hostname = hostname.lower().rstrip('.')
+    for domain, app_name in _APP_NAMES.items():
+        if hostname == domain or hostname.endswith('.' + domain):
+            return app_name
+    return None
+
 # Statistici globale despre trafic (în memorie)
 traffic_stats = {
     'total_packets': 0,
@@ -36,6 +106,86 @@ _device_buffer = {}
 _device_buffer_lock = threading.Lock()
 _last_device_flush = time.monotonic()
 _DEVICE_FLUSH_INTERVAL = 30  # secunde
+
+# =============================================================================
+# Cache DNS și buffer conexiuni (flush periodic la DB)
+# =============================================================================
+# Cache DNS: ip_destinatie -> hostname (ultimul hostname rezolvat)
+_dns_cache: dict = {}
+_dns_cache_lock = threading.Lock()
+
+# Buffer conexiuni per (source_ip, hostname)
+_connections_buffer: dict = {}
+_connections_lock = threading.Lock()
+_last_connections_flush = 0
+_CONNECTIONS_FLUSH_INTERVAL = 30  # secunde
+
+
+def _update_connection(source_ip: str, hostname: str, size: int):
+    """Actualizează buffer-ul de conexiuni pentru un IP sursă și hostname."""
+    if not source_ip or not hostname:
+        return
+    app_name = _get_app_name(hostname)
+    key = (source_ip, hostname)
+    with _connections_lock:
+        if key not in _connections_buffer:
+            _connections_buffer[key] = {
+                'bytes': 0,
+                'packets': 0,
+                'app_name': app_name,
+                'last_seen': datetime.now(timezone.utc),
+            }
+        _connections_buffer[key]['bytes'] += size
+        _connections_buffer[key]['packets'] += 1
+        _connections_buffer[key]['last_seen'] = datetime.now(timezone.utc)
+
+
+def _maybe_flush_connections(app):
+    """Flush periodic al conexiunilor din buffer în baza de date."""
+    global _last_connections_flush
+    now = time.monotonic()
+    if now - _last_connections_flush < _CONNECTIONS_FLUSH_INTERVAL:
+        return
+    _last_connections_flush = now
+
+    with _connections_lock:
+        snapshot = dict(_connections_buffer)
+        _connections_buffer.clear()
+
+    if not snapshot:
+        return
+
+    def _do_flush():
+        from app.models import IPConnection
+        from app import db
+        with app.app_context():
+            try:
+                for (src_ip, hostname), data in snapshot.items():
+                    conn = IPConnection.query.filter_by(
+                        source_ip=src_ip, hostname=hostname
+                    ).first()
+                    if conn:
+                        conn.bytes_total += data['bytes']
+                        conn.packets_count += data['packets']
+                        conn.last_seen = data['last_seen']
+                        if not conn.app_name and data['app_name']:
+                            conn.app_name = data['app_name']
+                    else:
+                        conn = IPConnection(
+                            source_ip=src_ip,
+                            hostname=hostname,
+                            app_name=data['app_name'],
+                            bytes_total=data['bytes'],
+                            packets_count=data['packets'],
+                            last_seen=data['last_seen'],
+                        )
+                        db.session.add(conn)
+                db.session.commit()
+            except Exception as e:
+                print(f"[Sniffer] Eroare flush conexiuni: {e}")
+                db.session.rollback()
+
+    threading.Thread(target=_do_flush, daemon=True).start()
 
 
 def _is_private_ip(ip_str):
@@ -229,6 +379,24 @@ def _process_packet(packet_info, app):
     # Flush periodic la baza de date (non-blocant când nu e momentul)
     _maybe_flush_devices(app)
 
+    # Actualizăm conexiunile per IP sursă
+    dns_query = packet_info.get('dns_query')
+    dst_ip = packet_info.get('dst_ip', '')
+
+    if dns_query and src_ip:
+        # Stocăm în cache DNS: dst_ip -> hostname (pt pachete ulterioare HTTPS)
+        with _dns_cache_lock:
+            _dns_cache[dst_ip] = dns_query
+        _update_connection(src_ip, dns_query, size)
+    elif src_ip and dst_ip:
+        # Încearcă să găsim hostname din cache DNS
+        with _dns_cache_lock:
+            hostname = _dns_cache.get(dst_ip)
+        if hostname:
+            _update_connection(src_ip, hostname, size)
+
+    _maybe_flush_connections(app)
+
     # Analizăm pachetul cu detectorul IDS
     with app.app_context():
         from app.ids.detector import detector
@@ -286,6 +454,15 @@ def _real_sniffer(app, interface=None):
                 # Detectăm DNS pe portul 53
                 if pkt[UDP].dport == 53 or pkt[UDP].sport == 53:
                     packet_info['protocol'] = 'DNS'
+                    # Extrage hostname din query DNS
+                    try:
+                        if pkt.haslayer(DNS) and pkt[DNS].qr == 0 and pkt[DNS].qd:
+                            qname = pkt[DNS].qd.qname
+                            if isinstance(qname, bytes):
+                                qname = qname.decode('utf-8', errors='ignore')
+                            packet_info['dns_query'] = qname.rstrip('.')
+                    except Exception:
+                        pass
 
             elif pkt.haslayer(ICMP):
                 packet_info['protocol'] = 'ICMP'
@@ -505,6 +682,15 @@ def _tzsp_sniffer(app):
                         packet_info['dst_port'] = pkt[ScapyUDP].dport
                         if pkt[ScapyUDP].dport == 53 or pkt[ScapyUDP].sport == 53:
                             packet_info['protocol'] = 'DNS'
+                            # Extrage hostname din query DNS
+                            try:
+                                if pkt.haslayer(DNS) and pkt[DNS].qr == 0 and pkt[DNS].qd:
+                                    qname = pkt[DNS].qd.qname
+                                    if isinstance(qname, bytes):
+                                        qname = qname.decode('utf-8', errors='ignore')
+                                    packet_info['dns_query'] = qname.rstrip('.')
+                            except Exception:
+                                pass
 
                     elif pkt.haslayer(ICMP):
                         packet_info['protocol'] = 'ICMP'
