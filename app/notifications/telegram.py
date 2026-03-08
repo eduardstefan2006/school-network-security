@@ -145,7 +145,7 @@ def send_alert_notification(alert_data: dict, app_config: dict) -> None:
         if not token or not chat_id:
             return
 
-        min_severity = app_config.get('TELEGRAM_MIN_SEVERITY', 'high').lower()
+        min_severity = app_config.get('TELEGRAM_MIN_SEVERITY', 'critical').lower()
         alert_severity = alert_data.get('severity', 'low').lower()
 
         if _severity_index(alert_severity) < _severity_index(min_severity):
