@@ -10,6 +10,17 @@ from app.ids.rules import (
     HIGH_TRAFFIC_RULES, ARP_RULES, WHITELIST_IPS
 )
 
+# Cache pentru lista albă personalizată (evită citirea JSON la fiecare pachet)
+_whitelist_cache = None
+_whitelist_cache_time = 0.0
+_WHITELIST_CACHE_TTL = 60  # secunde
+
+
+def invalidate_whitelist_cache():
+    """Invalidează cache-ul listei albe (apelat după fiecare modificare a JSON-ului)."""
+    global _whitelist_cache
+    _whitelist_cache = None
+
 
 class IntrusionDetector:
     """
@@ -57,8 +68,20 @@ class IntrusionDetector:
                 print(f"[IDS] Eroare în callback: {e}")
 
     def _is_whitelisted(self, ip):
-        """Verifică dacă IP-ul este în lista albă."""
-        return ip in WHITELIST_IPS
+        """Verifică dacă IP-ul este în lista albă (builtin + personalizată)."""
+        if ip in WHITELIST_IPS:
+            return True
+        # Verifică lista personalizată din JSON, cu cache de 60 de secunde
+        global _whitelist_cache, _whitelist_cache_time
+        now = time.time()
+        if _whitelist_cache is None or (now - _whitelist_cache_time) > _WHITELIST_CACHE_TTL:
+            try:
+                from app.routes.settings import _load_custom_whitelist
+                _whitelist_cache = {e.get('ip') for e in _load_custom_whitelist()}
+                _whitelist_cache_time = now
+            except Exception:
+                return False
+        return ip in _whitelist_cache
 
     def _clean_old_entries(self, dq, window_seconds):
         """Elimină intrările mai vechi decât fereastra de timp."""

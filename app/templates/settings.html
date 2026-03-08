@@ -56,12 +56,9 @@
 <!-- Secțiunea 2: Gestionare Listă Albă IDS -->
 <div class="card schoolsec-card border-secondary mb-4">
     <div class="card-header border-secondary">
-        <h5 class="mb-0"><i class="bi bi-shield-check me-2 text-success"></i>Gestionare Listă Albă IDS</h5>
+        <h5 class="mb-0"><i class="bi bi-shield-check me-2 text-success"></i>Lista Albă IDS</h5>
     </div>
     <div class="card-body">
-
-        <!-- IP-uri personalizate -->
-        <h6 class="text-success mb-2"><i class="bi bi-plus-circle me-1"></i>IP-uri Personalizate</h6>
 
         <!-- Formular adăugare IP -->
         <div class="row g-2 mb-3">
@@ -83,12 +80,18 @@
             </div>
         </div>
 
-        <!-- Tabel IP-uri personalizate -->
-        <div id="customWhitelistTable">
-            {% if custom_entries %}
-            <div class="table-responsive mb-3">
-                <table class="table table-dark table-sm table-hover mb-0" id="customTable">
-                    <thead>
+        <!-- Căutare / filtrare -->
+        <div class="mb-2">
+            <input type="text" id="whitelistSearch" class="form-control form-control-sm bg-dark text-light border-secondary"
+                   placeholder="Caută IP sau descriere..." style="max-width: 340px;">
+        </div>
+
+        <!-- Tabel unificat cu toate IP-urile -->
+        <div id="whitelistTableContainer">
+            {% if whitelist_entries %}
+            <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
+                <table class="table table-dark table-sm table-hover mb-0" id="whitelistTable">
+                    <thead class="sticky-top schoolsec-card">
                         <tr>
                             <th>Adresă IP</th>
                             <th>Descriere</th>
@@ -96,8 +99,8 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for entry in custom_entries %}
-                        <tr id="row-{{ entry.ip | replace('.', '-') }}">
+                        {% for entry in whitelist_entries %}
+                        <tr id="row-{{ entry.ip | replace('.', '-') | replace(':', '-') }}">
                             <td><code class="text-warning">{{ entry.ip }}</code></td>
                             <td><small class="text-muted">{{ entry.description or '-' }}</small></td>
                             <td>
@@ -112,33 +115,8 @@
                 </table>
             </div>
             {% else %}
-            <p class="text-muted small fst-italic" id="noCustomIps">Niciun IP personalizat adăugat.</p>
+            <p class="text-muted small fst-italic" id="noWhitelistIps">Niciun IP în lista albă.</p>
             {% endif %}
-        </div>
-
-        <hr class="border-secondary">
-
-        <!-- IP-uri predefinite din rules.py -->
-        <h6 class="text-muted mb-2"><i class="bi bi-lock me-1"></i>IP-uri Predefinite (rules.py)</h6>
-        <div class="alert alert-secondary py-2 mb-2">
-            <i class="bi bi-info-circle me-1"></i>
-            Aceste IP-uri sunt definite în codul sursă (<code>app/ids/rules.py</code>) și nu pot fi șterse din interfața web.
-        </div>
-        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
-            <table class="table table-dark table-sm table-hover mb-0">
-                <thead class="sticky-top schoolsec-card">
-                    <tr>
-                        <th>Adresă IP</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for ip in builtin_ips %}
-                    <tr>
-                        <td><code class="text-muted">{{ ip }}</code></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
         </div>
     </div>
 </div>
@@ -285,14 +263,14 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                const rowId = 'row-' + ip.replace(/\./g, '-');
+                const rowId = 'row-' + ip.replace(/[.:]/g, '-');
                 const row = document.getElementById(rowId);
                 if (row) row.remove();
                 // Dacă nu mai există rânduri, afișăm mesajul
-                const tbody = document.querySelector('#customTable tbody');
+                const tbody = document.querySelector('#whitelistTable tbody');
                 if (tbody && tbody.rows.length === 0) {
-                    document.getElementById('customWhitelistTable').innerHTML =
-                        '<p class="text-muted small fst-italic" id="noCustomIps">Niciun IP personalizat adăugat.</p>';
+                    document.getElementById('whitelistTableContainer').innerHTML =
+                        '<p class="text-muted small fst-italic" id="noWhitelistIps">Niciun IP în lista albă.</p>';
                 }
             } else {
                 alert(data.error || 'Eroare la eliminarea IP-ului.');
@@ -301,23 +279,37 @@ document.addEventListener('DOMContentLoaded', function () {
         .catch(() => alert('Eroare de rețea.'));
     });
 
+    // Căutare / filtrare în tabelul listei albe
+    const searchInput = document.getElementById('whitelistSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
+            const query = this.value.toLowerCase();
+            const tbody = document.querySelector('#whitelistTable tbody');
+            if (!tbody) return;
+            for (const row of tbody.rows) {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            }
+        });
+    }
+
     function addRowToTable(ip, description) {
         // Dacă există mesajul "niciun IP", îl înlocuim cu tabel
-        const noIps = document.getElementById('noCustomIps');
-        const container = document.getElementById('customWhitelistTable');
+        const noIps = document.getElementById('noWhitelistIps');
+        const container = document.getElementById('whitelistTableContainer');
         if (noIps) {
             container.innerHTML = `
-                <div class="table-responsive mb-3">
-                    <table class="table table-dark table-sm table-hover mb-0" id="customTable">
-                        <thead>
+                <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
+                    <table class="table table-dark table-sm table-hover mb-0" id="whitelistTable">
+                        <thead class="sticky-top schoolsec-card">
                             <tr><th>Adresă IP</th><th>Descriere</th><th>Acțiuni</th></tr>
                         </thead>
                         <tbody></tbody>
                     </table>
                 </div>`;
         }
-        const tbody = document.querySelector('#customTable tbody');
-        const rowId = 'row-' + ip.replace(/\./g, '-');
+        const tbody = document.querySelector('#whitelistTable tbody');
+        const rowId = 'row-' + ip.replace(/[.:]/g, '-');
         const tr = document.createElement('tr');
         tr.id = rowId;
 
