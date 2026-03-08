@@ -183,7 +183,7 @@ class NetworkDevice(db.Model):
     ip_address = db.Column(db.String(45), unique=True, nullable=False, index=True)
     mac_address = db.Column(db.String(17), nullable=True)
     hostname = db.Column(db.String(255), nullable=True)
-    # Tipul dispozitivului: router, switch, ap, camera, server, client, unknown
+    # Tipul dispozitivului: router, switch, ap, camera, server, client, mobile, unknown
     device_type = db.Column(db.String(50), default='unknown')
     description = db.Column(db.String(255), nullable=True)
     first_seen = db.Column(db.DateTime, default=datetime.utcnow)
