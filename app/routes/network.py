@@ -9,7 +9,29 @@ from flask_login import login_required, current_user
 from app import db
 from app.models import NetworkDevice, Alert
 
+
 network_bp = Blueprint('network', __name__)
+
+
+@network_bp.route('/api/network/ip/<string:ip_address>/connections')
+@login_required
+def api_ip_connections(ip_address):
+    """Returnează site-urile/aplicațiile accesate de un IP, ordonate după bytes."""
+    from app.models import IPConnection
+    connections = (
+        IPConnection.query
+        .filter_by(source_ip=ip_address)
+        .order_by(IPConnection.bytes_total.desc())
+        .limit(50)
+        .all()
+    )
+    return jsonify([{
+        'hostname': c.hostname,
+        'app_name': c.app_name or c.hostname,
+        'bytes_total': c.bytes_total,
+        'packets_count': c.packets_count,
+        'last_seen': c.last_seen.strftime('%d.%m.%Y %H:%M:%S') if c.last_seen else 'N/A',
+    } for c in connections])
 
 
 @network_bp.route('/network')
