@@ -19,6 +19,8 @@ logs/
 
 # Date runtime (generate la rulare)
 data/
+# Excepție: fișier de configurare OUI vendors (parte din codul sursă)
+!data/oui_vendors.json
 
 # Fișiere IDE
 .idea/

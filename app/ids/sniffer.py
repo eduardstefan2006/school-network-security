@@ -2,6 +2,8 @@
 Modulul de captură a pachetelor de rețea.
 Folosește Scapy pentru captură reală sau generează trafic simulat pentru testare.
 """
+import json
+import os
 import threading
 import time
 import random
@@ -234,7 +236,115 @@ def _get_vlan_from_ip(ip_str):
     return None
 
 
+# =============================================================================
+# Detecție automată AP pe baza vendor OUI (TP-Link / ASUS)
+# =============================================================================
+
+def normalize_mac(mac: str) -> str | None:
+    """Normalizează un MAC address la formatul aa:bb:cc:dd:ee:ff (lowercase, separator ':').
+
+    Args:
+        mac: String MAC address în orice format (cu ':', '-', '.' sau fără separator).
+    Returns:
+        MAC normalizat ca string 'aa:bb:cc:dd:ee:ff', sau None dacă input-ul e invalid.
+    """
+    if not mac:
+        return None
+    cleaned = mac.replace(':', '').replace('-', '').replace('.', '').lower()
+    if len(cleaned) != 12:
+        return None
+    try:
+        int(cleaned, 16)
+    except ValueError:
+        return None
+    return ':'.join(cleaned[i:i + 2] for i in range(0, 12, 2))
+
+
+def get_mac_oui(mac: str) -> str | None:
+    """Returnează OUI-ul (primii 3 octeți) dintr-un MAC address, ca string uppercase (ex: 'AA:BB:CC').
+
+    Args:
+        mac: String MAC address în orice format acceptat de normalize_mac.
+    Returns:
+        OUI ca string 'AA:BB:CC' (uppercase), sau None dacă MAC-ul e invalid sau None.
+    """
+    normalized = normalize_mac(mac)
+    if normalized is None:
+        return None
+    return normalized[:8].upper()
+
+
+def _load_ap_vendor_ouis() -> dict:
+    """Încarcă OUI-urile AP vendor din data/oui_vendors.json (dacă există), cu fallback la o listă minimă.
+
+    Returns:
+        Dict cu structura {vendor_name: [oui_string, ...]} unde vendor_name este
+        cheia furnizorului (ex: 'tplink', 'asus') și fiecare OUI e un string uppercase
+        de forma 'AA:BB:CC'. Cheile care încep cu '_' (ex: '_comment') sunt excluse.
+    """
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    json_path = os.path.join(base_dir, 'data', 'oui_vendors.json')
+    if os.path.isfile(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return {
+                vendor: [oui.upper() for oui in ouis]
+                for vendor, ouis in data.items()
+                if not vendor.startswith('_')
+            }
+        except Exception as e:
+            print(f"[Sniffer] Eroare la încărcarea OUI-urilor din {json_path}: {e}")
+    # Fallback minimal (câteva OUI-uri reprezentative)
+    return {
+        'tplink': [
+            '50:C7:BF', 'EC:08:6B', '54:AF:97', '18:D6:C7', '14:CF:92',
+            '64:70:02', 'AC:84:C6', '98:DA:C4', 'B0:BE:76', '60:32:B1',
+        ],
+        'asus': [
+            '04:92:26', '74:D0:2B', 'B0:6E:BF', '6C:F3:7F', '2C:FD:A1',
+            '50:46:5D', 'AC:22:0B', '00:11:2F', '00:1A:92', '14:DA:E9',
+        ],
+    }
+
+
+_AP_VENDOR_OUIS = _load_ap_vendor_ouis()
+
+# Set plat de OUI-uri AP pentru lookup O(1)
+_AP_OUI_SET = frozenset(
+    oui for ouis in _AP_VENDOR_OUIS.values() for oui in ouis
+)
+
+
+def _looks_like_ap(mac: str | None, vlan_id: int | None, ip: str | None) -> bool:
+    """Returnează True dacă dispozitivul pare a fi un AP (vendor TP-Link/ASUS pe un VLAN).
+
+    Criteriu: MAC aparține unui vendor AP (pe baza OUI) ȘI
+              dispozitivul este pe un VLAN (vlan_id prezent sau IP în subnet VLAN cunoscut).
+
+    Args:
+        mac: Adresa MAC a dispozitivului (orice format), sau None dacă nu este cunoscută.
+        vlan_id: ID-ul VLAN detectat din Dot1Q, sau None dacă nu e prezent.
+        ip: Adresa IP ca string, folosită ca fallback pentru detecția VLAN din subnet.
+    Returns:
+        True dacă OUI-ul MAC aparține unui vendor AP cunoscut (TP-Link/ASUS) și
+        dispozitivul se află pe un VLAN (vlan_id furnizat sau IP aparține unui subnet VLAN din _VLAN_MAP).
+        False în orice alt caz (MAC lipsă, OUI necunoscut, sau nu e pe VLAN).
+    """
+    if not mac:
+        return False
+    oui = get_mac_oui(mac)
+    if oui not in _AP_OUI_SET:
+        return False
+    if vlan_id is not None:
+        return True
+    if ip and _get_vlan_from_ip(ip) is not None:
+        return True
+    return False
+
+
 # Access Point-uri (routere TP-Link/Asus în modul AP pe VLAN-uri)
+# Menținut pentru compatibilitate inversă; detecția automată OUI are prioritate.
 _AP_IPS = {
     '192.168.221.2',  # Router Sala 1 Parter (TP-Link)
     '192.168.222.2',  # Router Sala 2 Parter (TP-Link)
@@ -258,8 +368,17 @@ _AP_IPS = {
 }
 
 
-def _detect_device_type(ip_str):
-    """Auto-detectează tipul dispozitivului pe baza intervalelor de IP din rețeaua școlii."""
+def _detect_device_type(ip_str, mac=None, vlan_id=None):
+    """Auto-detectează tipul dispozitivului pe baza MAC (OUI vendor), IP și VLAN.
+
+    Prioritate de detecție:
+    1. Dacă MAC aparține unui vendor AP (TP-Link/ASUS) și dispozitivul e pe un VLAN → 'ap'
+    2. IP hardcodat (router, switch, cameră, server, AP din _AP_IPS)
+    3. Fallback → 'client'
+    """
+    # 1. Detecție automată AP pe baza OUI + VLAN (are prioritate față de IP)
+    if _looks_like_ap(mac, vlan_id, ip_str):
+        return 'ap'
     try:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
@@ -353,20 +472,33 @@ def _flush_device_buffer(app):
                         device.last_seen = data['last_seen']
                         device.total_packets = (device.total_packets or 0) + data['packets']
                         device.total_bytes = (device.total_bytes or 0) + data['bytes']
+                        mac_updated = False
                         if data.get('mac') and not device.mac_address:
                             device.mac_address = data['mac']
+                            mac_updated = True
                         if data.get('vlan_id') is not None:
                             device.vlan = str(data['vlan_id'])
                         elif device.vlan is None:
                             fallback_vlan = _get_vlan_from_ip(ip)
                             if fallback_vlan is not None:
                                 device.vlan = str(fallback_vlan)
+                        # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul sau VLAN-ul
+                        if mac_updated or (data.get('vlan_id') is not None and device.device_type != 'ap'):
+                            vlan_for_check = data.get('vlan_id')
+                            if vlan_for_check is None and device.vlan is not None:
+                                try:
+                                    vlan_for_check = int(device.vlan)
+                                except (ValueError, TypeError):
+                                    pass
+                            new_type = _detect_device_type(ip, mac=device.mac_address, vlan_id=vlan_for_check)
+                            if new_type != device.device_type:
+                                device.device_type = new_type
                     else:
                         is_known = ip in WHITELIST_IPS
-                        device_type = _detect_device_type(ip)
                         vlan_val = data.get('vlan_id')
                         if vlan_val is None:
                             vlan_val = _get_vlan_from_ip(ip)
+                        device_type = _detect_device_type(ip, mac=data.get('mac'), vlan_id=vlan_val)
                         device = NetworkDevice(
                             ip_address=ip,
                             mac_address=data.get('mac'),
@@ -797,7 +929,13 @@ def _fix_device_types(app):
             devices = NetworkDevice.query.all()
             count = 0
             for device in devices:
-                correct_type = _detect_device_type(device.ip_address)
+                vlan_id = None
+                if device.vlan is not None:
+                    try:
+                        vlan_id = int(device.vlan)
+                    except (ValueError, TypeError):
+                        pass
+                correct_type = _detect_device_type(device.ip_address, mac=device.mac_address, vlan_id=vlan_id)
                 if correct_type != device.device_type:
                     print(f"[Sniffer] Dispozitiv reclasificat: {device.ip_address} {device.device_type} → {correct_type}")
                     device.device_type = correct_type
