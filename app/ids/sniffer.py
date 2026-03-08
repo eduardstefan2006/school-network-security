@@ -234,6 +234,29 @@ def _get_vlan_from_ip(ip_str):
     return None
 
 
+# Access Point-uri (routere TP-Link/Asus în modul AP pe VLAN-uri)
+_AP_IPS = {
+    '192.168.221.2',  # Router Sala 1 Parter (TP-Link)
+    '192.168.222.2',  # Router Sala 2 Parter (TP-Link)
+    '192.168.223.2',  # Router Sala 3 Parter (TP-Link)
+    '192.168.224.2',  # Router Sala 1 Etaj 1 (TP-Link)
+    '192.168.225.2',  # Router Sala 2 Etaj 1 (TP-Link)
+    '192.168.226.2',  # Router Sala 3 Etaj 1 (TP-Link)
+    '192.168.227.2',  # Router Biologie Etaj 1 (TP-Link)
+    '192.168.228.2',  # Router Sala 1 Etaj 2 (TP-Link)
+    '192.168.229.2',  # Router Sala 2 Etaj 2 (TP-Link)
+    '192.168.230.2',  # Router Fizica/Chimie Etaj 2 (TP-Link)
+    '192.168.232.2',  # Router Sala 1 Corp B (Asus)
+    '192.168.233.2',  # Router Sala 2 Corp B (Asus)
+    '192.168.234.2',  # Router Gradinita (TP-Link)
+    '192.168.234.3',  # Router Asus Gradinita (Asus)
+    '192.168.235.2',  # Router Sala Sport (Asus)
+    '192.168.236.2',  # Router Secretariat
+    '192.168.237.3',  # Router Psiholog (TP-Link)
+    '192.168.239.2',  # Router Cancelarie
+}
+
+
 def _detect_device_type(ip_str):
     """Auto-detectează tipul dispozitivului pe baza intervalelor de IP din rețeaua școlii."""
     try:
@@ -262,6 +285,9 @@ def _detect_device_type(ip_str):
     # Servere: .241-.243
     if _ip_int('192.168.2.241') <= ip_int <= _ip_int('192.168.2.243'):
         return 'server'
+    # Access Point-uri (routere TP-Link/Asus în modul AP pe VLAN-uri)
+    if ip_str in _AP_IPS:
+        return 'access_point'
 
     return 'client'
 
