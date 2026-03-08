@@ -106,3 +106,19 @@ def update_device(device_id):
         device.is_known = bool(data['is_known'])
     db.session.commit()
     return jsonify({'success': True})
+
+
+@network_bp.route('/api/network/reclassify-devices', methods=['POST'])
+@login_required
+def reclassify_devices():
+    """Admin: reclasifică manual toate dispozitivele din DB."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis'}), 403
+    try:
+        from app.ids.sniffer import _fix_device_types, _fix_device_vlans
+        from flask import current_app
+        _fix_device_types(current_app._get_current_object())
+        _fix_device_vlans(current_app._get_current_object())
+        return jsonify({'success': True, 'message': 'Dispozitivele au fost reclasificate.'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
