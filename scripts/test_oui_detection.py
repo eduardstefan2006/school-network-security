@@ -11,7 +11,7 @@ import os
 # Adăugăm rădăcina proiectului în sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.ids.sniffer import normalize_mac, get_mac_oui, _looks_like_ap, _detect_device_type
+from app.ids.sniffer import normalize_mac, get_mac_oui, _looks_like_ap, _looks_like_mobile, _detect_device_type
 
 _pass_count = 0
 _fail_count = 0
@@ -88,12 +88,62 @@ def test_detect_device_type():
     # Vendor TP-Link dar pe subnet non-VLAN → client (nu AP)
     _assert(_detect_device_type("192.168.2.50", mac="EC:08:6B:AA:BB:CC") == 'client',
             "TP-Link OUI dar pe subnet non-VLAN → client")
+    # Mobile - Apple OUI → mobile
+    _assert(_detect_device_type("192.168.2.100", mac="AC:BC:32:AA:BB:CC") == 'mobile',
+            "Apple OUI → mobile")
+    # Mobile - Samsung OUI → mobile
+    _assert(_detect_device_type("192.168.2.101", mac="34:23:BA:11:22:33") == 'mobile',
+            "Samsung OUI → mobile")
+    # Mobile - Xiaomi OUI → mobile
+    _assert(_detect_device_type("192.168.2.102", mac="98:FA:E3:AA:BB:CC") == 'mobile',
+            "Xiaomi OUI → mobile")
+    # Mobile - Huawei OUI → mobile
+    _assert(_detect_device_type("192.168.2.103", mac="D4:12:43:11:22:33") == 'mobile',
+            "Huawei OUI → mobile")
+    # Apple OUI dar IP este server → server (IP hardcodat are prioritate față de OUI mobil)
+    _assert(_detect_device_type("192.168.2.241", mac="AC:BC:32:AA:BB:CC") == 'server',
+            "Apple OUI dar IP server → server (IP are prioritate)")
+    # Apple OUI pe subnet VLAN dar fara OUI AP → mobile (nu AP)
+    _assert(_detect_device_type("192.168.221.5", mac="AC:BC:32:AA:BB:CC") == 'mobile',
+            "Apple OUI pe subnet VLAN (fara OUI AP) → mobile")
+
+
+def test_looks_like_mobile():
+    print("\n--- _looks_like_mobile ---")
+    # Apple iPhone/iPad OUI → mobile
+    _assert(_looks_like_mobile("AC:BC:32:AA:BB:CC"), "Apple OUI → mobile")
+    _assert(_looks_like_mobile("98:01:A7:11:22:33"), "Apple OUI 98:01:A7 → mobile")
+    # Samsung mobile OUI → mobile
+    _assert(_looks_like_mobile("34:23:BA:AA:BB:CC"), "Samsung OUI → mobile")
+    _assert(_looks_like_mobile("6C:B7:F4:11:22:33"), "Samsung OUI 6C:B7:F4 → mobile")
+    # Xiaomi OUI → mobile
+    _assert(_looks_like_mobile("98:FA:E3:AA:BB:CC"), "Xiaomi OUI → mobile")
+    # OnePlus OUI → mobile
+    _assert(_looks_like_mobile("94:65:2D:AA:BB:CC"), "OnePlus OUI → mobile")
+    # Huawei OUI → mobile
+    _assert(_looks_like_mobile("D4:12:43:AA:BB:CC"), "Huawei OUI → mobile")
+    # OPPO OUI → mobile
+    _assert(_looks_like_mobile("94:87:E0:AA:BB:CC"), "OPPO OUI → mobile")
+    # Vivo OUI → mobile
+    _assert(_looks_like_mobile("88:43:E1:AA:BB:CC"), "Vivo OUI → mobile")
+    # Motorola mobile OUI → mobile
+    _assert(_looks_like_mobile("40:78:A8:AA:BB:CC"), "Motorola OUI → mobile")
+    # TP-Link OUI → NU mobile (este AP vendor)
+    _assert(not _looks_like_mobile("EC:08:6B:AA:BB:CC"), "TP-Link OUI → NU mobile")
+    # ASUS OUI → NU mobile (este AP vendor)
+    _assert(not _looks_like_mobile("74:D0:2B:11:22:33"), "ASUS OUI → NU mobile")
+    # Vendor necunoscut → NU mobile
+    _assert(not _looks_like_mobile("AA:BB:CC:DD:EE:FF"), "Vendor necunoscut → NU mobile")
+    # Fara MAC → NU mobile
+    _assert(not _looks_like_mobile(None), "Fara MAC → NU mobile")
+    _assert(not _looks_like_mobile(""), "MAC gol → NU mobile")
 
 
 if __name__ == '__main__':
     test_normalize_mac()
     test_get_mac_oui()
     test_looks_like_ap()
+    test_looks_like_mobile()
     test_detect_device_type()
 
     print(f"\n{'='*40}")

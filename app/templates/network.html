@@ -79,6 +79,9 @@
             <span class="badge bg-light text-dark" id="type-client">
                 💻 Clienți <span class="ms-1">{{ type_counts.get('client', 0) }}</span>
             </span>
+            <span class="badge bg-danger" id="type-mobile">
+                📱 Mobile <span class="ms-1">{{ type_counts.get('mobile', 0) }}</span>
+            </span>
             <span class="badge bg-secondary" id="type-unknown">
                 ❓ Necunoscute <span class="ms-1">{{ type_counts.get('unknown', 0) }}</span>
             </span>
@@ -169,6 +172,8 @@
                             <span class="badge bg-success">🖥️ Server</span>
                         {% elif device.device_type == 'client' %}
                             <span class="badge bg-light text-dark">💻 Client</span>
+                        {% elif device.device_type == 'mobile' %}
+                            <span class="badge bg-danger">📱 Mobile</span>
                         {% else %}
                             <span class="badge bg-secondary">❓ Necunoscut</span>
                         {% endif %}
@@ -261,6 +266,7 @@
                         <option value="camera">📹 Cameră</option>
                         <option value="server">🖥️ Server</option>
                         <option value="client">💻 Client</option>
+                        <option value="mobile">📱 Mobile</option>
                         <option value="unknown">❓ Necunoscut</option>
                     </select>
                 </div>
@@ -514,7 +520,7 @@ function updateStats(devices) {
     devices.forEach(d => {
         typeCounts[d.type] = (typeCounts[d.type] || 0) + 1;
     });
-    ['router', 'switch', 'ap', 'camera', 'server', 'client', 'unknown'].forEach(t => {
+    ['router', 'switch', 'ap', 'camera', 'server', 'client', 'mobile', 'unknown'].forEach(t => {
         const el = document.getElementById('type-' + t);
         const countEl = el && el.querySelector('span');
         if (countEl) countEl.textContent = typeCounts[t] || 0;

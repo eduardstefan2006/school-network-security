@@ -281,6 +281,7 @@ def _load_ap_vendor_ouis() -> dict:
         Dict cu structura {vendor_name: [oui_string, ...]} unde vendor_name este
         cheia furnizorului (ex: 'tplink', 'asus') și fiecare OUI e un string uppercase
         de forma 'AA:BB:CC'. Cheile care încep cu '_' (ex: '_comment') sunt excluse.
+        Dacă JSON-ul conține cheia '_ap_vendors', sunt încărcați doar vendorii listați acolo.
     """
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     json_path = os.path.join(base_dir, 'data', 'oui_vendors.json')
@@ -288,6 +289,13 @@ def _load_ap_vendor_ouis() -> dict:
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+            ap_vendors = data.get('_ap_vendors')
+            if ap_vendors:
+                return {
+                    vendor: [oui.upper() for oui in data[vendor]]
+                    for vendor in ap_vendors
+                    if vendor in data
+                }
             return {
                 vendor: [oui.upper() for oui in ouis]
                 for vendor, ouis in data.items()
@@ -308,11 +316,43 @@ def _load_ap_vendor_ouis() -> dict:
     }
 
 
+def _load_mobile_vendor_ouis() -> dict:
+    """Încarcă OUI-urile producătorilor de dispozitive mobile din data/oui_vendors.json.
+
+    Returns:
+        Dict cu structura {vendor_name: [oui_string, ...]} pentru vendorii listați
+        în cheia '_mobile_vendors' din JSON. Returnează dict gol dacă fișierul nu există
+        sau cheia '_mobile_vendors' lipsește.
+    """
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    json_path = os.path.join(base_dir, 'data', 'oui_vendors.json')
+    if os.path.isfile(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            mobile_vendors = data.get('_mobile_vendors', [])
+            return {
+                vendor: [oui.upper() for oui in data[vendor]]
+                for vendor in mobile_vendors
+                if vendor in data
+            }
+        except Exception as e:
+            print(f"[Sniffer] Eroare la încărcarea OUI-urilor mobile din {json_path}: {e}")
+    return {}
+
+
 _AP_VENDOR_OUIS = _load_ap_vendor_ouis()
 
 # Set plat de OUI-uri AP pentru lookup O(1)
 _AP_OUI_SET = frozenset(
     oui for ouis in _AP_VENDOR_OUIS.values() for oui in ouis
+)
+
+_MOBILE_VENDOR_OUIS = _load_mobile_vendor_ouis()
+
+# Set plat de OUI-uri mobile pentru lookup O(1)
+_MOBILE_OUI_SET = frozenset(
+    oui for ouis in _MOBILE_VENDOR_OUIS.values() for oui in ouis
 )
 
 
@@ -341,6 +381,24 @@ def _looks_like_ap(mac: str | None, vlan_id: int | None, ip: str | None) -> bool
     if ip and _get_vlan_from_ip(ip) is not None:
         return True
     return False
+
+
+def _looks_like_mobile(mac: str | None) -> bool:
+    """Returnează True dacă dispozitivul pare a fi un telefon sau tabletă mobilă.
+
+    Criteriu: MAC aparține unui producător de dispozitive mobile (pe baza OUI) —
+              Apple (iPhone/iPad), Samsung, Xiaomi, OnePlus, Huawei, OPPO, Vivo sau Motorola.
+
+    Args:
+        mac: Adresa MAC a dispozitivului (orice format), sau None dacă nu este cunoscută.
+    Returns:
+        True dacă OUI-ul MAC aparține unui producător de dispozitive mobile cunoscut.
+        False în orice alt caz (MAC lipsă, OUI necunoscut sau producător non-mobil).
+    """
+    if not mac:
+        return False
+    oui = get_mac_oui(mac)
+    return oui in _MOBILE_OUI_SET
 
 
 # Access Point-uri (routere TP-Link/Asus în modul AP pe VLAN-uri)
@@ -374,7 +432,8 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None):
     Prioritate de detecție:
     1. Dacă MAC aparține unui vendor AP (TP-Link/ASUS) și dispozitivul e pe un VLAN → 'ap'
     2. IP hardcodat (router, switch, cameră, server, AP din _AP_IPS)
-    3. Fallback → 'client'
+    3. Dacă MAC aparține unui producător de dispozitive mobile (Apple, Samsung, etc.) → 'mobile'
+    4. Fallback → 'client'
     """
     # 1. Detecție automată AP pe baza OUI + VLAN (are prioritate față de IP)
     if _looks_like_ap(mac, vlan_id, ip_str):
@@ -408,6 +467,10 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None):
     # Access Point-uri (routere TP-Link/Asus în modul AP pe VLAN-uri)
     if ip_str in _AP_IPS:
         return 'ap'
+
+    # 3. Detecție automată dispozitive mobile pe baza OUI producător
+    if _looks_like_mobile(mac):
+        return 'mobile'
 
     return 'client'
 
