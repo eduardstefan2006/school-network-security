@@ -21,9 +21,55 @@ logger = logging.getLogger(__name__)
 # Fișierul pentru lista albă personalizată
 _WHITELIST_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'whitelist_custom.json')
 
+# Descrierile IP-urilor predefinite (folosite la migrarea automată din rules.py)
+_BUILTIN_DESCRIPTIONS = {
+    '127.0.0.1': 'Localhost',
+    '::1': 'Localhost IPv6',
+    '192.168.2.1': 'MikroTik RB3011 "Scoala 2 Liesti" - Router principal',
+    '192.168.2.241': 'PiHole (server DNS)',
+    '192.168.2.242': 'LibreNMS (monitorizare SNMP)',
+    '192.168.2.243': 'SchoolSec (acest server)',
+    '192.168.2.80': 'NVR (Network Video Recorder)',
+    '192.168.2.91': 'Camera 1',
+    '192.168.2.92': 'Camera 2',
+    '192.168.2.93': 'Camera 3',
+    '192.168.2.96': 'Camera 6',
+    '192.168.2.5': 'Router Cisco',
+    '192.168.2.8': 'Switch Corp A Parter',
+    '192.168.2.9': 'Switch Corp A Etaj 2',
+    '192.168.2.10': 'Switch Corp B',
+    '192.168.2.160': 'Camera NVR Access',
+    '192.168.2.161': 'Camera Etajul 1 Stanga',
+    '192.168.2.162': 'Camera Parter Dreapta',
+    '192.168.2.163': 'Camera Etaj Gradinita',
+    '192.168.2.164': 'Camera Intrare Secretariat',
+    '192.168.2.165': 'Camera Parter Stanga',
+    '192.168.2.166': 'Camera Etajul 1 Dreapta',
+    '192.168.2.167': 'Camera Intrare Elevi',
+    '192.168.2.168': 'Camera Etaj 2 Dreapta',
+    '192.168.2.169': 'Camera Etaj 2 Stanga',
+    '192.168.2.170': 'Camera Sala Sport',
+    '192.168.2.171': 'Camera Intrare Profesori',
+    '192.168.2.172': 'Camera Teren Baschet',
+    '192.168.2.173': 'Camera Intrare Elevi 2',
+    '192.168.2.174': 'Camera Teren Sport',
+    '192.168.2.175': 'Camera Poarta',
+    '192.168.2.176': 'Camera Sala Sport intrare spate',
+    '192.168.2.177': 'Camera Parter/Etajul1',
+    '192.168.2.178': 'Camera Etaj1/Etaj2',
+    '1.1.1.1': 'Cloudflare DNS',
+    '8.8.8.8': 'Google DNS',
+}
+
 
 def _load_custom_whitelist():
-    """Încarcă lista albă personalizată din fișier JSON."""
+    """Încarcă lista albă personalizată din fișier JSON.
+
+    La prima rulare (fișierul nu există), migrează automat IP-urile predefinite
+    din WHITELIST_IPS în fișierul JSON.
+    """
+    from app.ids.rules import WHITELIST_IPS as _BUILTIN_IPS
+
     try:
         os.makedirs(os.path.dirname(_WHITELIST_FILE), exist_ok=True)
         if os.path.exists(_WHITELIST_FILE):
@@ -31,9 +77,22 @@ def _load_custom_whitelist():
                 return json.load(f)
     except OSError as e:
         logger.warning('Eroare la citirea listei albe personalizate (%s): %s', _WHITELIST_FILE, e)
+        return []
     except json.JSONDecodeError as e:
         logger.warning('Fișierul listei albe personalizate este corupt (%s): %s', _WHITELIST_FILE, e)
-    return []
+        return []
+
+    # Fișierul nu există – migrare IP-uri predefinite la prima rulare
+    entries = [
+        {'ip': ip, 'description': _BUILTIN_DESCRIPTIONS.get(ip, ''), 'builtin': True}
+        for ip in _BUILTIN_IPS
+    ]
+    try:
+        _save_custom_whitelist(entries)
+        logger.info('IP-urile predefinite au fost migrate în %s', _WHITELIST_FILE)
+    except OSError as e:
+        logger.warning('Eroare la salvarea migrării listei albe (%s): %s', _WHITELIST_FILE, e)
+    return entries
 
 
 def _save_custom_whitelist(entries):
@@ -41,6 +100,12 @@ def _save_custom_whitelist(entries):
     os.makedirs(os.path.dirname(_WHITELIST_FILE), exist_ok=True)
     with open(_WHITELIST_FILE, 'w', encoding='utf-8') as f:
         json.dump(entries, f, indent=2, ensure_ascii=False)
+    # Invalidăm cache-ul din detector după fiecare modificare
+    try:
+        from app.ids.detector import invalidate_whitelist_cache
+        invalidate_whitelist_cache()
+    except Exception:
+        pass
 
 
 @settings_bp.route('/settings')
@@ -51,7 +116,6 @@ def index():
         flash('Acces interzis. Doar administratorii pot accesa setările.', 'danger')
         return redirect(url_for('dashboard.index'))
 
-    from app.ids.rules import WHITELIST_IPS
     from app.ids.sniffer import traffic_stats
 
     # Configurare Telegram
@@ -59,9 +123,8 @@ def index():
     chat_id_raw = current_app.config.get('TELEGRAM_CHAT_ID', '')
     chat_id_masked = ('*' * (len(chat_id_raw) - 4) + chat_id_raw[-4:]) if len(chat_id_raw) > 4 else ('*' * len(chat_id_raw))
 
-    # Lista albă
-    builtin_ips = WHITELIST_IPS
-    custom_entries = _load_custom_whitelist()
+    # Lista albă (toate IP-urile, inclusiv cele migrate din rules.py)
+    whitelist_entries = _load_custom_whitelist()
 
     # Informații sistem
     db_path = current_app.config.get('SQLALCHEMY_DATABASE_URI', '').replace('sqlite:///', '')
@@ -99,8 +162,7 @@ def index():
         'settings.html',
         telegram_enabled=telegram_enabled,
         chat_id_masked=chat_id_masked,
-        builtin_ips=builtin_ips,
-        custom_entries=custom_entries,
+        whitelist_entries=whitelist_entries,
         system_info=system_info,
     )
 
