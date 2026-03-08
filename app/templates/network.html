@@ -503,6 +503,17 @@ function updateStats(devices) {
     document.getElementById('stat-total').textContent = total;
     document.getElementById('stat-online').textContent = online;
     document.getElementById('stat-unknown').textContent = unknown;
+
+    // Actualizează contoarele badge-urilor pe tipuri de dispozitive
+    const typeCounts = {};
+    devices.forEach(d => {
+        typeCounts[d.type] = (typeCounts[d.type] || 0) + 1;
+    });
+    ['router', 'switch', 'ap', 'camera', 'server', 'client', 'unknown'].forEach(t => {
+        const el = document.getElementById('type-' + t);
+        const countEl = el && el.querySelector('span');
+        if (countEl) countEl.textContent = typeCounts[t] || 0;
+    });
 }
 
 setInterval(refreshDevices, 30000);
