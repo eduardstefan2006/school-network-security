@@ -793,16 +793,25 @@ def _fix_device_types(app):
     from app import db
 
     try:
-        devices = NetworkDevice.query.all()
-        for device in devices:
-            correct_type = _detect_device_type(device.ip_address)
-            if correct_type != device.device_type:
-                print(f"[Sniffer] Dispozitiv reclasificat: {device.ip_address} {device.device_type} → {correct_type}")
-                device.device_type = correct_type
-        db.session.commit()
+        with app.app_context():
+            devices = NetworkDevice.query.all()
+            count = 0
+            for device in devices:
+                correct_type = _detect_device_type(device.ip_address)
+                if correct_type != device.device_type:
+                    print(f"[Sniffer] Dispozitiv reclasificat: {device.ip_address} {device.device_type} → {correct_type}")
+                    device.device_type = correct_type
+                    count += 1
+            if count > 0:
+                db.session.commit()
+                print(f"[Sniffer] Total dispozitive reclasificate: {count}")
     except Exception as e:
         print(f"[Sniffer] Eroare la reclasificarea dispozitivelor: {e}")
-        db.session.rollback()
+        try:
+            with app.app_context():
+                db.session.rollback()
+        except Exception as rollback_err:
+            print(f"[Sniffer] Eroare la rollback (tipuri): {rollback_err}")
 
 
 def _fix_device_vlans(app):
@@ -811,16 +820,25 @@ def _fix_device_vlans(app):
     from app import db
 
     try:
-        devices = NetworkDevice.query.filter_by(vlan=None).all()
-        for device in devices:
-            vlan_id = _get_vlan_from_ip(device.ip_address)
-            if vlan_id is not None:
-                print(f"[Sniffer] VLAN setat pentru {device.ip_address}: VLAN {vlan_id}")
-                device.vlan = str(vlan_id)
-        db.session.commit()
+        with app.app_context():
+            devices = NetworkDevice.query.filter_by(vlan=None).all()
+            count = 0
+            for device in devices:
+                vlan_id = _get_vlan_from_ip(device.ip_address)
+                if vlan_id is not None:
+                    print(f"[Sniffer] VLAN setat pentru {device.ip_address}: VLAN {vlan_id}")
+                    device.vlan = str(vlan_id)
+                    count += 1
+            if count > 0:
+                db.session.commit()
+                print(f"[Sniffer] Total dispozitive cu VLAN setat: {count}")
     except Exception as e:
         print(f"[Sniffer] Eroare la setarea VLAN-urilor: {e}")
-        db.session.rollback()
+        try:
+            with app.app_context():
+                db.session.rollback()
+        except Exception as rollback_err:
+            print(f"[Sniffer] Eroare la rollback (VLAN): {rollback_err}")
 
 
 def start_sniffer(app):
@@ -837,9 +855,8 @@ def start_sniffer(app):
     _running = True
 
     # Reclasificăm dispozitivele cu tip greșit și setăm VLAN-urile la pornire
-    with app.app_context():
-        _fix_device_types(app)
-        _fix_device_vlans(app)
+    _fix_device_types(app)
+    _fix_device_vlans(app)
 
     # Înregistrăm callback-ul pentru salvarea alertelor în baza de date
     with app.app_context():

@@ -12,6 +12,11 @@
         <button class="btn btn-sm btn-outline-info" onclick="refreshDevices()">
             <i class="bi bi-arrow-clockwise me-1"></i>Actualizează
         </button>
+        {% if current_user.is_admin() %}
+        <button class="btn btn-sm btn-outline-warning ms-2" onclick="reclassifyDevices()" title="Reclasifică tipurile de dispozitive">
+            <i class="bi bi-arrow-repeat me-1"></i>Reclasifică
+        </button>
+        {% endif %}
     </div>
 </div>
 
@@ -554,6 +559,21 @@ function saveDevice() {
         }
     })
     .catch(() => alert('Eroare de rețea.'));
+}
+
+async function reclassifyDevices() {
+    try {
+        const resp = await fetch('/api/network/reclassify-devices', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert('Dispozitivele au fost reclasificate cu succes!');
+            refreshDevices();
+        } else {
+            alert('Eroare: ' + (data.error || 'necunoscută'));
+        }
+    } catch (e) {
+        alert('Eroare la reclasificare: ' + e.message);
+    }
 }
 </script>
 {% endblock %}
