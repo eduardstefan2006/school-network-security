@@ -805,6 +805,8 @@ def _fix_device_types(app):
             if count > 0:
                 db.session.commit()
                 print(f"[Sniffer] Total dispozitive reclasificate: {count}")
+            else:
+                print("[Sniffer] Nicio reclasificare necesară.")
     except Exception as e:
         print(f"[Sniffer] Eroare la reclasificarea dispozitivelor: {e}")
         try:
