@@ -246,13 +246,14 @@ _AP_IPS = {
     '192.168.228.2',  # Router Sala 1 Etaj 2 (TP-Link)
     '192.168.229.2',  # Router Sala 2 Etaj 2 (TP-Link)
     '192.168.230.2',  # Router Fizica/Chimie Etaj 2 (TP-Link)
+    '192.168.231.2',  # Router Laborator Info (TP-Link)
     '192.168.232.2',  # Router Sala 1 Corp B (Asus)
     '192.168.233.2',  # Router Sala 2 Corp B (Asus)
     '192.168.234.2',  # Router Gradinita (TP-Link)
     '192.168.234.3',  # Router Asus Gradinita (Asus)
     '192.168.235.2',  # Router Sala Sport (Asus)
     '192.168.236.2',  # Router Secretariat
-    '192.168.237.3',  # Router Psiholog (TP-Link)
+    '192.168.237.2',  # Router Psiholog (TP-Link)
     '192.168.239.2',  # Router Cancelarie
 }
 
@@ -287,7 +288,7 @@ def _detect_device_type(ip_str):
         return 'server'
     # Access Point-uri (routere TP-Link/Asus în modul AP pe VLAN-uri)
     if ip_str in _AP_IPS:
-        return 'access_point'
+        return 'ap'
 
     return 'client'
 
