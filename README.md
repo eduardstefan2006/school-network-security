@@ -163,7 +163,7 @@ SchoolSec poate trimite notificări instant pe Telegram atunci când IDS-ul dete
 | `TELEGRAM_ENABLED` | `false` | Activează notificările Telegram (`true`/`false`) |
 | `TELEGRAM_BOT_TOKEN` | `` | Token-ul bot-ului Telegram |
 | `TELEGRAM_CHAT_ID` | `` | ID-ul chat-ului/grupului unde se trimit notificările |
-| `TELEGRAM_MIN_SEVERITY` | `high` | Severitatea minimă pentru notificări: `low`, `medium`, `high`, `critical` |
+| `TELEGRAM_MIN_SEVERITY` | `critical` | Severitatea minimă pentru notificări: `low`, `medium`, `high`, `critical` |
 
 ### Exemplu de configurare
 
@@ -171,7 +171,7 @@ SchoolSec poate trimite notificări instant pe Telegram atunci când IDS-ul dete
 export TELEGRAM_ENABLED=true
 export TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 export TELEGRAM_CHAT_ID=-1001234567890
-export TELEGRAM_MIN_SEVERITY=high
+export TELEGRAM_MIN_SEVERITY=critical
 ```
 
 ### Testare configurație
@@ -207,7 +207,7 @@ Environment=TZSP_PORT=37008
 Environment=TELEGRAM_ENABLED=true
 Environment=TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
 Environment=TELEGRAM_CHAT_ID=-1001234567890
-Environment=TELEGRAM_MIN_SEVERITY=high
+Environment=TELEGRAM_MIN_SEVERITY=critical
 
 [Install]
 WantedBy=multi-user.target

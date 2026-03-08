@@ -52,7 +52,7 @@ class Config:
     TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
     TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
     TELEGRAM_ENABLED = os.environ.get('TELEGRAM_ENABLED', 'false').lower() == 'true'
-    TELEGRAM_MIN_SEVERITY = os.environ.get('TELEGRAM_MIN_SEVERITY', 'high')  # 'low', 'medium', 'high', 'critical'
+    TELEGRAM_MIN_SEVERITY = os.environ.get('TELEGRAM_MIN_SEVERITY', 'critical')  # 'low', 'medium', 'high', 'critical'
 
 
 class DevelopmentConfig(Config):
