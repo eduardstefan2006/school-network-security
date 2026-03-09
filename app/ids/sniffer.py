@@ -4,6 +4,7 @@ Folosește Scapy pentru captură reală sau generează trafic simulat pentru tes
 """
 import json
 import os
+import re
 import threading
 import time
 import random
@@ -115,6 +116,10 @@ _DEVICE_FLUSH_INTERVAL = 30  # secunde
 # Cache DNS: ip_destinatie -> hostname (ultimul hostname rezolvat)
 _dns_cache: dict = {}
 _dns_cache_lock = threading.Lock()
+
+# Cache hostname per IP (din DHCP opțiunea 12 sau DNS PTR)
+_device_hostname_cache: dict = {}
+_device_hostname_cache_lock = threading.Lock()
 
 # Buffer conexiuni per (source_ip, hostname)
 _connections_buffer: dict = {}
@@ -355,6 +360,51 @@ _MOBILE_OUI_SET = frozenset(
     oui for ouis in _MOBILE_VENDOR_OUIS.values() for oui in ouis
 )
 
+# Pattern regex pentru hostname-uri tipice de dispozitive mobile
+_MOBILE_HOSTNAME_RE = re.compile(
+    r'(iphone|ipad|ipod|android|galaxy|samsung|pixel|nexus|oneplus|huawei|xiaomi|'
+    r'redmi|oppo|vivo|motorola|moto[-\s]?\w{0,20}|nokia|realme|poco|honor|mi[-\s]?\d|'
+    r'sm[-\s]?\w+|cph\d|rne[-\s]?\w+|lge[-\s]?\w+)',
+    re.IGNORECASE
+)
+
+
+def _is_randomized_mac(mac: str | None) -> bool:
+    """Returnează True dacă MAC-ul pare a fi randomizat (locally administered address - LAA bit).
+
+    Un MAC randomizat are bitul 1 (LAA) al primului octet setat.
+    Telefoanele moderne (Android 10+, iOS 14+) folosesc MAC randomizat pe Wi-Fi.
+    Ex: 2A:xx, 6E:xx, BE:xx, DA:xx etc.
+
+    Args:
+        mac: Adresa MAC în orice format acceptat de normalize_mac, sau None.
+    Returns:
+        True dacă MAC-ul este locally administered (randomizat), False altfel.
+    """
+    if not mac:
+        return False
+    normalized = normalize_mac(mac)
+    if not normalized:
+        return False
+    first_byte = int(normalized.split(':')[0], 16)
+    return bool(first_byte & 0x02)
+
+
+def _hostname_suggests_mobile(hostname: str | None) -> bool:
+    """Returnează True dacă hostname-ul sugerează un dispozitiv mobil.
+
+    Caută pattern-uri tipice în hostname-urile telefoanelor și tabletelor:
+    iPhone, iPad, Android, Galaxy, Pixel, Huawei, Xiaomi, OnePlus etc.
+
+    Args:
+        hostname: Hostname-ul dispozitivului (din DHCP opțiunea 12 sau DNS), sau None.
+    Returns:
+        True dacă hostname-ul conține un pattern specific unui dispozitiv mobil.
+    """
+    if not hostname:
+        return False
+    return bool(_MOBILE_HOSTNAME_RE.search(hostname))
+
 
 def _looks_like_ap(mac: str | None, vlan_id: int | None, ip: str | None) -> bool:
     """Returnează True dacă dispozitivul pare a fi un AP (vendor TP-Link/ASUS pe un VLAN).
@@ -426,14 +476,16 @@ _AP_IPS = {
 }
 
 
-def _detect_device_type(ip_str, mac=None, vlan_id=None):
-    """Auto-detectează tipul dispozitivului pe baza MAC (OUI vendor), IP și VLAN.
+def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
+    """Auto-detectează tipul dispozitivului pe baza MAC (OUI vendor), IP, VLAN și hostname.
 
     Prioritate de detecție:
     1. Dacă MAC aparține unui vendor AP (TP-Link/ASUS) și dispozitivul e pe un VLAN → 'ap'
     2. IP hardcodat (router, switch, cameră, server, AP din _AP_IPS)
     3. Dacă MAC aparține unui producător de dispozitive mobile (Apple, Samsung, etc.) → 'mobile'
-    4. Fallback → 'client'
+    4. Dacă hostname-ul (DHCP/DNS) sugerează un dispozitiv mobil → 'mobile'
+    5. Dacă MAC-ul este randomizat (LAA bit setat) și dispozitivul e pe un subnet VLAN client → 'mobile'
+    6. Fallback → 'client'
     """
     # 1. Detecție automată AP pe baza OUI + VLAN (are prioritate față de IP)
     if _looks_like_ap(mac, vlan_id, ip_str):
@@ -468,20 +520,39 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None):
     if ip_str in _AP_IPS:
         return 'ap'
 
-    # 3. Detecție automată dispozitive mobile pe baza OUI producător
+    # 3. Detecție automată dispozitive mobile pe baza OUI producător (MAC real)
     if _looks_like_mobile(mac):
+        return 'mobile'
+
+    # 4. Detecție pe baza hostname-ului (DHCP opțiunea 12 sau cache DNS)
+    # Dacă hostname-ul nu e furnizat explicit, consultăm cache-ul global
+    effective_hostname = hostname
+    if not effective_hostname:
+        with _device_hostname_cache_lock:
+            effective_hostname = _device_hostname_cache.get(ip_str)
+    if _hostname_suggests_mobile(effective_hostname):
+        return 'mobile'
+
+    # 5. Detecție pe baza MAC randomizat (LAA bit) — telefoane moderne cu privacy MAC
+    # Aplicăm doar dacă dispozitivul este pe un subnet VLAN (rețea Wi-Fi de clienți)
+    # și nu e pe subnet-ul principal 192.168.2.x (infrastructură)
+    if _is_randomized_mac(mac) and _get_vlan_from_ip(ip_str) is not None:
         return 'mobile'
 
     return 'client'
 
 
-def _update_device_buffer(ip, mac, size, vlan_id=None):
+def _update_device_buffer(ip, mac, size, vlan_id=None, hostname=None):
     """Actualizează buffer-ul de dispozitive în memorie (non-blocant)."""
     if not ip or not _is_private_ip(ip):
         return
     now = datetime.utcnow()
     # Dacă VLAN-ul nu a fost detectat din Dot1Q, calculăm fallback-ul static
     static_vlan = _get_vlan_from_ip(ip) if vlan_id is None else None
+    # Actualizăm cache-ul de hostname dacă avem un hostname nou
+    if hostname:
+        with _device_hostname_cache_lock:
+            _device_hostname_cache[ip] = hostname
     with _device_buffer_lock:
         if ip in _device_buffer:
             entry = _device_buffer[ip]
@@ -490,6 +561,8 @@ def _update_device_buffer(ip, mac, size, vlan_id=None):
             entry['last_seen'] = now
             if mac and not entry.get('mac'):
                 entry['mac'] = mac
+            if hostname and not entry.get('hostname'):
+                entry['hostname'] = hostname
             if vlan_id is not None:
                 # Dot1Q are prioritate - actualizăm întotdeauna
                 entry['vlan_id'] = vlan_id
@@ -499,6 +572,7 @@ def _update_device_buffer(ip, mac, size, vlan_id=None):
         else:
             _device_buffer[ip] = {
                 'mac': mac,
+                'hostname': hostname,
                 'packets': 1,
                 'bytes': size,
                 'last_seen': now,
@@ -539,21 +613,25 @@ def _flush_device_buffer(app):
                         if data.get('mac') and not device.mac_address:
                             device.mac_address = data['mac']
                             mac_updated = True
+                        hostname_updated = False
+                        if data.get('hostname') and not device.hostname:
+                            device.hostname = data['hostname']
+                            hostname_updated = True
                         if data.get('vlan_id') is not None:
                             device.vlan = str(data['vlan_id'])
                         elif device.vlan is None:
                             fallback_vlan = _get_vlan_from_ip(ip)
                             if fallback_vlan is not None:
                                 device.vlan = str(fallback_vlan)
-                        # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul sau VLAN-ul
-                        if mac_updated or (data.get('vlan_id') is not None and device.device_type != 'ap'):
+                        # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul
+                        if mac_updated or hostname_updated or (data.get('vlan_id') is not None and device.device_type != 'ap'):
                             vlan_for_check = data.get('vlan_id')
                             if vlan_for_check is None and device.vlan is not None:
                                 try:
                                     vlan_for_check = int(device.vlan)
                                 except (ValueError, TypeError):
                                     pass
-                            new_type = _detect_device_type(ip, mac=device.mac_address, vlan_id=vlan_for_check)
+                            new_type = _detect_device_type(ip, mac=device.mac_address, vlan_id=vlan_for_check, hostname=device.hostname)
                             if new_type != device.device_type:
                                 device.device_type = new_type
                     else:
@@ -561,10 +639,11 @@ def _flush_device_buffer(app):
                         vlan_val = data.get('vlan_id')
                         if vlan_val is None:
                             vlan_val = _get_vlan_from_ip(ip)
-                        device_type = _detect_device_type(ip, mac=data.get('mac'), vlan_id=vlan_val)
+                        device_type = _detect_device_type(ip, mac=data.get('mac'), vlan_id=vlan_val, hostname=data.get('hostname'))
                         device = NetworkDevice(
                             ip_address=ip,
                             mac_address=data.get('mac'),
+                            hostname=data.get('hostname'),
                             device_type=device_type,
                             first_seen=data['last_seen'],
                             last_seen=data['last_seen'],
@@ -647,7 +726,8 @@ def _process_packet(packet_info, app):
     src_mac = packet_info.get('src_mac')
     size = packet_info.get('size', 0)
     vlan_id = packet_info.get('vlan_id')
-    _update_device_buffer(src_ip, src_mac, size, vlan_id=vlan_id)
+    dhcp_hostname = packet_info.get('dhcp_hostname')
+    _update_device_buffer(src_ip, src_mac, size, vlan_id=vlan_id, hostname=dhcp_hostname)
 
     # Flush periodic la baza de date (non-blocant când nu e momentul)
     _maybe_flush_devices(app)
@@ -682,7 +762,7 @@ def _real_sniffer(app, interface=None):
     Necesită privilegii root/administrator.
     """
     try:
-        from scapy.all import sniff, IP, TCP, UDP, ICMP, ARP, DNS
+        from scapy.all import sniff, IP, TCP, UDP, ICMP, ARP, DNS, DHCP, BOOTP
     except ImportError:
         print("[Sniffer] Scapy nu este disponibil. Treceți la modul simulat.")
         return
@@ -734,6 +814,32 @@ def _real_sniffer(app, interface=None):
                             if isinstance(qname, bytes):
                                 qname = qname.decode('utf-8', errors='ignore')
                             packet_info['dns_query'] = qname.rstrip('.')
+                    except Exception:
+                        pass
+                # Detectăm DHCP pe porturile 67/68
+                elif pkt[UDP].dport in (67, 68) or pkt[UDP].sport in (67, 68):
+                    packet_info['protocol'] = 'DHCP'
+                    try:
+                        if pkt.haslayer(BOOTP) and pkt.haslayer(DHCP):
+                            # Extrage hostname din DHCP Option 12
+                            for opt in pkt[DHCP].options:
+                                if isinstance(opt, tuple) and opt[0] == 'hostname':
+                                    dhcp_hostname = opt[1]
+                                    if isinstance(dhcp_hostname, bytes):
+                                        dhcp_hostname = dhcp_hostname.decode('utf-8', errors='ignore')
+                                    dhcp_hostname = dhcp_hostname.strip()
+                                    packet_info['dhcp_hostname'] = dhcp_hostname
+                                    # Mapăm IP-ul clientului la hostname în cache
+                                    # yiaddr = IP alocat de server; ciaddr = IP curent al clientului
+                                    client_ip = pkt[BOOTP].yiaddr
+                                    if not client_ip or client_ip == '0.0.0.0':
+                                        client_ip = pkt[BOOTP].ciaddr
+                                    if not client_ip or client_ip == '0.0.0.0':
+                                        client_ip = pkt[IP].src if pkt.haslayer(IP) else None
+                                    if client_ip and client_ip != '0.0.0.0':
+                                        with _device_hostname_cache_lock:
+                                            _device_hostname_cache[client_ip] = dhcp_hostname
+                                    break
                     except Exception:
                         pass
 
@@ -846,7 +952,7 @@ def _tzsp_sniffer(app):
     Nu necesită privilegii root (portul 37008 > 1024).
     """
     try:
-        from scapy.all import Ether, IP, TCP, UDP as ScapyUDP, ICMP, ARP, DNS, Dot1Q
+        from scapy.all import Ether, IP, TCP, UDP as ScapyUDP, ICMP, ARP, DNS, Dot1Q, DHCP, BOOTP
     except ImportError:
         print("[Sniffer] Scapy nu este disponibil. Modul TZSP necesită Scapy.")
         return
@@ -964,6 +1070,32 @@ def _tzsp_sniffer(app):
                                     packet_info['dns_query'] = qname.rstrip('.')
                             except Exception:
                                 pass
+                        # Detectăm DHCP pe porturile 67/68
+                        elif pkt[ScapyUDP].dport in (67, 68) or pkt[ScapyUDP].sport in (67, 68):
+                            packet_info['protocol'] = 'DHCP'
+                            try:
+                                if pkt.haslayer(BOOTP) and pkt.haslayer(DHCP):
+                                    # Extrage hostname din DHCP Option 12
+                                    for opt in pkt[DHCP].options:
+                                        if isinstance(opt, tuple) and opt[0] == 'hostname':
+                                            dhcp_hostname = opt[1]
+                                            if isinstance(dhcp_hostname, bytes):
+                                                dhcp_hostname = dhcp_hostname.decode('utf-8', errors='ignore')
+                                            dhcp_hostname = dhcp_hostname.strip()
+                                            packet_info['dhcp_hostname'] = dhcp_hostname
+                                            # Mapăm IP-ul clientului la hostname în cache
+                                            # yiaddr = IP alocat de server; ciaddr = IP curent al clientului
+                                            client_ip = pkt[BOOTP].yiaddr
+                                            if not client_ip or client_ip == '0.0.0.0':
+                                                client_ip = pkt[BOOTP].ciaddr
+                                            if not client_ip or client_ip == '0.0.0.0':
+                                                client_ip = pkt[IP].src if pkt.haslayer(IP) else None
+                                            if client_ip and client_ip != '0.0.0.0':
+                                                with _device_hostname_cache_lock:
+                                                    _device_hostname_cache[client_ip] = dhcp_hostname
+                                            break
+                            except Exception:
+                                pass
 
                     elif pkt.haslayer(ICMP):
                         packet_info['protocol'] = 'ICMP'
@@ -998,7 +1130,7 @@ def _fix_device_types(app):
                         vlan_id = int(device.vlan)
                     except (ValueError, TypeError):
                         pass
-                correct_type = _detect_device_type(device.ip_address, mac=device.mac_address, vlan_id=vlan_id)
+                correct_type = _detect_device_type(device.ip_address, mac=device.mac_address, vlan_id=vlan_id, hostname=device.hostname)
                 if correct_type != device.device_type:
                     print(f"[Sniffer] Dispozitiv reclasificat: {device.ip_address} {device.device_type} → {correct_type}")
                     device.device_type = correct_type
