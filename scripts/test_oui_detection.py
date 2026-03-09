@@ -227,6 +227,31 @@ def test_new_mobile_vendors():
             "Google Pixel OUI → detect mobile")
 
 
+def test_real_world_hostnames():
+    print("\n--- Teste hostname-uri reale din rețea ---")
+    # Cazuri concrete din traficul școlii
+    _assert(_hostname_suggests_mobile("POCO-F7-Pro"), "POCO-F7-Pro → mobile")
+    _assert(_hostname_suggests_mobile("S24-al-utilizatorului-Beatrice"), "S24-al-... → mobile")
+    _assert(_hostname_suggests_mobile("Galaxy-A12"), "Galaxy-A12 → mobile")
+    _assert(_hostname_suggests_mobile("Galaxy-S24"), "Galaxy-S24 → mobile")
+    _assert(_hostname_suggests_mobile("POCO-X3-NFC"), "POCO-X3-NFC → mobile")
+    _assert(_hostname_suggests_mobile("A52s-telefon"), "A52s → mobile")
+
+    # _detect_device_type cu hostname pe subnet VLAN
+    _assert(
+        _detect_device_type("192.168.227.7", mac="92:3B:61:49:66:3D", hostname="POCO-F7-Pro") == 'mobile',
+        "POCO-F7-Pro pe 192.168.227.x (VLAN) cu MAC randomizat → mobile"
+    )
+    _assert(
+        _detect_device_type("192.168.227.9", mac="2A:01:35:FC:45:3D", hostname="S24-al-utilizatorului-Beatrice") == 'mobile',
+        "S24-al-... pe 192.168.227.x (VLAN) cu MAC randomizat → mobile"
+    )
+    _assert(
+        _detect_device_type("192.168.224.6", mac="AA:C5:E1:BA:08:FA", hostname="Galaxy-A12") == 'mobile',
+        "Galaxy-A12 pe 192.168.224.x (VLAN) cu MAC randomizat → mobile"
+    )
+
+
 if __name__ == '__main__':
     test_normalize_mac()
     test_get_mac_oui()
@@ -237,6 +262,7 @@ if __name__ == '__main__':
     test_hostname_suggests_mobile()
     test_detect_device_type_extended()
     test_new_mobile_vendors()
+    test_real_world_hostnames()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")
