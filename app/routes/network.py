@@ -122,3 +122,35 @@ def reclassify_devices():
         return jsonify({'success': True, 'message': 'Dispozitivele au fost reclasificate.'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@network_bp.route('/api/devices/reclassify-mobile', methods=['POST'])
+@login_required
+def reclassify_mobile_devices():
+    """Reclasifică dispozitivele 'client' care ar trebui să fie 'mobile'."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis'}), 403
+    from app.ids.sniffer import _detect_device_type, _mobile_traffic_hints
+    from app.models import NetworkDevice
+
+    reclassified = []
+    devices = NetworkDevice.query.filter_by(device_type='client').all()
+    for device in devices:
+        vlan_id = None
+        if device.vlan:
+            try:
+                vlan_id = int(device.vlan)
+            except (ValueError, TypeError):
+                pass
+        new_type = _detect_device_type(device.ip_address, mac=device.mac_address, vlan_id=vlan_id)
+        if new_type == 'mobile':
+            device.device_type = 'mobile'
+            reclassified.append(device.ip_address)
+
+    if reclassified:
+        db.session.commit()
+
+    return jsonify({
+        'reclassified': len(reclassified),
+        'ips': reclassified
+    })
