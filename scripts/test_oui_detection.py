@@ -11,7 +11,7 @@ import os
 # Adăugăm rădăcina proiectului în sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.ids.sniffer import normalize_mac, get_mac_oui, _looks_like_ap, _looks_like_mobile, _detect_device_type
+from app.ids.sniffer import normalize_mac, get_mac_oui, _looks_like_ap, _looks_like_mobile, _detect_device_type, _is_randomized_mac, _hostname_suggests_mobile
 
 _pass_count = 0
 _fail_count = 0
@@ -139,12 +139,69 @@ def test_looks_like_mobile():
     _assert(not _looks_like_mobile(""), "MAC gol → NU mobile")
 
 
+def test_is_randomized_mac():
+    print("\n--- _is_randomized_mac ---")
+    # LAA bit setat (bit 1 al primului octet)
+    _assert(_is_randomized_mac("2A:11:22:33:44:55"), "2A:xx → randomizat")
+    _assert(_is_randomized_mac("6E:11:22:33:44:55"), "6E:xx → randomizat")
+    _assert(_is_randomized_mac("BE:11:22:33:44:55"), "BE:xx → randomizat")
+    _assert(_is_randomized_mac("DA:11:22:33:44:55"), "DA:xx → randomizat")
+    # LAA bit nesetat (MAC real)
+    _assert(not _is_randomized_mac("AC:BC:32:AA:BB:CC"), "Apple OUI real → NU randomizat")
+    _assert(not _is_randomized_mac("EC:08:6B:AA:BB:CC"), "TP-Link OUI real → NU randomizat")
+    # Edge cases
+    _assert(not _is_randomized_mac(None), "None → NU randomizat")
+    _assert(not _is_randomized_mac(""), "MAC gol → NU randomizat")
+
+
+def test_hostname_suggests_mobile():
+    print("\n--- _hostname_suggests_mobile ---")
+    # Hostname-uri tipice de telefoane
+    _assert(_hostname_suggests_mobile("iPhone-lui-Ion"), "iPhone hostname → mobile")
+    _assert(_hostname_suggests_mobile("Galaxy-S24"), "Galaxy hostname → mobile")
+    _assert(_hostname_suggests_mobile("android-device"), "android hostname → mobile")
+    _assert(_hostname_suggests_mobile("SAMSUNG-SM-A346"), "Samsung SM hostname → mobile")
+    _assert(_hostname_suggests_mobile("Xiaomi-Redmi-Note"), "Xiaomi Redmi hostname → mobile")
+    _assert(_hostname_suggests_mobile("Pixel-6a"), "Pixel hostname → mobile")
+    _assert(_hostname_suggests_mobile("OnePlus9Pro"), "OnePlus hostname → mobile")
+    _assert(_hostname_suggests_mobile("huawei-p30"), "Huawei hostname → mobile")
+    # Hostname-uri non-mobile
+    _assert(not _hostname_suggests_mobile("DESKTOP-ABC123"), "Desktop hostname → NU mobile")
+    _assert(not _hostname_suggests_mobile("laptop-john"), "Laptop hostname → NU mobile")
+    _assert(not _hostname_suggests_mobile(None), "None → NU mobile")
+    _assert(not _hostname_suggests_mobile(""), "String gol → NU mobile")
+
+
+def test_detect_device_type_extended():
+    print("\n--- _detect_device_type (metode noi) ---")
+    # Detectare pe baza hostname-ului
+    _assert(_detect_device_type("192.168.221.10", hostname="iPhone-lui-Ion") == 'mobile',
+            "Hostname iPhone pe subnet VLAN → mobile")
+    _assert(_detect_device_type("192.168.2.100", hostname="Galaxy-S24") == 'mobile',
+            "Hostname Galaxy pe subnet non-VLAN → mobile")
+    # MAC randomizat pe subnet VLAN → mobile
+    _assert(_detect_device_type("192.168.221.10", mac="2A:11:22:33:44:55") == 'mobile',
+            "MAC randomizat pe subnet VLAN → mobile")
+    # MAC randomizat pe subnet non-VLAN (192.168.2.x) → client (nu VLAN)
+    _assert(_detect_device_type("192.168.2.100", mac="2A:11:22:33:44:55") == 'client',
+            "MAC randomizat pe subnet non-VLAN → client")
+    # IP hardcodat are prioritate față de hostname
+    _assert(_detect_device_type("192.168.2.1", hostname="iPhone-test") == 'router',
+            "IP router cu hostname iPhone → router (IP are prioritate)")
+    # AP OUI are prioritate față de hostname
+    _assert(_detect_device_type("192.168.221.5", mac="EC:08:6B:AA:BB:CC", hostname="Galaxy-S24") == 'ap',
+            "TP-Link OUI + VLAN + hostname Galaxy → ap (OUI AP are prioritate)")
+
+
 if __name__ == '__main__':
     test_normalize_mac()
     test_get_mac_oui()
     test_looks_like_ap()
     test_looks_like_mobile()
     test_detect_device_type()
+    test_is_randomized_mac()
+    test_hostname_suggests_mobile()
+    test_detect_device_type_extended()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")
