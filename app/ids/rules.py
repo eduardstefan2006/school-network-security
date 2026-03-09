@@ -9,7 +9,7 @@ Aceste reguli sunt configurabile și definesc pragurile pentru detectarea amenin
 PORT_SCAN_RULES = {
     'enabled': True,
     # Numărul minim de porturi diferite accesate pentru a considera că este un scan
-    'threshold': 25,           # Crescut de la 15 - routerele VLAN accesează legitim mai multe porturi
+    'threshold': 45,           # Crescut de la 25 - detectare la 45 de porturi în 10 secunde
     # Fereastra de timp în secunde
     'window_seconds': 10,
     # Severitatea alertei
@@ -33,9 +33,9 @@ BRUTE_FORCE_RULES = {
         # 80, 443, 8080 ELIMINATE - navigarea web normală declanșează fals pozitive
     },
     # Numărul de conexiuni eșuate / rapide pentru a declanșa alerta
-    'threshold': 20,          # Crescut de la 10 - mai realist pentru o rețea școlară
+    'threshold': 60,          # Crescut de la 20 - declanșare la 60 de conexiuni
     # Fereastra de timp în secunde
-    'window_seconds': 60,     # Crescut de la 30 - oferă o fereastră de timp mai mare
+    'window_seconds': 60,     # Fereastră de 60 de secunde
     # Severitatea alertei
     'severity': 'high',
 }
