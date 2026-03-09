@@ -503,6 +503,10 @@ _AP_IPS = {
     '192.168.239.2',  # Router Cancelarie
 }
 
+# Tipuri de dispozitive cu clasificare fixă care nu trebuie reclasificate
+# automat pe baza VLAN-ului (infrastructură de rețea)
+_FIXED_DEVICE_TYPES = frozenset({'ap', 'router', 'switch', 'server', 'camera'})
+
 
 def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     """Auto-detectează tipul dispozitivului pe baza MAC (OUI vendor), IP, VLAN și hostname.
@@ -655,8 +659,15 @@ def _flush_device_buffer(app):
                             fallback_vlan = _get_vlan_from_ip(ip)
                             if fallback_vlan is not None:
                                 device.vlan = str(fallback_vlan)
-                        # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul
-                        if mac_updated or hostname_updated or (data.get('vlan_id') is not None and device.device_type != 'ap'):
+                        # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul,
+                        # sau dacă tipul e 'client' și avem acum MAC/hostname (posibil mobil nedetectat)
+                        should_reclassify = (
+                            mac_updated
+                            or hostname_updated
+                            or (data.get('vlan_id') is not None and device.device_type not in _FIXED_DEVICE_TYPES)
+                            or (device.device_type == 'client' and (device.mac_address or device.hostname))
+                        )
+                        if should_reclassify:
                             vlan_for_check = data.get('vlan_id')
                             if vlan_for_check is None and device.vlan is not None:
                                 try:

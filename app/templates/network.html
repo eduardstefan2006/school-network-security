@@ -16,6 +16,9 @@
         <button class="btn btn-sm btn-outline-warning ms-2" onclick="reclassifyDevices()" title="Reclasifică tipurile de dispozitive">
             <i class="bi bi-arrow-repeat me-1"></i>Reclasifică
         </button>
+        <button class="btn btn-sm btn-outline-danger ms-2" onclick="reclassifyMobile()" title="Reclasifică dispozitivele mobile">
+            📱 Reclasifică Mobile
+        </button>
         {% endif %}
     </div>
 </div>
@@ -580,6 +583,16 @@ async function reclassifyDevices() {
     } catch (e) {
         alert('Eroare la reclasificare: ' + e.message);
     }
+}
+
+function reclassifyMobile() {
+    fetch('/api/devices/reclassify-mobile', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            alert('Reclasificate: ' + data.reclassified + ' dispozitive');
+            refreshDevices();
+        })
+        .catch(e => alert('Eroare la reclasificare mobile: ' + e.message));
 }
 </script>
 {% endblock %}
