@@ -13,6 +13,25 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 
 
+def _run_migrations(app):
+    """Adaugă coloane noi în tabele existente (migrare automată la pornire)."""
+    try:
+        from sqlalchemy import text
+        with db.engine.connect() as conn:
+            # Verificăm și adăugăm coloana hostname în network_devices
+            result = conn.execute(text("PRAGMA table_info(network_devices)"))
+            existing_cols = [row[1] for row in result]
+
+            if 'hostname' not in existing_cols:
+                conn.execute(text(
+                    "ALTER TABLE network_devices ADD COLUMN hostname VARCHAR(255)"
+                ))
+                conn.commit()
+                print("[DB] Migrare: coloana 'hostname' adăugată în network_devices.")
+    except Exception as e:
+        print(f"[DB] Eroare la migrare automată: {e}")
+
+
 def create_app(config_name=None):
     """
     Factory function pentru crearea aplicației Flask.
@@ -60,6 +79,8 @@ def create_app(config_name=None):
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():
         db.create_all()
+        # Migrare automată: adaugă coloane noi în tabele existente
+        _run_migrations(app)
 
     @app.context_processor
     def inject_now():
