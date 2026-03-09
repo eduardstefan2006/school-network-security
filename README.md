@@ -84,6 +84,9 @@ pip install -r requirements.txt
 # 4. Inițializează baza de date
 python init_db.py
 
+# 4b. (Opțional) Dacă ai o bază de date existentă, rulează migrarea pentru a adăuga coloane noi
+python scripts/migrate_db.py
+
 # 5. Pornește aplicația
 python run.py
 ```
