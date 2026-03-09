@@ -193,6 +193,40 @@ def test_detect_device_type_extended():
             "TP-Link OUI + VLAN + hostname Galaxy → ap (OUI AP are prioritate)")
 
 
+def test_new_mobile_vendors():
+    print("\n--- OUI producători noi (Realme, Nokia, Poco, Honor, Lenovo, Google) ---")
+    # Realme OUI → mobile
+    _assert(_looks_like_mobile("44:D4:E0:AA:BB:CC"), "Realme OUI 44:D4:E0 → mobile")
+    _assert(_looks_like_mobile("DC:44:27:11:22:33"), "Realme OUI DC:44:27 → mobile")
+    _assert(_detect_device_type("192.168.2.110", mac="44:D4:E0:AA:BB:CC") == 'mobile',
+            "Realme OUI → detect mobile")
+    # Nokia OUI → mobile
+    _assert(_looks_like_mobile("84:C7:EA:AA:BB:CC"), "Nokia OUI 84:C7:EA → mobile")
+    _assert(_looks_like_mobile("F0:7D:68:11:22:33"), "Nokia OUI F0:7D:68 → mobile")
+    _assert(_detect_device_type("192.168.2.111", mac="84:C7:EA:AA:BB:CC") == 'mobile',
+            "Nokia OUI → detect mobile")
+    # Poco OUI → mobile
+    _assert(_looks_like_mobile("5C:E8:B8:AA:BB:CC"), "Poco OUI 5C:E8:B8 → mobile")
+    _assert(_looks_like_mobile("BC:32:B2:11:22:33"), "Poco OUI BC:32:B2 → mobile")
+    _assert(_detect_device_type("192.168.2.112", mac="5C:E8:B8:AA:BB:CC") == 'mobile',
+            "Poco OUI → detect mobile")
+    # Honor OUI → mobile
+    _assert(_looks_like_mobile("4C:99:E3:AA:BB:CC"), "Honor OUI 4C:99:E3 → mobile")
+    _assert(_looks_like_mobile("F4:9F:54:11:22:33"), "Honor OUI F4:9F:54 → mobile")
+    _assert(_detect_device_type("192.168.2.113", mac="4C:99:E3:AA:BB:CC") == 'mobile',
+            "Honor OUI → detect mobile")
+    # Lenovo OUI → mobile
+    _assert(_looks_like_mobile("84:DB:AC:AA:BB:CC"), "Lenovo OUI 84:DB:AC → mobile")
+    _assert(_looks_like_mobile("F4:63:1F:11:22:33"), "Lenovo OUI F4:63:1F → mobile")
+    _assert(_detect_device_type("192.168.2.114", mac="84:DB:AC:AA:BB:CC") == 'mobile',
+            "Lenovo OUI → detect mobile")
+    # Google Pixel OUI → mobile
+    _assert(_looks_like_mobile("94:B4:0F:AA:BB:CC"), "Google OUI 94:B4:0F → mobile")
+    _assert(_looks_like_mobile("F0:27:2D:11:22:33"), "Google OUI F0:27:2D → mobile")
+    _assert(_detect_device_type("192.168.2.115", mac="94:B4:0F:AA:BB:CC") == 'mobile',
+            "Google Pixel OUI → detect mobile")
+
+
 if __name__ == '__main__':
     test_normalize_mac()
     test_get_mac_oui()
@@ -202,6 +236,7 @@ if __name__ == '__main__':
     test_is_randomized_mac()
     test_hostname_suggests_mobile()
     test_detect_device_type_extended()
+    test_new_mobile_vendors()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")

@@ -127,6 +127,23 @@ _connections_lock = threading.Lock()
 _last_connections_flush = 0
 _CONNECTIONS_FLUSH_INTERVAL = 30  # secunde
 
+# =============================================================================
+# Cache hint trafic mobil per IP (porturi specifice dispozitivelor mobile)
+# =============================================================================
+# Porturi FCM/push Google (Google Play push notifications)
+MOBILE_INDICATOR_PORTS = frozenset([5228, 5229, 5230])
+
+# Cache: ip -> True dacă traficul sugerează un dispozitiv mobil
+_mobile_traffic_hints: dict = {}
+_mobile_traffic_lock = threading.Lock()
+
+
+def _update_mobile_traffic_hint(src_ip: str, dst_port):
+    """Înregistrează dacă un IP accesează porturi tipice pentru dispozitive mobile."""
+    if dst_port in MOBILE_INDICATOR_PORTS:
+        with _mobile_traffic_lock:
+            _mobile_traffic_hints[src_ip] = True
+
 
 def _update_connection(source_ip: str, hostname: str, size: int):
     """Actualizează buffer-ul de conexiuni pentru un IP sursă și hostname."""
@@ -364,7 +381,17 @@ _MOBILE_OUI_SET = frozenset(
 _MOBILE_HOSTNAME_RE = re.compile(
     r'(iphone|ipad|ipod|android|galaxy|samsung|pixel|nexus|oneplus|huawei|xiaomi|'
     r'redmi|oppo|vivo|motorola|moto[-\s]?\w{0,20}|nokia|realme|poco|honor|mi[-\s]?\d|'
-    r'sm[-\s]?\w+|cph\d|rne[-\s]?\w+|lge[-\s]?\w+)',
+    r'sm[-\s]?\w+|rne[-\s]?\w+|lge[-\s]?\w+|'
+    r'\bsm-[a-z]\d{3,4}\b|'
+    r'\ba\d{2,3}s?\b|\bm\d{2}s?\b|\bs\d{2}s?\b|'
+    r'rmx\d+|'
+    r'cph\d+|'
+    r'v\d{4}[a-z]?|'
+    r'redmi[-\s]?note|'
+    r'poco[-\s]?\w+|'
+    r'honor[-\s]?\w+|'
+    r'lenovo[-\s]?\w+|'
+    r'phone|mobile|smartphone)',
     re.IGNORECASE
 )
 
@@ -537,6 +564,10 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     # Aplicăm doar dacă dispozitivul este pe un subnet VLAN (rețea Wi-Fi de clienți)
     # și nu e pe subnet-ul principal 192.168.2.x (infrastructură)
     if _is_randomized_mac(mac) and _get_vlan_from_ip(ip_str) is not None:
+        return 'mobile'
+
+    # 6. Hint din trafic (porturi mobile) - doar pe subnet VLAN
+    if _mobile_traffic_hints.get(ip_str) and _get_vlan_from_ip(ip_str) is not None:
         return 'mobile'
 
     return 'client'
@@ -728,6 +759,11 @@ def _process_packet(packet_info, app):
     vlan_id = packet_info.get('vlan_id')
     dhcp_hostname = packet_info.get('dhcp_hostname')
     _update_device_buffer(src_ip, src_mac, size, vlan_id=vlan_id, hostname=dhcp_hostname)
+
+    # Actualizăm hint-ul de trafic mobil pe baza portului destinație
+    dst_port = packet_info.get('dst_port')
+    if src_ip and dst_port in MOBILE_INDICATOR_PORTS:
+        _update_mobile_traffic_hint(src_ip, dst_port)
 
     # Flush periodic la baza de date (non-blocant când nu e momentul)
     _maybe_flush_devices(app)
