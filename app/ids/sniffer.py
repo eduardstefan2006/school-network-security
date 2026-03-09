@@ -380,15 +380,16 @@ _MOBILE_OUI_SET = frozenset(
 # Pattern regex pentru hostname-uri tipice de dispozitive mobile
 _MOBILE_HOSTNAME_RE = re.compile(
     r'(iphone|ipad|ipod|android|galaxy|samsung|pixel|nexus|oneplus|huawei|xiaomi|'
-    r'redmi|oppo|vivo|motorola|moto[-\s]?\w{0,20}|nokia|realme|poco|honor|mi[-\s]?\d|'
+    r'redmi|oppo|vivo|motorola|moto[-\s]?\w{0,20}|nokia|realme|honor|mi[-\s]?\d|'
     r'sm[-\s]?\w+|rne[-\s]?\w+|lge[-\s]?\w+|'
     r'\bsm-[a-z]\d{3,4}\b|'
-    r'\ba\d{2,3}s?\b|\bm\d{2}s?\b|\bs\d{2}s?\b|'
+    r's\d{2}s?[-\s]|a\d{2,3}s?[-\s]|'
+    r's\d{2}s?$|a\d{2,3}s?$|'
+    r'poco[-\w]*|'
     r'rmx\d+|'
     r'cph\d+|'
     r'v\d{4}[a-z]?|'
     r'redmi[-\s]?note|'
-    r'poco[-\s]?\w+|'
     r'honor[-\s]?\w+|'
     r'lenovo[-\s]?\w+|'
     r'phone|mobile|smartphone)',

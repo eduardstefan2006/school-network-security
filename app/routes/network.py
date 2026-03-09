@@ -142,7 +142,7 @@ def reclassify_mobile_devices():
                 vlan_id = int(device.vlan)
             except (ValueError, TypeError):
                 pass
-        new_type = _detect_device_type(device.ip_address, mac=device.mac_address, vlan_id=vlan_id)
+        new_type = _detect_device_type(device.ip_address, mac=device.mac_address, vlan_id=vlan_id, hostname=device.hostname)
         if new_type == 'mobile':
             device.device_type = 'mobile'
             reclassified.append(device.ip_address)
