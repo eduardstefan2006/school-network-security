@@ -1301,7 +1301,13 @@ def _tzsp_sniffer(app):
 
 
 def _fix_device_types(app):
-    """Reclasifică dispozitivele cu tip greșit folosind _detect_device_type()."""
+    """Reclasifică dispozitivele existente în DB la pornirea aplicației.
+
+    Corectează tipurile greșite pentru:
+    - dispozitive 'client' care pot fi reclasificate (mobile, camera, etc.)
+    - dispozitive 'mobile' care au OUI de cameră (C0:39:5A, E0:61:B2, FC:5F:49)
+    - orice dispozitiv cu tip non-fix care poate fi detectat mai precis
+    """
     from app.models import NetworkDevice
     from app import db
 
@@ -1310,20 +1316,31 @@ def _fix_device_types(app):
             devices = NetworkDevice.query.all()
             count = 0
             for device in devices:
+                # Sări peste dispozitivele cu tip fix (infrastructură de rețea)
+                if device.device_type in _FIXED_DEVICE_TYPES:
+                    continue
+
                 vlan_id = None
                 if device.vlan is not None:
                     try:
                         vlan_id = int(device.vlan)
                     except (ValueError, TypeError):
                         pass
-                correct_type = _detect_device_type(device.ip_address, mac=device.mac_address, vlan_id=vlan_id, hostname=device.hostname)
-                if correct_type != device.device_type:
-                    print(f"[Sniffer] Dispozitiv reclasificat: {device.ip_address} {device.device_type} → {correct_type}")
-                    device.device_type = correct_type
+                new_type = _detect_device_type(
+                    device.ip_address,
+                    mac=device.mac_address,
+                    vlan_id=vlan_id,
+                    hostname=device.hostname,
+                )
+                # Reclasificăm dacă tipul detectat e diferit și mai specific decât 'client'/'unknown'
+                # (inclusiv lateral: 'mobile' → 'camera' când OUI indică un producător de camere)
+                if new_type != device.device_type and new_type not in ('client', 'unknown'):
+                    print(f"[Sniffer] Reclasificare: {device.ip_address} {device.device_type} → {new_type}")
+                    device.device_type = new_type
                     count += 1
             if count > 0:
                 db.session.commit()
-                print(f"[Sniffer] Total dispozitive reclasificate: {count}")
+                print(f"[Sniffer] Reclasificate {count} dispozitive.")
             else:
                 print("[Sniffer] Nicio reclasificare necesară.")
     except Exception as e:
