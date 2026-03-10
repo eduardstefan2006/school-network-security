@@ -154,3 +154,18 @@ def reclassify_mobile_devices():
         'reclassified': len(reclassified),
         'ips': reclassified
     })
+
+
+@network_bp.route('/api/devices/deduplicate', methods=['POST'])
+@login_required
+def deduplicate_devices():
+    """Admin: deduplicare dispozitive cu același MAC și IP-uri diferite."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis'}), 403
+    try:
+        from app.ids.sniffer import _deduplicate_devices
+        from flask import current_app
+        deleted = _deduplicate_devices(current_app._get_current_object())
+        return jsonify({'success': True, 'deleted': deleted})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
