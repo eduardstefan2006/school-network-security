@@ -118,6 +118,7 @@ _MOBILE_RESET_INTERVAL = 10 * 60  # 10 minute în secunde
 _last_dedup_cleanup = 0
 _DEDUP_CLEANUP_INTERVAL = 5 * 60  # 5 minute în secunde
 _dedup_running = False  # Flag pentru a evita rulări concurente
+_mobile_reset_running = False  # Flag pentru a evita rulări concurente ale reset-ului mobil
 
 # =============================================================================
 # Cache DNS și buffer conexiuni (flush periodic la DB)
@@ -726,24 +727,27 @@ def _flush_device_buffer(app):
                             fallback_vlan = _get_vlan_from_ip(ip)
                             if fallback_vlan is not None:
                                 device.vlan = str(fallback_vlan)
-                        # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul,
-                        # sau dacă tipul e 'client' și avem acum MAC/hostname (posibil mobil nedetectat)
-                        should_reclassify = (
-                            mac_updated
-                            or hostname_updated
-                            or (data.get('vlan_id') is not None and device.device_type not in _FIXED_DEVICE_TYPES)
-                            or (device.device_type == 'client' and (device.mac_address or device.hostname))
-                        )
-                        if should_reclassify:
-                            vlan_for_check = data.get('vlan_id')
-                            if vlan_for_check is None and device.vlan is not None:
-                                try:
-                                    vlan_for_check = int(device.vlan)
-                                except (ValueError, TypeError):
-                                    pass
-                            new_type = _detect_device_type(ip, mac=device.mac_address, vlan_id=vlan_for_check, hostname=device.hostname)
-                            if new_type != device.device_type:
-                                device.device_type = new_type
+                        # Dispozitivele cu tip fix (cameră, router, switch etc.) nu se reclasifică niciodată.
+                        # Actualizăm doar statisticile și metadatele lipsă.
+                        if device.device_type not in _FIXED_DEVICE_TYPES:
+                            # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul,
+                            # sau dacă tipul e 'client' și avem acum MAC/hostname (posibil mobil nedetectat)
+                            should_reclassify = (
+                                mac_updated
+                                or hostname_updated
+                                or (data.get('vlan_id') is not None)
+                                or (device.device_type == 'client' and (device.mac_address or device.hostname))
+                            )
+                            if should_reclassify:
+                                vlan_for_check = data.get('vlan_id')
+                                if vlan_for_check is None and device.vlan is not None:
+                                    try:
+                                        vlan_for_check = int(device.vlan)
+                                    except (ValueError, TypeError):
+                                        pass
+                                new_type = _detect_device_type(ip, mac=device.mac_address, vlan_id=vlan_for_check, hostname=device.hostname)
+                                if new_type != device.device_type:
+                                    device.device_type = new_type
                     else:
                         is_known = ip in WHITELIST_IPS
                         vlan_val = data.get('vlan_id')
@@ -856,15 +860,10 @@ def _deduplicate_all_mobile_devices(app):
 
 def _maybe_flush_devices(app):
     """Apelează flush-ul dacă a trecut intervalul de timp."""
-    global _last_device_flush, _last_dedup_cleanup, _last_mobile_reset
+    global _last_device_flush, _last_dedup_cleanup
 
     if time.monotonic() - _last_device_flush >= _DEVICE_FLUSH_INTERVAL:
         _flush_device_buffer(app)
-
-    # Reset complet al dispozitivelor mobile la fiecare 10 minute (DHCP lease)
-    if time.monotonic() - _last_mobile_reset >= _MOBILE_RESET_INTERVAL:
-        _last_mobile_reset = time.monotonic()
-        threading.Thread(target=_reset_mobile_devices, args=(app,), daemon=True).start()
 
     # Deduplicăm dispozitivele mobile la fiecare 5 minute (DHCP lease = 10 min)
     if time.monotonic() - _last_dedup_cleanup >= _DEDUP_CLEANUP_INTERVAL:
@@ -1480,7 +1479,7 @@ def _reset_mobile_devices(app):
 
             if count > 0:
                 db.session.commit()
-                print(f"[Sniffer] Reset mobile: {count} dispozitive mobile șterse. Lista se va reface din trafic live.")
+            print(f"[Sniffer] Reset mobile: {count} dispozitive mobile șterse. Lista se va reface din trafic live.")
 
             return count
     except Exception as e:
@@ -1541,6 +1540,26 @@ def _cleanup_inactive_mobile_devices(app, ttl_hours=24):
         except Exception as rollback_err:
             print(f"[Sniffer] Eroare la rollback (curățare mobile): {rollback_err}")
         return 0
+
+
+def _mobile_reset_scheduler(app):
+    """Scheduler independent care rulează _reset_mobile_devices la fiecare _MOBILE_RESET_INTERVAL secunde.
+
+    Funcționează indiferent de existența traficului de rețea, spre deosebire de mecanismul
+    anterior din _maybe_flush_devices care era dependent de pachete primite.
+    """
+    global _mobile_reset_running
+    while _running:
+        time.sleep(_MOBILE_RESET_INTERVAL)
+        if not _running:
+            break
+        if _mobile_reset_running:
+            continue
+        _mobile_reset_running = True
+        try:
+            _reset_mobile_devices(app)
+        finally:
+            _mobile_reset_running = False
 
 
 def start_sniffer(app):
@@ -1630,6 +1649,12 @@ def start_sniffer(app):
     _sniffer_thread = threading.Thread(target=target_func, daemon=True)
     _sniffer_thread.start()
     print(f"[Sniffer] Thread pornit în modul: {sniffer_mode}")
+
+    # Pornim scheduler-ul independent pentru resetul mobil la fiecare 10 minute.
+    # Acesta rulează chiar dacă nu există trafic de rețea.
+    _scheduler_thread = threading.Thread(target=_mobile_reset_scheduler, args=(app,), daemon=True)
+    _scheduler_thread.start()
+    print(f"[Sniffer] Scheduler reset mobile pornit (interval: {_MOBILE_RESET_INTERVAL}s).")
 
 
 def stop_sniffer():
