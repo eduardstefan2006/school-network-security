@@ -54,6 +54,14 @@ class Config:
     TELEGRAM_ENABLED = os.environ.get('TELEGRAM_ENABLED', 'false').lower() == 'true'
     TELEGRAM_MIN_SEVERITY = os.environ.get('TELEGRAM_MIN_SEVERITY', 'critical')  # 'low', 'medium', 'high', 'critical'
 
+    # Configurare MikroTik RouterOS API
+    MIKROTIK_HOST = os.environ.get('MIKROTIK_HOST', '')
+    MIKROTIK_PORT = int(os.environ.get('MIKROTIK_PORT', 8728))  # 8728 = plaintext, 8729 = SSL
+    MIKROTIK_USERNAME = os.environ.get('MIKROTIK_USERNAME', 'admin')
+    MIKROTIK_PASSWORD = os.environ.get('MIKROTIK_PASSWORD', '')
+    MIKROTIK_ENABLED = os.environ.get('MIKROTIK_ENABLED', 'false').lower() == 'true'
+    MIKROTIK_SYNC_INTERVAL = int(os.environ.get('MIKROTIK_SYNC_INTERVAL', 60))  # secunde
+
 
 class DevelopmentConfig(Config):
     """Configurare pentru dezvoltare."""

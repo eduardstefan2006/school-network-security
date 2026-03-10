@@ -65,6 +65,7 @@ def create_app(config_name=None):
     from app.routes.settings import settings_bp
     from app.routes.reports import reports_bp
     from app.routes.network import network_bp
+    from app.routes.mikrotik import mikrotik_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -75,12 +76,28 @@ def create_app(config_name=None):
     app.register_blueprint(settings_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(network_bp)
+    app.register_blueprint(mikrotik_bp)
 
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():
         db.create_all()
         # Migrare automată: adaugă coloane noi în tabele existente
         _run_migrations(app)
+
+    # Pornire integrare MikroTik (dacă este activată)
+    if app.config.get('MIKROTIK_ENABLED'):
+        from app.ids.mikrotik_client import MikrotikClient
+        from app.ids.mikrotik_sync import start_mikrotik_sync
+        mikrotik_client = MikrotikClient(
+            host=app.config['MIKROTIK_HOST'],
+            port=app.config['MIKROTIK_PORT'],
+            username=app.config['MIKROTIK_USERNAME'],
+            password=app.config['MIKROTIK_PASSWORD'],
+        )
+        mikrotik_client.connect()
+        start_mikrotik_sync(app, mikrotik_client)
+        app.mikrotik_client = mikrotik_client
+        print(f"[MikroTik] Integrare activată pentru {app.config['MIKROTIK_HOST']}")
 
     @app.context_processor
     def inject_now():

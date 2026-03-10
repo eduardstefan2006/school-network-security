@@ -1,7 +1,7 @@
 """
 Rutele pentru gestionarea alertelor de securitate.
 """
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app
 from flask_login import login_required, current_user
 from app.models import Alert, BlockedIP, SecurityLog
 from app import db
@@ -105,6 +105,16 @@ def block_ip(alert_id):
     db.session.add(log)
     db.session.commit()
 
+    # Dacă MikroTik este configurat, blochează IP-ul și pe router
+    mikrotik = getattr(current_app, 'mikrotik_client', None)
+    if mikrotik and mikrotik.is_connected():
+        success = mikrotik.block_ip_on_router(
+            alert.source_ip,
+            comment=f'Blocat din SchoolSec de {current_user.username}'
+        )
+        if success:
+            flash(f'IP-ul {alert.source_ip} a fost blocat și pe routerul MikroTik.', 'info')
+
     flash(f'IP-ul {alert.source_ip} a fost blocat cu succes.', 'success')
     return redirect(request.referrer or url_for('alerts.index'))
 
@@ -128,6 +138,11 @@ def unblock_ip(ip_id):
     blocked = BlockedIP.query.get_or_404(ip_id)
     blocked.is_active = False
     db.session.commit()
+
+    # Dacă MikroTik este configurat, deblochează IP-ul și pe router
+    mikrotik = getattr(current_app, 'mikrotik_client', None)
+    if mikrotik and mikrotik.is_connected():
+        mikrotik.unblock_ip_on_router(blocked.ip_address)
 
     flash(f'IP-ul {blocked.ip_address} a fost deblocat.', 'success')
     return redirect(url_for('alerts.blocked_ips'))

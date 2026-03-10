@@ -6,3 +6,4 @@ scapy==2.5.0
 requests==2.31.0
 reportlab==4.2.5
 matplotlib==3.9.4
+librouteros==3.2.1
