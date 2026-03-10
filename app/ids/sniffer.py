@@ -114,6 +114,11 @@ _DEVICE_FLUSH_INTERVAL = 30  # secunde
 _last_mobile_cleanup = 0
 _MOBILE_CLEANUP_INTERVAL = 6 * 3600  # 6 ore în secunde
 
+# Timer pentru deduplicarea periodică a dispozitivelor mobile (la fiecare 5 minute)
+_last_dedup_cleanup = 0
+_DEDUP_CLEANUP_INTERVAL = 5 * 60  # 5 minute în secunde
+_dedup_running = False  # Flag pentru a evita rulări concurente
+
 # =============================================================================
 # Cache DNS și buffer conexiuni (flush periodic la DB)
 # =============================================================================
@@ -800,15 +805,69 @@ def _flush_device_buffer(app):
     _last_device_flush = time.monotonic()
 
 
+def _deduplicate_all_mobile_devices(app):
+    """Deduplicare completă pentru dispozitivele mobile — inclusiv MAC-uri randomizate.
+    Când un telefon se mută între AP-uri, primește IP nou dar același MAC.
+    Păstrăm intrarea cu last_seen cel mai recent și ștergem restul.
+    """
+    global _dedup_running
+    if _dedup_running:
+        return 0
+    _dedup_running = True
+    from app.models import NetworkDevice
+    from app import db
+    from sqlalchemy import func
+    try:
+        with app.app_context():
+            try:
+                dup_macs = db.session.query(NetworkDevice.mac_address)\
+                    .filter(NetworkDevice.mac_address.isnot(None))\
+                    .filter(NetworkDevice.device_type == 'mobile')\
+                    .group_by(NetworkDevice.mac_address)\
+                    .having(func.count(NetworkDevice.id) > 1).all()
+                deleted = 0
+                for (mac,) in dup_macs:
+                    devices = NetworkDevice.query.filter_by(mac_address=mac)\
+                        .order_by(NetworkDevice.last_seen.desc()).all()
+                    if len(devices) < 2:
+                        continue
+                    primary = devices[0]
+                    for dup in devices[1:]:
+                        primary.total_packets = (primary.total_packets or 0) + (dup.total_packets or 0)
+                        primary.total_bytes = (primary.total_bytes or 0) + (dup.total_bytes or 0)
+                        if not primary.hostname and dup.hostname:
+                            primary.hostname = dup.hostname
+                        if not primary.first_seen or (dup.first_seen and dup.first_seen < primary.first_seen):
+                            primary.first_seen = dup.first_seen
+                        db.session.delete(dup)
+                        deleted += 1
+                        print(f"[Dedup] Șters duplicat: {dup.ip_address} → {primary.ip_address} (MAC: {mac})")
+                if deleted > 0:
+                    db.session.commit()
+                    print(f"[Dedup] Total șterse: {deleted} duplicate mobile.")
+                return deleted
+            except Exception as e:
+                print(f"[Dedup] Eroare: {e}")
+                db.session.rollback()
+                return 0
+    finally:
+        _dedup_running = False
+
+
 def _maybe_flush_devices(app):
     """Apelează flush-ul dacă a trecut intervalul de timp."""
-    global _last_device_flush, _last_mobile_cleanup
+    global _last_device_flush, _last_mobile_cleanup, _last_dedup_cleanup
     if time.monotonic() - _last_device_flush >= _DEVICE_FLUSH_INTERVAL:
         _flush_device_buffer(app)
     # Curățăm dispozitivele mobile inactive cu MAC randomizat o dată la 6 ore
     if time.monotonic() - _last_mobile_cleanup >= _MOBILE_CLEANUP_INTERVAL:
         _cleanup_inactive_mobile_devices(app, ttl_hours=24)
         _last_mobile_cleanup = time.monotonic()
+    # Deduplicăm dispozitivele mobile la fiecare 5 minute (DHCP lease = 10 min)
+    if time.monotonic() - _last_dedup_cleanup >= _DEDUP_CLEANUP_INTERVAL:
+        _last_dedup_cleanup = time.monotonic()
+        t = threading.Thread(target=_deduplicate_all_mobile_devices, args=(app,), daemon=True)
+        t.start()
 
 
 def _update_stats(packet_info):
@@ -1446,6 +1505,8 @@ def start_sniffer(app):
     _fix_device_vlans(app)
     # Deduplicăm dispozitivele cu același MAC și IP-uri diferite la pornire
     _deduplicate_devices(app)
+    # Deduplicăm dispozitivele mobile inclusiv MAC-uri randomizate la pornire
+    _deduplicate_all_mobile_devices(app)
     # Ștergem dispozitivele mobile inactive cu MAC randomizat la pornire
     _cleanup_inactive_mobile_devices(app, ttl_hours=24)
 

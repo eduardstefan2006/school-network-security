@@ -6,7 +6,7 @@
 <div class="row mb-3 align-items-center">
     <div class="col">
         <h2 class="text-info"><i class="bi bi-diagram-3 me-2"></i>Hartă Rețea</h2>
-        <small class="text-muted">Dispozitive detectate în rețeaua școlii · <span id="last-refresh">actualizat acum</span></small>
+        <small class="text-muted">Dispozitive detectate în rețeaua școlii · <span id="last-refresh">actualizat acum</span> <span class="badge bg-secondary ms-1" title="Lista se actualizează automat la fiecare 5 minute" aria-label="Auto-refresh la 5 minute">⏱ 5 min</span></small>
     </div>
     <div class="col-auto">
         <button class="btn btn-sm btn-outline-info" onclick="refreshDevices()">
@@ -21,6 +21,9 @@
         </button>
         <button class="btn btn-sm btn-outline-success ms-2" onclick="deduplicateDevices()" title="Elimină dispozitivele duplicate (același MAC, IP-uri diferite)">
             🔄 Deduplicare
+        </button>
+        <button class="btn btn-sm btn-outline-primary ms-2" onclick="deduplicateMobileDevices()" title="Deduplicare mobile inclusiv MAC randomizat — ideal după DHCP lease">
+            📱 Deduplicare Mobile
         </button>
         <button class="btn btn-sm btn-outline-warning ms-2" onclick="cleanupInactive()" title="Șterge dispozitivele mobile inactive (MAC randomizat, >24h inactiv)">
             🗑️ Curăță Inactive
@@ -538,6 +541,14 @@ function updateStats(devices) {
 
 setInterval(refreshDevices, 30000);
 
+// Auto-refresh la fiecare 5 minute (DHCP lease = 10 min)
+setInterval(function() {
+    fetch('/api/devices/deduplicate-mobile', {method: 'POST'})
+        .then(r => r.json())
+        .catch(e => console.error('[Auto-dedup] Eroare la deduplicare mobile:', e));
+    refreshDevices();
+}, 5 * 60 * 1000);
+
 // ============================================================
 // Modal editare dispozitiv (admin)
 // ============================================================
@@ -613,6 +624,20 @@ function deduplicateDevices() {
             }
         })
         .catch(e => alert('Eroare la deduplicare: ' + e.message));
+}
+
+function deduplicateMobileDevices() {
+    fetch('/api/devices/deduplicate-mobile', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Deduplicare mobile finalizată: ' + data.message);
+                refreshDevices();
+            } else {
+                alert('Eroare: ' + (data.error || 'necunoscută'));
+            }
+        })
+        .catch(e => alert('Eroare la deduplicare mobile: ' + e.message));
 }
 
 function cleanupInactive() {
