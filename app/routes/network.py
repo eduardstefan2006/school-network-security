@@ -169,3 +169,23 @@ def deduplicate_devices():
         return jsonify({'success': True, 'deleted': deleted})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@network_bp.route('/api/devices/cleanup-inactive', methods=['POST'])
+@login_required
+def cleanup_inactive_devices():
+    """Șterge manual dispozitivele mobile inactive cu MAC randomizat."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis'}), 403
+    try:
+        from app.ids.sniffer import _cleanup_inactive_mobile_devices
+        from flask import current_app
+        ttl_hours = request.json.get('ttl_hours', 24) if request.is_json else 24
+        deleted = _cleanup_inactive_mobile_devices(current_app._get_current_object(), ttl_hours=ttl_hours)
+        return jsonify({
+            'success': True,
+            'deleted': deleted,
+            'message': f'{deleted} dispozitive inactive șterse.'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

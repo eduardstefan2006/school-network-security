@@ -110,6 +110,10 @@ _device_buffer_lock = threading.Lock()
 _last_device_flush = time.monotonic()
 _DEVICE_FLUSH_INTERVAL = 30  # secunde
 
+# Timer pentru curățarea periodică a dispozitivelor mobile inactive (MAC randomizat)
+_last_mobile_cleanup = 0
+_MOBILE_CLEANUP_INTERVAL = 6 * 3600  # 6 ore în secunde
+
 # =============================================================================
 # Cache DNS și buffer conexiuni (flush periodic la DB)
 # =============================================================================
@@ -798,9 +802,13 @@ def _flush_device_buffer(app):
 
 def _maybe_flush_devices(app):
     """Apelează flush-ul dacă a trecut intervalul de timp."""
-    global _last_device_flush
+    global _last_device_flush, _last_mobile_cleanup
     if time.monotonic() - _last_device_flush >= _DEVICE_FLUSH_INTERVAL:
         _flush_device_buffer(app)
+    # Curățăm dispozitivele mobile inactive cu MAC randomizat o dată la 6 ore
+    if time.monotonic() - _last_mobile_cleanup >= _MOBILE_CLEANUP_INTERVAL:
+        _cleanup_inactive_mobile_devices(app, ttl_hours=24)
+        _last_mobile_cleanup = time.monotonic()
 
 
 def _update_stats(packet_info):
@@ -1370,6 +1378,56 @@ def _deduplicate_devices(app):
         return 0
 
 
+def _cleanup_inactive_mobile_devices(app, ttl_hours=24):
+    """Șterge dispozitivele mobile cu MAC randomizat care nu au mai generat trafic în ultimele ttl_hours ore.
+
+    Telefoanele moderne folosesc MAC randomizat (LAA bit), ceea ce face imposibilă
+    deduplicarea pe baza MAC-ului. În schimb, eliminăm intrările vechi inactive.
+
+    Args:
+        app: Instanța aplicației Flask.
+        ttl_hours: Numărul de ore după care un dispozitiv inactiv este șters. Default: 24.
+
+    Returns:
+        int: Numărul de dispozitive șterse.
+    """
+    from app.models import NetworkDevice
+    from app import db
+    from datetime import datetime, timedelta
+
+    try:
+        with app.app_context():
+            cutoff = datetime.utcnow() - timedelta(hours=ttl_hours)
+            devices = NetworkDevice.query.filter_by(device_type='mobile').all()
+
+            to_delete = []
+            for device in devices:
+                if not _is_randomized_mac(device.mac_address):
+                    continue
+                if device.last_seen is not None and device.last_seen < cutoff:
+                    to_delete.append(device)
+
+            total_deleted = len(to_delete)
+            for device in to_delete:
+                db.session.delete(device)
+
+            if total_deleted > 0:
+                db.session.commit()
+                print(f"[Sniffer] Curățare mobile inactive: {total_deleted} dispozitive cu MAC randomizat șterse (TTL={ttl_hours}h).")
+            else:
+                print("[Sniffer] Curățare mobile inactive: niciun dispozitiv inactiv găsit.")
+
+            return total_deleted
+    except Exception as e:
+        print(f"[Sniffer] Eroare la curățarea dispozitivelor mobile inactive: {e}")
+        try:
+            with app.app_context():
+                db.session.rollback()
+        except Exception as rollback_err:
+            print(f"[Sniffer] Eroare la rollback (curățare mobile): {rollback_err}")
+        return 0
+
+
 def start_sniffer(app):
     """
     Pornește snifferul de rețea într-un thread separat.
@@ -1388,6 +1446,8 @@ def start_sniffer(app):
     _fix_device_vlans(app)
     # Deduplicăm dispozitivele cu același MAC și IP-uri diferite la pornire
     _deduplicate_devices(app)
+    # Ștergem dispozitivele mobile inactive cu MAC randomizat la pornire
+    _cleanup_inactive_mobile_devices(app, ttl_hours=24)
 
     # Înregistrăm callback-ul pentru salvarea alertelor în baza de date
     with app.app_context():
