@@ -11,7 +11,7 @@ import os
 # Adăugăm rădăcina proiectului în sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.ids.sniffer import normalize_mac, get_mac_oui, _looks_like_ap, _looks_like_mobile, _detect_device_type, _is_randomized_mac, _hostname_suggests_mobile
+from app.ids.sniffer import normalize_mac, get_mac_oui, _looks_like_ap, _looks_like_mobile, _looks_like_camera, _detect_device_type, _is_randomized_mac, _hostname_suggests_mobile
 
 _pass_count = 0
 _fail_count = 0
@@ -252,6 +252,42 @@ def test_real_world_hostnames():
     )
 
 
+def test_camera_oui_detection():
+    print("\n--- OUI camere de supraveghere (Kedacom/Tiandy/NVR) ---")
+    # Kedacom KM-IP531D-K OUI → camera
+    _assert(_looks_like_camera("E0:61:B2:63:A9:DA"), "Kedacom OUI E0:61:B2 → camera")
+    _assert(_looks_like_camera("E0:61:B2:63:A9:E0"), "Kedacom OUI E0:61:B2 (a doua cameră) → camera")
+    # Tiandy/Kedacom 7L09F12 OUI → camera
+    _assert(_looks_like_camera("C0:39:5A:68:5B:51"), "Tiandy OUI C0:39:5A → camera")
+    _assert(_looks_like_camera("C0:39:5A:68:58:D2"), "Tiandy OUI C0:39:5A (Sala Sport) → camera")
+    _assert(_looks_like_camera("C0:39:5A:37:CF:B3"), "Tiandy OUI C0:39:5A (Sala Sport intrare) → camera")
+    # NVR OUI → camera
+    _assert(_looks_like_camera("FC:5F:49:83:39:A6"), "NVR OUI FC:5F:49 → camera")
+    # Non-camera OUI → NU camera
+    _assert(not _looks_like_camera("AC:BC:32:AA:BB:CC"), "Apple OUI → NU camera")
+    _assert(not _looks_like_camera("EC:08:6B:AA:BB:CC"), "TP-Link OUI → NU camera")
+    _assert(not _looks_like_camera(None), "Fara MAC → NU camera")
+    _assert(not _looks_like_camera(""), "MAC gol → NU camera")
+
+    # _detect_device_type cu OUI cameră → camera (chiar fără IP hardcodat)
+    _assert(_detect_device_type("192.168.2.174", mac="C0:39:5A:68:5B:51") == 'camera',
+            "IP .174 (range camere) cu MAC Tiandy → camera")
+    _assert(_detect_device_type("192.168.2.170", mac="C0:39:5A:68:58:D2") == 'camera',
+            "IP .170 cu MAC Tiandy (Sala Sport) → camera")
+    _assert(_detect_device_type("192.168.2.160", mac="FC:5F:49:83:39:A6") == 'camera',
+            "IP .160 (NVR) cu MAC FC:5F:49 → camera")
+    _assert(_detect_device_type("192.168.2.161", mac="E0:61:B2:63:A9:DA") == 'camera',
+            "IP .161 cu MAC Kedacom → camera")
+    # OUI cameră pe IP arbitrar (fara hardcoding IP) → camera
+    _assert(_detect_device_type("192.168.2.200", mac="C0:39:5A:68:5B:51") == 'camera',
+            "IP arbitrar cu MAC Tiandy → camera (OUI are prioritate față de mobile)")
+    _assert(_detect_device_type("192.168.2.200", mac="E0:61:B2:63:A9:DA") == 'camera',
+            "IP arbitrar cu MAC Kedacom → camera")
+    # IP hardcodat are prioritate față de OUI cameră (test compatibilitate inversă)
+    _assert(_detect_device_type("192.168.2.80") == 'camera',
+            "IP .80 (NVR hardcodat) fara MAC → camera")
+
+
 if __name__ == '__main__':
     test_normalize_mac()
     test_get_mac_oui()
@@ -263,6 +299,7 @@ if __name__ == '__main__':
     test_detect_device_type_extended()
     test_new_mobile_vendors()
     test_real_world_hostnames()
+    test_camera_oui_detection()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")
