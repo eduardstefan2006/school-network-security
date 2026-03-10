@@ -693,6 +693,9 @@ def _flush_device_buffer(app):
             from app import db
             from app.ids.rules import WHITELIST_IPS
 
+            # Flag: dacă apare un dispozitiv nou cu MAC deja existent, rulăm deduplicarea
+            _trigger_deduplication = False
+
             for ip, data in snapshot.items():
                 try:
                     device = NetworkDevice.query.filter_by(ip_address=ip).first()
@@ -738,6 +741,15 @@ def _flush_device_buffer(app):
                         if vlan_val is None:
                             vlan_val = _get_vlan_from_ip(ip)
                         device_type = _detect_device_type(ip, mac=data.get('mac'), vlan_id=vlan_val, hostname=data.get('hostname'))
+                        # Verificăm dacă există deja un dispozitiv cu același MAC (potential duplicat)
+                        new_mac = data.get('mac')
+                        if new_mac and not _is_randomized_mac(new_mac) and device_type not in _FIXED_DEVICE_TYPES:
+                            existing_with_mac = NetworkDevice.query.filter(
+                                NetworkDevice.mac_address == new_mac,
+                                NetworkDevice.ip_address != ip,
+                            ).first()
+                            if existing_with_mac:
+                                _trigger_deduplication = True
                         device = NetworkDevice(
                             ip_address=ip,
                             mac_address=data.get('mac'),
@@ -774,6 +786,10 @@ def _flush_device_buffer(app):
                     continue
 
             db.session.commit()
+
+            # Deduplicăm dacă am detectat un nou dispozitiv cu MAC deja existent
+            if _trigger_deduplication:
+                _deduplicate_devices(app)
     except Exception as e:
         print(f"[Sniffer] Eroare la flush dispozitive: {e}")
 
@@ -1279,6 +1295,81 @@ def _fix_device_vlans(app):
             print(f"[Sniffer] Eroare la rollback (VLAN): {rollback_err}")
 
 
+def _deduplicate_devices(app):
+    """Găsește și consolidează dispozitivele duplicate (același MAC, IP-uri diferite).
+
+    Un telefon care se plimbă prin școală primește IP-uri diferite de la AP-uri diferite,
+    dar MAC-ul rămâne același pe aceeași rețea. Această funcție consolidează toate
+    intrările cu același MAC într-una singură (cea mai veche), sumând statisticile.
+
+    Exclude din deduplicare:
+    - MAC-uri None sau goale
+    - MAC-uri randomizate (LAA bit setat)
+    - Dispozitive din _FIXED_DEVICE_TYPES (camere, routere, switch-uri, servere, AP-uri)
+    """
+    from app.models import NetworkDevice
+    from app import db
+    from datetime import datetime
+
+    try:
+        with app.app_context():
+            # Găsim toate dispozitivele cu MAC non-null
+            devices = NetworkDevice.query.filter(
+                NetworkDevice.mac_address.isnot(None)
+            ).all()
+
+            # Grupăm după MAC, excludem randomizate și infrastructură fixă
+            mac_groups = {}
+            for device in devices:
+                mac = device.mac_address
+                if not mac or _is_randomized_mac(mac):
+                    continue
+                if device.device_type in _FIXED_DEVICE_TYPES:
+                    continue
+                if mac not in mac_groups:
+                    mac_groups[mac] = []
+                mac_groups[mac].append(device)
+
+            # Pentru fiecare grup cu duplicate, consolidăm datele
+            total_deleted = 0
+            for mac, group in mac_groups.items():
+                if len(group) < 2:
+                    continue
+
+                # Sortăm: cel cu first_seen cel mai vechi primul (None → cel mai vechi)
+                group.sort(key=lambda d: d.first_seen if d.first_seen is not None else datetime(1970, 1, 1))
+                primary = group[0]  # păstrăm acesta
+                duplicates = group[1:]
+
+                # Consolidăm datele din duplicate în dispozitivul principal
+                for dup in duplicates:
+                    primary.total_packets = (primary.total_packets or 0) + (dup.total_packets or 0)
+                    primary.total_bytes = (primary.total_bytes or 0) + (dup.total_bytes or 0)
+                    if dup.last_seen and (not primary.last_seen or dup.last_seen > primary.last_seen):
+                        primary.last_seen = dup.last_seen
+                    if not primary.hostname and dup.hostname:
+                        primary.hostname = dup.hostname
+
+                    db.session.delete(dup)
+                    total_deleted += 1
+
+            if total_deleted > 0:
+                db.session.commit()
+                print(f"[Sniffer] Deduplicare: {total_deleted} dispozitive duplicate eliminate.")
+            else:
+                print("[Sniffer] Deduplicare: niciun duplicat găsit.")
+
+            return total_deleted
+    except Exception as e:
+        print(f"[Sniffer] Eroare la deduplicarea dispozitivelor: {e}")
+        try:
+            with app.app_context():
+                db.session.rollback()
+        except Exception as rollback_err:
+            print(f"[Sniffer] Eroare la rollback (deduplicare): {rollback_err}")
+        return 0
+
+
 def start_sniffer(app):
     """
     Pornește snifferul de rețea într-un thread separat.
@@ -1295,6 +1386,8 @@ def start_sniffer(app):
     # Reclasificăm dispozitivele cu tip greșit și setăm VLAN-urile la pornire
     _fix_device_types(app)
     _fix_device_vlans(app)
+    # Deduplicăm dispozitivele cu același MAC și IP-uri diferite la pornire
+    _deduplicate_devices(app)
 
     # Înregistrăm callback-ul pentru salvarea alertelor în baza de date
     with app.app_context():
