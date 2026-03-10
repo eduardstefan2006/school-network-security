@@ -287,6 +287,11 @@ def test_camera_oui_detection():
     _assert(_detect_device_type("192.168.2.80") == 'camera',
             "IP .80 (NVR hardcodat) fara MAC → camera")
 
+    # Caz special: dispozitiv clasificat ca 'mobile' în DB, dar cu OUI cameră
+    # _detect_device_type trebuie să returneze 'camera' → _fix_device_types îl va reclasifica
+    _assert(_detect_device_type("192.168.2.174", mac="C0:39:5A:68:5B:51") == 'camera',
+            "Dispozitiv mobile cu MAC Tiandy (C0:39:5A) → _detect_device_type returnează 'camera', nu 'mobile'")
+
 
 if __name__ == '__main__':
     test_normalize_mac()
