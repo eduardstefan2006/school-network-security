@@ -189,3 +189,18 @@ def cleanup_inactive_devices():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@network_bp.route('/api/devices/deduplicate-mobile', methods=['POST'])
+@login_required
+def deduplicate_mobile_devices():
+    """Admin: deduplicare dispozitive mobile cu același MAC (inclusiv MAC randomizat)."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis'}), 403
+    try:
+        from app.ids.sniffer import _deduplicate_all_mobile_devices
+        from flask import current_app
+        deleted = _deduplicate_all_mobile_devices(current_app._get_current_object())
+        return jsonify({'success': True, 'deleted': deleted, 'message': f'{deleted} duplicate eliminate.'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
