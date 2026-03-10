@@ -160,7 +160,8 @@ function updateProtocolsModal(protocols) {
     if (!tbody) return;
 
     const entries = Object.entries(protocols).sort((a, b) => b[1] - a[1]);
-    const total = entries.reduce((sum, [, v]) => sum + v, 0) || 1;
+    const actualTotal = entries.reduce((sum, [, v]) => sum + v, 0);
+    const total = actualTotal || 1; // avoid division by zero in percentage calculations
 
     tbody.innerHTML = entries.map(([proto, count]) => {
         const pct = ((count / total) * 100).toFixed(1);
@@ -177,7 +178,7 @@ function updateProtocolsModal(protocols) {
         </tr>`;
     }).join('');
 
-    if (tfoot) tfoot.textContent = total;
+    if (tfoot) tfoot.textContent = actualTotal;
 
     // Actualizăm și numărul din card
     const activeProtocols = document.getElementById('activeProtocols');
