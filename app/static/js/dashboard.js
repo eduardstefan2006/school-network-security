@@ -115,6 +115,9 @@ function updateStats() {
                 updateProtocolChart(data.protocols);
             }
 
+            // Actualizăm modalul de protocoale
+            updateProtocolsModal(data.protocols || {});
+
             // Actualizăm tabelul de pachete recente
             updateRecentPackets(data.last_packets);
         })
@@ -145,6 +148,40 @@ function updateRecentPackets(packets) {
     });
 
     tbody.innerHTML = rows.join('');
+}
+
+/**
+ * Actualizează modalul de protocoale cu date noi.
+ * @param {Object} protocols - Dicționar protocol -> număr pachete
+ */
+function updateProtocolsModal(protocols) {
+    const tbody = document.querySelector('#protocolsModal tbody');
+    const tfoot = document.getElementById('protocolTotalCount');
+    if (!tbody) return;
+
+    const entries = Object.entries(protocols).sort((a, b) => b[1] - a[1]);
+    const total = entries.reduce((sum, [, v]) => sum + v, 0) || 1;
+
+    tbody.innerHTML = entries.map(([proto, count]) => {
+        const pct = ((count / total) * 100).toFixed(1);
+        const barW = Math.round(count / total * 100);
+        return `<tr>
+            <td><span class="badge bg-secondary me-1">${escapeHtml(proto)}</span></td>
+            <td class="text-end text-info fw-bold">${count}</td>
+            <td class="text-end text-muted">${pct}%</td>
+            <td style="width:35%;">
+                <div class="progress bg-secondary" style="height:6px;margin-top:6px;">
+                    <div class="progress-bar bg-info" style="width:${barW}%"></div>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+
+    if (tfoot) tfoot.textContent = total;
+
+    // Actualizăm și numărul din card
+    const activeProtocols = document.getElementById('activeProtocols');
+    if (activeProtocols) activeProtocols.textContent = entries.length;
 }
 
 /**

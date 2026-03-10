@@ -72,14 +72,13 @@
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <p class="text-muted small mb-1">Protocoale Active</p>
-                        <h3 class="text-info fw-bold">{{ stats.protocols | length }}</h3>
+                        <h3 class="text-info fw-bold" id="activeProtocols">{{ stats.protocols | length }}</h3>
                     </div>
                     <i class="bi bi-layers text-info" style="font-size: 2rem; opacity: 0.5;"></i>
                 </div>
-                <small class="text-muted">
-                    <i class="bi bi-clock me-1"></i>
-                    Monitorizare continuă
-                </small>
+                <a href="#" class="small text-muted" data-bs-toggle="modal" data-bs-target="#protocolsModal">
+                    <i class="bi bi-arrow-right me-1"></i>Vezi protocoalele
+                </a>
             </div>
         </div>
     </div>
@@ -222,6 +221,76 @@
 <script id="protocolData" type="application/json">
 {{ stats.protocols | tojson }}
 </script>
+
+<!-- Modal: Protocoale Active -->
+<div class="modal fade" id="protocolsModal" tabindex="-1" aria-labelledby="protocolsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark border-secondary text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title" id="protocolsModalLabel">
+                    <i class="bi bi-layers me-2 text-info"></i>Protocoale Active
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Închide"></button>
+            </div>
+            <div class="modal-body">
+                {% if stats.protocols %}
+                <div class="table-responsive">
+                    <table class="table table-dark table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th><i class="bi bi-tag me-1"></i>Protocol</th>
+                                <th class="text-end"><i class="bi bi-box me-1"></i>Pachete</th>
+                                <th class="text-end"><i class="bi bi-percent me-1"></i>Procent</th>
+                                <th>Distribuție</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set total_proto = stats.protocols.values() | sum %}
+                            {% set total_proto = total_proto if total_proto > 0 else 1 %}
+                            {% for proto, count in stats.protocols | dictsort(by='value', reverse=True) %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-secondary me-1">{{ proto }}</span>
+                                </td>
+                                <td class="text-end text-info fw-bold">{{ count }}</td>
+                                <td class="text-end text-muted">
+                                    {{ (count / total_proto * 100) | round(1) }}%
+                                </td>
+                                <td style="width: 35%;">
+                                    <div class="progress bg-secondary" style="height: 6px; margin-top: 6px;">
+                                        <div class="progress-bar bg-info"
+                                             style="width: {{ (count / total_proto * 100) | int }}%"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="border-top border-secondary">
+                            <tr>
+                                <td class="text-muted small">Total</td>
+                                <td class="text-end text-light fw-bold" id="protocolTotalCount">{{ total_proto }}</td>
+                                <td class="text-end text-muted">100%</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-hourglass-split" style="font-size: 2rem;"></i>
+                    <p class="mt-2">Se colectează date despre protocoale...</p>
+                </div>
+                {% endif %}
+            </div>
+            <div class="modal-footer border-secondary">
+                <small class="text-muted me-auto">
+                    <i class="bi bi-clock me-1"></i>Monitorizare continuă · Date actualizate la fiecare 5s
+                </small>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Închide</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
