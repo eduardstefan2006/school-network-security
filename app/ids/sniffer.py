@@ -110,9 +110,9 @@ _device_buffer_lock = threading.Lock()
 _last_device_flush = time.monotonic()
 _DEVICE_FLUSH_INTERVAL = 30  # secunde
 
-# Timer pentru curățarea periodică a dispozitivelor mobile inactive (MAC randomizat)
-_last_mobile_cleanup = 0
-_MOBILE_CLEANUP_INTERVAL = 6 * 3600  # 6 ore în secunde
+# Timer pentru resetul complet al dispozitivelor mobile (la fiecare 10 minute = DHCP lease)
+_last_mobile_reset = 0
+_MOBILE_RESET_INTERVAL = 10 * 60  # 10 minute în secunde
 
 # Timer pentru deduplicarea periodică a dispozitivelor mobile (la fiecare 5 minute)
 _last_dedup_cleanup = 0
@@ -856,13 +856,16 @@ def _deduplicate_all_mobile_devices(app):
 
 def _maybe_flush_devices(app):
     """Apelează flush-ul dacă a trecut intervalul de timp."""
-    global _last_device_flush, _last_mobile_cleanup, _last_dedup_cleanup
+    global _last_device_flush, _last_dedup_cleanup, _last_mobile_reset
+
     if time.monotonic() - _last_device_flush >= _DEVICE_FLUSH_INTERVAL:
         _flush_device_buffer(app)
-    # Curățăm dispozitivele mobile inactive cu MAC randomizat o dată la 6 ore
-    if time.monotonic() - _last_mobile_cleanup >= _MOBILE_CLEANUP_INTERVAL:
-        _cleanup_inactive_mobile_devices(app, ttl_hours=24)
-        _last_mobile_cleanup = time.monotonic()
+
+    # Reset complet al dispozitivelor mobile la fiecare 10 minute (DHCP lease)
+    if time.monotonic() - _last_mobile_reset >= _MOBILE_RESET_INTERVAL:
+        _last_mobile_reset = time.monotonic()
+        threading.Thread(target=_reset_mobile_devices, args=(app,), daemon=True).start()
+
     # Deduplicăm dispozitivele mobile la fiecare 5 minute (DHCP lease = 10 min)
     if time.monotonic() - _last_dedup_cleanup >= _DEDUP_CLEANUP_INTERVAL:
         _last_dedup_cleanup = time.monotonic()
@@ -1454,6 +1457,42 @@ def _deduplicate_devices(app):
         return 0
 
 
+def _reset_mobile_devices(app):
+    """Șterge TOATE dispozitivele mobile din DB la fiecare 10 minute.
+
+    DHCP lease-ul este de 10 minute. Telefoanele care au plecat din rețea nu mai
+    generează trafic, deci nu vor fi redescoperite după reset. Telefoanele active
+    vor fi redescoperite automat de sniffer în câteva secunde după reset.
+
+    NU șterge dispozitive din _FIXED_DEVICE_TYPES (ap, router, switch, server, camera).
+    """
+    try:
+        with app.app_context():
+            from app.models import NetworkDevice
+            from app import db
+
+            # Ștergem TOATE dispozitivele mobile (inclusiv MAC randomizat)
+            mobile_devices = NetworkDevice.query.filter_by(device_type='mobile').all()
+            count = len(mobile_devices)
+
+            for device in mobile_devices:
+                db.session.delete(device)
+
+            if count > 0:
+                db.session.commit()
+                print(f"[Sniffer] Reset mobile: {count} dispozitive mobile șterse. Lista se va reface din trafic live.")
+
+            return count
+    except Exception as e:
+        print(f"[Sniffer] Eroare la reset mobile: {e}")
+        try:
+            with app.app_context():
+                db.session.rollback()
+        except Exception:
+            pass
+        return 0
+
+
 def _cleanup_inactive_mobile_devices(app, ttl_hours=24):
     """Șterge dispozitivele mobile cu MAC randomizat care nu au mai generat trafic în ultimele ttl_hours ore.
 
@@ -1524,8 +1563,6 @@ def start_sniffer(app):
     _deduplicate_devices(app)
     # Deduplicăm dispozitivele mobile inclusiv MAC-uri randomizate la pornire
     _deduplicate_all_mobile_devices(app)
-    # Ștergem dispozitivele mobile inactive cu MAC randomizat la pornire
-    _cleanup_inactive_mobile_devices(app, ttl_hours=24)
 
     # Înregistrăm callback-ul pentru salvarea alertelor în baza de date
     with app.app_context():

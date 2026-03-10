@@ -541,13 +541,10 @@ function updateStats(devices) {
 
 setInterval(refreshDevices, 30000);
 
-// Auto-refresh la fiecare 5 minute (DHCP lease = 10 min)
+// Auto-refresh la fiecare 10 minute (sincronizat cu resetul DHCP)
 setInterval(function() {
-    fetch('/api/devices/deduplicate-mobile', {method: 'POST'})
-        .then(r => r.json())
-        .catch(e => console.error('[Auto-dedup] Eroare la deduplicare mobile:', e));
     refreshDevices();
-}, 5 * 60 * 1000);
+}, 10 * 60 * 1000);
 
 // ============================================================
 // Modal editare dispozitiv (admin)
