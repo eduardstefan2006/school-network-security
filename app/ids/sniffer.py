@@ -363,6 +363,31 @@ def _load_mobile_vendor_ouis() -> dict:
     return {}
 
 
+def _load_camera_vendor_ouis() -> dict:
+    """Încarcă OUI-urile camerelor de supraveghere din data/oui_vendors.json.
+
+    Returns:
+        Dict cu structura {vendor_name: [oui_string, ...]} pentru vendorii listați
+        în cheia '_camera_vendors' din JSON. Returnează dict gol dacă fișierul nu există
+        sau cheia '_camera_vendors' lipsește.
+    """
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    json_path = os.path.join(base_dir, 'data', 'oui_vendors.json')
+    if os.path.isfile(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            camera_vendors = data.get('_camera_vendors', [])
+            return {
+                vendor: [oui.upper() for oui in data[vendor]]
+                for vendor in camera_vendors
+                if vendor in data and isinstance(data[vendor], list)
+            }
+        except Exception as e:
+            print(f"[Sniffer] Eroare la încărcarea OUI-urilor camere din {json_path}: {e}")
+    return {}
+
+
 _AP_VENDOR_OUIS = _load_ap_vendor_ouis()
 
 # Set plat de OUI-uri AP pentru lookup O(1)
@@ -375,6 +400,13 @@ _MOBILE_VENDOR_OUIS = _load_mobile_vendor_ouis()
 # Set plat de OUI-uri mobile pentru lookup O(1)
 _MOBILE_OUI_SET = frozenset(
     oui for ouis in _MOBILE_VENDOR_OUIS.values() for oui in ouis
+)
+
+_CAMERA_VENDOR_OUIS = _load_camera_vendor_ouis()
+
+# Set plat de OUI-uri camere de supraveghere pentru lookup O(1)
+_CAMERA_OUI_SET = frozenset(
+    oui for ouis in _CAMERA_VENDOR_OUIS.values() for oui in ouis
 )
 
 # Pattern regex pentru hostname-uri tipice de dispozitive mobile
@@ -479,6 +511,24 @@ def _looks_like_mobile(mac: str | None) -> bool:
     return oui in _MOBILE_OUI_SET
 
 
+def _looks_like_camera(mac: str | None) -> bool:
+    """Returnează True dacă dispozitivul pare a fi o cameră de supraveghere.
+
+    Criteriu: MAC aparține unui producător de camere IP (pe baza OUI) —
+              Kedacom/Tiandy (E0:61:B2, C0:39:5A) sau NVR (FC:5F:49).
+
+    Args:
+        mac: Adresa MAC a dispozitivului (orice format), sau None dacă nu este cunoscută.
+    Returns:
+        True dacă OUI-ul MAC aparține unui producător de camere de supraveghere cunoscut.
+        False în orice alt caz (MAC lipsă, OUI necunoscut sau producător non-cameră).
+    """
+    if not mac:
+        return False
+    oui = get_mac_oui(mac)
+    return oui in _CAMERA_OUI_SET
+
+
 # Access Point-uri (routere TP-Link/Asus în modul AP pe VLAN-uri)
 # Menținut pentru compatibilitate inversă; detecția automată OUI are prioritate.
 _AP_IPS = {
@@ -514,10 +564,11 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     Prioritate de detecție:
     1. Dacă MAC aparține unui vendor AP (TP-Link/ASUS) și dispozitivul e pe un VLAN → 'ap'
     2. IP hardcodat (router, switch, cameră, server, AP din _AP_IPS)
-    3. Dacă MAC aparține unui producător de dispozitive mobile (Apple, Samsung, etc.) → 'mobile'
-    4. Dacă hostname-ul (DHCP/DNS) sugerează un dispozitiv mobil → 'mobile'
-    5. Dacă MAC-ul este randomizat (LAA bit setat) și dispozitivul e pe un subnet VLAN client → 'mobile'
-    6. Fallback → 'client'
+    3. Dacă MAC aparține unui producător de camere de supraveghere (Kedacom/Tiandy) → 'camera'
+    4. Dacă MAC aparține unui producător de dispozitive mobile (Apple, Samsung, etc.) → 'mobile'
+    5. Dacă hostname-ul (DHCP/DNS) sugerează un dispozitiv mobil → 'mobile'
+    6. Dacă MAC-ul este randomizat (LAA bit setat) și dispozitivul e pe un subnet VLAN client → 'mobile'
+    7. Fallback → 'client'
     """
     # 1. Detecție automată AP pe baza OUI + VLAN (are prioritate față de IP)
     if _looks_like_ap(mac, vlan_id, ip_str):
@@ -552,11 +603,15 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     if ip_str in _AP_IPS:
         return 'ap'
 
-    # 3. Detecție automată dispozitive mobile pe baza OUI producător (MAC real)
+    # 3. Detecție automată camere de supraveghere pe baza OUI producător
+    if _looks_like_camera(mac):
+        return 'camera'
+
+    # 4. Detecție automată dispozitive mobile pe baza OUI producător (MAC real)
     if _looks_like_mobile(mac):
         return 'mobile'
 
-    # 4. Detecție pe baza hostname-ului (DHCP opțiunea 12 sau cache DNS)
+    # 5. Detecție pe baza hostname-ului (DHCP opțiunea 12 sau cache DNS)
     # Dacă hostname-ul nu e furnizat explicit, consultăm cache-ul global
     effective_hostname = hostname
     if not effective_hostname:
@@ -565,13 +620,13 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     if _hostname_suggests_mobile(effective_hostname):
         return 'mobile'
 
-    # 5. Detecție pe baza MAC randomizat (LAA bit) — telefoane moderne cu privacy MAC
+    # 6. Detecție pe baza MAC randomizat (LAA bit) — telefoane moderne cu privacy MAC
     # Aplicăm doar dacă dispozitivul este pe un subnet VLAN (rețea Wi-Fi de clienți)
     # și nu e pe subnet-ul principal 192.168.2.x (infrastructură)
     if _is_randomized_mac(mac) and _get_vlan_from_ip(ip_str) is not None:
         return 'mobile'
 
-    # 6. Hint din trafic (porturi mobile) - doar pe subnet VLAN
+    # 7. Hint din trafic (porturi mobile) - doar pe subnet VLAN
     if _mobile_traffic_hints.get(ip_str) and _get_vlan_from_ip(ip_str) is not None:
         return 'mobile'
 
