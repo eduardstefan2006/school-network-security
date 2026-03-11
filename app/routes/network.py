@@ -85,6 +85,7 @@ def api_devices():
         'is_online': (now - d.last_seen).total_seconds() < 300,
         'alert_count': d.alert_count,
         'vlan': d.vlan or '-',
+        'type_locked': d.device_type_locked or False,
     } for d in devices])
 
 
@@ -102,6 +103,7 @@ def update_device(device_id):
         device.description = data['description']
     if 'device_type' in data:
         device.device_type = data['device_type']
+        device.device_type_locked = True  # Blochează reclasificarea automată
     if 'is_known' in data:
         device.is_known = bool(data['is_known'])
     db.session.commit()

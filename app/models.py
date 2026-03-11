@@ -192,6 +192,8 @@ class NetworkDevice(db.Model):
     total_bytes = db.Column(db.BigInteger, default=0)
     # True pentru dispozitivele cunoscute (din whitelist / infrastructură)
     is_known = db.Column(db.Boolean, default=False)
+    # True dacă tipul a fost setat manual de un admin — nu se reclasifică automat
+    device_type_locked = db.Column(db.Boolean, default=False, nullable=True)
     is_online = db.Column(db.Boolean, default=True)
     vlan = db.Column(db.String(20), nullable=True)
     alert_count = db.Column(db.Integer, default=0)
