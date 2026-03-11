@@ -600,6 +600,9 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     if ip_str in ('192.168.2.5', '192.168.2.8', '192.168.2.9', '192.168.2.10'):
         return 'switch'
     # NVR și Camere supraveghere: .80, .91-.96, .160-.178
+    # IP hardcodat explicit pentru camera de supraveghere (prioritate față de detecție MAC)
+    if ip_str == '192.168.2.174':
+        return 'camera'
     if ip_str == '192.168.2.80':
         return 'camera'
     if _ip_int('192.168.2.91') <= ip_int <= _ip_int('192.168.2.96'):
@@ -728,9 +731,8 @@ def _flush_device_buffer(app):
                             if fallback_vlan is not None:
                                 device.vlan = str(fallback_vlan)
                         # Dispozitivele cu tip fix (cameră, router, switch etc.) nu se reclasifică niciodată.
-                        # Dispozitivele cu tip blocat manual de admin nu se reclasifică nici ele.
                         # Actualizăm doar statisticile și metadatele lipsă.
-                        if device.device_type not in _FIXED_DEVICE_TYPES and not device.device_type_locked:
+                        if device.device_type not in _FIXED_DEVICE_TYPES:
                             # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul,
                             # sau dacă tipul e 'client' și avem acum MAC/hostname (posibil mobil nedetectat)
                             should_reclassify = (
@@ -1322,9 +1324,6 @@ def _fix_device_types(app):
                 # Sări peste dispozitivele cu tip fix (infrastructură de rețea)
                 if device.device_type in _FIXED_DEVICE_TYPES:
                     continue
-                # Sări peste dispozitivele cu tip setat manual de admin
-                if device.device_type_locked:
-                    continue
 
                 vlan_id = None
                 if device.vlan is not None:
@@ -1474,10 +1473,8 @@ def _reset_mobile_devices(app):
             from app.models import NetworkDevice
             from app import db
 
-            # Ștergem dispozitivele mobile, DAR nu pe cele cu tip blocat manual de admin
-            mobile_devices = NetworkDevice.query.filter_by(device_type='mobile').filter(
-                (NetworkDevice.device_type_locked == False) | (NetworkDevice.device_type_locked.is_(None))
-            ).all()
+            # Ștergem toate dispozitivele mobile
+            mobile_devices = NetworkDevice.query.filter_by(device_type='mobile').all()
             count = len(mobile_devices)
 
             for device in mobile_devices:

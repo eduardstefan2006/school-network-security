@@ -85,7 +85,6 @@ def api_devices():
         'is_online': (now - d.last_seen).total_seconds() < 300,
         'alert_count': d.alert_count,
         'vlan': d.vlan or '-',
-        'type_locked': d.device_type_locked or False,
     } for d in devices])
 
 
@@ -96,6 +95,12 @@ def update_device(device_id):
     if not current_user.is_admin():
         return jsonify({'error': 'Acces interzis'}), 403
     device = db.session.get(NetworkDevice, device_id)
+    # Fallback: caută după IP dacă ID-ul nu mai există (dispozitiv recreat după reset)
+    if device is None:
+        data = request.get_json(silent=True) or {}
+        ip = data.get('ip')
+        if ip:
+            device = NetworkDevice.query.filter_by(ip_address=ip).first()
     if device is None:
         return jsonify({'error': 'Dispozitiv negăsit'}), 404
     data = request.get_json(silent=True) or {}
@@ -103,7 +108,6 @@ def update_device(device_id):
         device.description = data['description']
     if 'device_type' in data:
         device.device_type = data['device_type']
-        device.device_type_locked = True  # Blochează reclasificarea automată
     if 'is_known' in data:
         device.is_known = bool(data['is_known'])
     db.session.commit()
