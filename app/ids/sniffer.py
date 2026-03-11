@@ -728,8 +728,9 @@ def _flush_device_buffer(app):
                             if fallback_vlan is not None:
                                 device.vlan = str(fallback_vlan)
                         # Dispozitivele cu tip fix (cameră, router, switch etc.) nu se reclasifică niciodată.
+                        # Dispozitivele cu tip blocat manual de admin nu se reclasifică nici ele.
                         # Actualizăm doar statisticile și metadatele lipsă.
-                        if device.device_type not in _FIXED_DEVICE_TYPES:
+                        if device.device_type not in _FIXED_DEVICE_TYPES and not device.device_type_locked:
                             # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul,
                             # sau dacă tipul e 'client' și avem acum MAC/hostname (posibil mobil nedetectat)
                             should_reclassify = (
@@ -1321,6 +1322,9 @@ def _fix_device_types(app):
                 # Sări peste dispozitivele cu tip fix (infrastructură de rețea)
                 if device.device_type in _FIXED_DEVICE_TYPES:
                     continue
+                # Sări peste dispozitivele cu tip setat manual de admin
+                if device.device_type_locked:
+                    continue
 
                 vlan_id = None
                 if device.vlan is not None:
@@ -1470,8 +1474,10 @@ def _reset_mobile_devices(app):
             from app.models import NetworkDevice
             from app import db
 
-            # Ștergem TOATE dispozitivele mobile (inclusiv MAC randomizat)
-            mobile_devices = NetworkDevice.query.filter_by(device_type='mobile').all()
+            # Ștergem dispozitivele mobile, DAR nu pe cele cu tip blocat manual de admin
+            mobile_devices = NetworkDevice.query.filter_by(device_type='mobile').filter(
+                (NetworkDevice.device_type_locked == False) | (NetworkDevice.device_type_locked.is_(None))
+            ).all()
             count = len(mobile_devices)
 
             for device in mobile_devices:

@@ -225,7 +225,7 @@
                     <td>
                         <button class="btn btn-sm btn-outline-secondary"
                                 title="Editează"
-                                onclick="event.stopPropagation(); openEditModal({{ device.id }}, '{{ device.ip_address }}', '{{ device.device_type }}', '{{ (device.description or '') | replace("'", "\\'") }}', {{ 'true' if device.is_known else 'false' }})">
+                                onclick="event.stopPropagation(); openEditModal({{ device.id }}, '{{ device.ip_address }}', '{{ device.device_type }}', '{{ (device.description or '') | replace("'", "\\'") }}', {{ 'true' if device.is_known else 'false' }}, {{ 'true' if device.device_type_locked else 'false' }})">
                             <i class="bi bi-pencil"></i>
                         </button>
                     </td>
@@ -269,6 +269,9 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="modal-device-id">
+                <div id="modal-type-locked-badge" class="alert alert-info py-1 px-2 mb-2 small d-none">
+                    <i class="bi bi-lock-fill me-1"></i> Tip setat manual – nu va fi reclasificat automat
+                </div>
                 <div class="mb-3">
                     <label class="form-label text-muted small">Tip dispozitiv</label>
                     <select id="modal-type" class="form-select bg-dark border-secondary text-light">
@@ -549,12 +552,16 @@ setInterval(function() {
 // ============================================================
 // Modal editare dispozitiv (admin)
 // ============================================================
-function openEditModal(id, ip, type, desc, isKnown) {
+function openEditModal(id, ip, type, desc, isKnown, typeLocked) {
     document.getElementById('modal-device-id').value = id;
     document.getElementById('modal-ip').textContent = ip;
     document.getElementById('modal-type').value = type;
     document.getElementById('modal-desc').value = desc;
     document.getElementById('modal-known').checked = isKnown;
+    var lockedBadge = document.getElementById('modal-type-locked-badge');
+    if (lockedBadge) {
+        lockedBadge.classList.toggle('d-none', !typeLocked);
+    }
     var modal = new bootstrap.Modal(document.getElementById('editDeviceModal'));
     modal.show();
 }
