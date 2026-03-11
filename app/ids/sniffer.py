@@ -757,6 +757,13 @@ def _flush_device_buffer(app):
                         if vlan_val is None:
                             vlan_val = _get_vlan_from_ip(ip)
                         device_type = _detect_device_type(ip, mac=data.get('mac'), vlan_id=vlan_val, hostname=data.get('hostname'))
+                        # Dispozitivele din whitelist nu ar trebui să fie niciodată 'mobile'
+                        if is_known and device_type == 'mobile':
+                            # Reclasifică pe baza IP-ului (fără MAC/hostname care pot fi indisponibile
+                            # la primele pachete TZSP — IP-ul hardcodat în _detect_device_type este suficient)
+                            device_type = _detect_device_type(ip)
+                            if device_type == 'mobile':
+                                device_type = 'client'  # Fallback sigur pentru dispozitive din whitelist
                         # Verificăm dacă există deja un dispozitiv cu același MAC (potential duplicat)
                         new_mac = data.get('mac')
                         if new_mac and not _is_randomized_mac(new_mac) and device_type not in _FIXED_DEVICE_TYPES:
@@ -834,6 +841,7 @@ def _deduplicate_all_mobile_devices(app):
                 dup_macs = db.session.query(NetworkDevice.mac_address)\
                     .filter(NetworkDevice.mac_address.isnot(None))\
                     .filter(NetworkDevice.device_type == 'mobile')\
+                    .filter(NetworkDevice.is_known == False)\
                     .group_by(NetworkDevice.mac_address)\
                     .having(func.count(NetworkDevice.id) > 1).all()
                 deleted = 0
@@ -1477,11 +1485,24 @@ def _reset_mobile_devices(app):
             from app.models import NetworkDevice
             from app import db
 
-            # Ștergem toate dispozitivele mobile
-            mobile_devices = NetworkDevice.query.filter_by(device_type='mobile').all()
+            # Ștergem dispozitivele mobile care nu sunt cunoscute (is_known=False)
+            # Dispozitivele din whitelist (is_known=True) nu se șterg niciodată
+            mobile_devices = NetworkDevice.query.filter_by(device_type='mobile', is_known=False).all()
             count = len(mobile_devices)
             # Extragem IP-urile înainte de ștergere
             mobile_ips = [d.ip_address for d in mobile_devices if d.ip_address]
+
+            # Reclasificăm dispozitivele known care au ajuns eronat la tip 'mobile'
+            known_mobile = NetworkDevice.query.filter_by(device_type='mobile', is_known=True).all()
+            for device in known_mobile:
+                correct_type = _detect_device_type(device.ip_address, mac=device.mac_address)
+                if correct_type != 'mobile':
+                    device.device_type = correct_type
+                    print(f"[Sniffer] Reclasificat {device.ip_address}: mobile → {correct_type} (is_known=True)")
+                else:
+                    # Fallback sigur: dacă nu putem detecta tipul corect, setăm 'client'
+                    device.device_type = 'client'
+                    print(f"[Sniffer] Reclasificat {device.ip_address}: mobile → client (is_known=True, fallback)")
 
             for device in mobile_devices:
                 db.session.delete(device)
@@ -1495,7 +1516,7 @@ def _reset_mobile_devices(app):
                     Alert.source_ip.in_(mobile_ips),
                 ).update({'status': 'resolved'}, synchronize_session=False)
 
-            if count > 0:
+            if count > 0 or known_mobile:
                 db.session.commit()
             print(f"[Sniffer] Reset mobile: {count} dispozitive mobile șterse. Lista se va reface din trafic live.")
 
@@ -1530,7 +1551,7 @@ def _cleanup_inactive_mobile_devices(app, ttl_hours=24):
     try:
         with app.app_context():
             cutoff = datetime.utcnow() - timedelta(hours=ttl_hours)
-            devices = NetworkDevice.query.filter_by(device_type='mobile').all()
+            devices = NetworkDevice.query.filter_by(device_type='mobile', is_known=False).all()
 
             to_delete = []
             for device in devices:
