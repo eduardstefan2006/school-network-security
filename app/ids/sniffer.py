@@ -779,8 +779,12 @@ def _flush_device_buffer(app):
                             vlan=str(vlan_val) if vlan_val is not None else None,
                         )
                         db.session.add(device)
-                        # Alertă pentru dispozitiv nou necunoscut
-                        if not is_known:
+                        # Alertă pentru dispozitiv nou necunoscut (fără duplicate)
+                        if not is_known and not Alert.query.filter_by(
+                            alert_type='new_device',
+                            source_ip=ip,
+                            status='active',
+                        ).first():
                             alert = Alert(
                                 alert_type='new_device',
                                 source_ip=ip,
@@ -1476,9 +1480,20 @@ def _reset_mobile_devices(app):
             # Ștergem toate dispozitivele mobile
             mobile_devices = NetworkDevice.query.filter_by(device_type='mobile').all()
             count = len(mobile_devices)
+            # Extragem IP-urile înainte de ștergere
+            mobile_ips = [d.ip_address for d in mobile_devices if d.ip_address]
 
             for device in mobile_devices:
                 db.session.delete(device)
+
+            # Rezolvăm alertele new_device active pentru IP-urile dispozitivelor mobile șterse
+            if count > 0 and mobile_ips:
+                from app.models import Alert
+                Alert.query.filter(
+                    Alert.alert_type == 'new_device',
+                    Alert.status == 'active',
+                    Alert.source_ip.in_(mobile_ips),
+                ).update({'status': 'resolved'}, synchronize_session=False)
 
             if count > 0:
                 db.session.commit()
