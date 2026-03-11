@@ -110,6 +110,13 @@ def update_device(device_id):
         device.device_type = data['device_type']
     if 'is_known' in data:
         device.is_known = bool(data['is_known'])
+        # Auto-rezolvă alertele new_device active când dispozitivul devine cunoscut
+        if device.is_known and device.ip_address:
+            Alert.query.filter_by(
+                alert_type='new_device',
+                source_ip=device.ip_address,
+                status='active',
+            ).update({'status': 'resolved'}, synchronize_session=False)
     db.session.commit()
     return jsonify({'success': True})
 
