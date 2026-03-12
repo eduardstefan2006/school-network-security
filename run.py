@@ -4,6 +4,7 @@ Rulați cu: python run.py
 """
 import os
 from app import create_app
+from app.ids.sniffer import start_sniffer
 
 def _load_dotenv(dotenv_path='.env'):
     """Încarcă variabilele din fișierul .env fără dependințe externe."""
@@ -36,6 +37,9 @@ _load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 app = create_app(os.environ.get('FLASK_ENV', 'default'))
 
 if __name__ == '__main__':
+    # Pornim snifferul de rețea într-un thread separat
+    start_sniffer(app)
+
     print("=" * 60)
     print("  SchoolSec - Sistem de Securitate pentru Rețeaua Școlii")
     print("=" * 60)

@@ -32,31 +32,6 @@ def _run_migrations(app):
         print(f"[DB] Eroare la migrare automată: {e}")
 
 
-def _start_sniffer_once(app):
-    """
-    Pornește snifferul de rețea o singură dată, indiferent de cum e lansată aplicația
-    (python run.py, Gunicorn, systemd, WSGI etc.).
-
-    Evită pornirea dublă în modul debug Werkzeug (care fork-uiește procesul):
-    - La primul fork (procesul parent), WERKZEUG_RUN_MAIN nu este setat → nu pornim
-    - La al doilea fork (procesul child cu reloader), WERKZEUG_RUN_MAIN='true' → pornim
-    - În producție (fără debug/reloader), pornim direct
-    """
-    from app.ids import sniffer as _sniffer_mod
-
-    # Evităm pornirea dublă dacă snifferul rulează deja
-    if _sniffer_mod._running:
-        return
-
-    # În modul debug Werkzeug cu reloader activ, așteptăm procesul child
-    if app.debug and os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
-        return
-
-    print("[SchoolSec] Pornire sniffer din create_app() (mod serviciu/Gunicorn compatibil)...")
-    from app.ids.sniffer import start_sniffer
-    start_sniffer(app)
-
-
 def create_app(config_name=None):
     """
     Factory function pentru crearea aplicației Flask.
@@ -108,8 +83,6 @@ def create_app(config_name=None):
         db.create_all()
         # Migrare automată: adaugă coloane noi în tabele existente
         _run_migrations(app)
-
-    _start_sniffer_once(app)
 
     # Pornire integrare MikroTik (dacă este activată)
     if app.config.get('MIKROTIK_ENABLED'):
