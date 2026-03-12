@@ -167,10 +167,10 @@
                     </td>
                     <td><small class="text-light">{{ device.description or '-' }}</small></td>
                     <td class="d-none d-md-table-cell">
-                        <small class="text-muted">{{ device.first_seen.strftime('%d.%m.%Y %H:%M') }}</small>
+                        <small class="text-muted">{{ (device.first_seen|to_local).strftime('%d.%m.%Y %H:%M') }}</small>
                     </td>
                     <td>
-                        <small class="text-muted">{{ device.last_seen.strftime('%d.%m.%Y %H:%M') }}</small>
+                        <small class="text-muted">{{ (device.last_seen|to_local).strftime('%d.%m.%Y %H:%M') }}</small>
                     </td>
                     <td class="text-end">
                         <small class="text-light">{{ device.total_packets }}</small>

@@ -49,7 +49,7 @@
                                 {{ user.role | title }}
                             </span>
                         </td>
-                        <td><small class="text-muted">{{ user.created_at.strftime('%d.%m.%Y') }}</small></td>
+                        <td><small class="text-muted">{{ (user.created_at|to_local).strftime('%d.%m.%Y') }}</small></td>
                         <td>
                             {% if user.is_active %}
                                 <span class="badge bg-success">Activ</span>

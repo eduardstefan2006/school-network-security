@@ -39,7 +39,7 @@
                             </small>
                         </td>
                         <td><small class="text-muted">{{ ip.blocked_by }}</small></td>
-                        <td><small class="text-muted">{{ ip.blocked_at.strftime('%d.%m.%Y %H:%M') }}</small></td>
+                        <td><small class="text-muted">{{ (ip.blocked_at|to_local).strftime('%d.%m.%Y %H:%M') }}</small></td>
                         <td>
                             {% if ip.is_active %}
                                 <span class="badge bg-danger">Activ Blocat</span>
