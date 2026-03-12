@@ -25,9 +25,6 @@
         <button class="btn btn-sm btn-outline-primary ms-2" onclick="deduplicateMobileDevices()" title="Deduplicare mobile inclusiv MAC randomizat — ideal după DHCP lease">
             📱 Deduplicare Mobile
         </button>
-        <button class="btn btn-sm btn-outline-warning ms-2" onclick="cleanupInactive()" title="Șterge dispozitivele mobile inactive (MAC randomizat, >24h inactiv)">
-            🗑️ Curăță Inactive
-        </button>
         {% endif %}
     </div>
 </div>
@@ -637,17 +634,6 @@ function deduplicateMobileDevices() {
             }
         })
         .catch(e => alert('Eroare la deduplicare mobile: ' + e.message));
-}
-
-function cleanupInactive() {
-    if (!confirm('Șterge dispozitivele mobile inactive (>24h fără trafic)?')) return;
-    fetch('/api/devices/cleanup-inactive', {method: 'POST'})
-        .then(r => r.json())
-        .then(data => {
-            alert(data.message);
-            refreshDevices();
-        })
-        .catch(e => alert('Eroare la curățare inactive: ' + e.message));
 }
 </script>
 {% endblock %}
