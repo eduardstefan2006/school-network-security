@@ -12,20 +12,6 @@
         <button class="btn btn-sm btn-outline-info" onclick="refreshDevices()">
             <i class="bi bi-arrow-clockwise me-1"></i>Actualizează
         </button>
-        {% if current_user.is_admin() %}
-        <button class="btn btn-sm btn-outline-warning ms-2" onclick="reclassifyDevices()" title="Reclasifică tipurile de dispozitive">
-            <i class="bi bi-arrow-repeat me-1"></i>Reclasifică
-        </button>
-        <button class="btn btn-sm btn-outline-danger ms-2" onclick="reclassifyMobile()" title="Reclasifică dispozitivele mobile">
-            📱 Reclasifică Mobile
-        </button>
-        <button class="btn btn-sm btn-outline-success ms-2" onclick="deduplicateDevices()" title="Elimină dispozitivele duplicate (același MAC, IP-uri diferite)">
-            🔄 Deduplicare
-        </button>
-        <button class="btn btn-sm btn-outline-primary ms-2" onclick="deduplicateMobileDevices()" title="Deduplicare mobile inclusiv MAC randomizat — ideal după DHCP lease">
-            📱 Deduplicare Mobile
-        </button>
-        {% endif %}
     </div>
 </div>
 
@@ -581,59 +567,6 @@ function saveDevice() {
         }
     })
     .catch(() => alert('Eroare de rețea.'));
-}
-
-async function reclassifyDevices() {
-    try {
-        const resp = await fetch('/api/network/reclassify-devices', { method: 'POST' });
-        const data = await resp.json();
-        if (data.success) {
-            alert('Dispozitivele au fost reclasificate cu succes!');
-            refreshDevices();
-        } else {
-            alert('Eroare: ' + (data.error || 'necunoscută'));
-        }
-    } catch (e) {
-        alert('Eroare la reclasificare: ' + e.message);
-    }
-}
-
-function reclassifyMobile() {
-    fetch('/api/devices/reclassify-mobile', { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-            alert('Reclasificate: ' + data.reclassified + ' dispozitive');
-            refreshDevices();
-        })
-        .catch(e => alert('Eroare la reclasificare mobile: ' + e.message));
-}
-
-function deduplicateDevices() {
-    fetch('/api/devices/deduplicate', { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                alert('Deduplicare finalizată: ' + data.deleted + ' dispozitive duplicate eliminate.');
-                refreshDevices();
-            } else {
-                alert('Eroare: ' + (data.error || 'necunoscută'));
-            }
-        })
-        .catch(e => alert('Eroare la deduplicare: ' + e.message));
-}
-
-function deduplicateMobileDevices() {
-    fetch('/api/devices/deduplicate-mobile', { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                alert('Deduplicare mobile finalizată: ' + data.message);
-                refreshDevices();
-            } else {
-                alert('Eroare: ' + (data.error || 'necunoscută'));
-            }
-        })
-        .catch(e => alert('Eroare la deduplicare mobile: ' + e.message));
 }
 </script>
 {% endblock %}
