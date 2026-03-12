@@ -1582,7 +1582,8 @@ def _cleanup_inactive_mobile_devices(app, ttl_hours=24):
 
 
 def _mobile_reset_scheduler(app):
-    """Scheduler independent care rulează _reset_mobile_devices la fiecare _MOBILE_RESET_INTERVAL secunde.
+    """Scheduler independent care rulează _reset_mobile_devices și _cleanup_inactive_mobile_devices
+    la fiecare _MOBILE_RESET_INTERVAL secunde.
 
     Funcționează indiferent de existența traficului de rețea, spre deosebire de mecanismul
     anterior din _maybe_flush_devices care era dependent de pachete primite.
@@ -1597,6 +1598,7 @@ def _mobile_reset_scheduler(app):
         _mobile_reset_running = True
         try:
             _reset_mobile_devices(app)
+            _cleanup_inactive_mobile_devices(app)
         finally:
             _mobile_reset_running = False
 
