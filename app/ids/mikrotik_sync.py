@@ -33,12 +33,11 @@ def _run_sync(app, mikrotik_client):
         from app import db
         from app.models import NetworkDevice
         from app.ids.sniffer import (
-            _hostname_suggests_mobile,
-            get_mac_oui,
-            _AP_OUI_SET,
             _get_vlan_from_ip,
             traffic_stats,
             _stats_lock,
+            _detect_device_type,
+            _FIXED_DEVICE_TYPES,
         )
 
         # ------------------------------------------------------------------
@@ -69,17 +68,19 @@ def _run_sync(app, mikrotik_client):
 
             device.last_seen = datetime.utcnow()
 
-            # Classificare tip dispozitiv
-            oui = get_mac_oui(mac) if mac else None
-            if oui and oui in _AP_OUI_SET:
-                device.device_type = 'ap'
-            elif _hostname_suggests_mobile(hostname):
-                device.device_type = 'mobile'
-
             # VLAN din IP
             vlan = _get_vlan_from_ip(ip)
             if vlan is not None:
                 device.vlan_id = vlan
+
+            # Classificare tip dispozitiv — respectă tipurile fixe și is_known
+            if device.device_type not in _FIXED_DEVICE_TYPES:
+                # Nu reclasifica dispozitive cunoscute care au deja un tip specific (non-client)
+                # Reclasifică doar dispozitive noi (fără tip) sau cu tip generic ('client')
+                if not (device.is_known and device.device_type and device.device_type != 'client'):
+                    new_type = _detect_device_type(ip, mac=mac, vlan_id=vlan, hostname=hostname)
+                    if new_type:
+                        device.device_type = new_type
 
             # Dispozitiv cunoscut dacă are comment în DHCP
             if comment:
