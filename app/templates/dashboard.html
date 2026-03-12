@@ -166,7 +166,7 @@
                                 <br>
                                 <small class="text-muted">
                                     <i class="bi bi-geo-alt me-1"></i>{{ alert.source_ip }}
-                                    &mdash; {{ alert.timestamp.strftime('%H:%M:%S') }}
+                                    &mdash; {{ (alert.timestamp|to_local).strftime('%H:%M:%S') }}
                                 </small>
                             </div>
                         </div>

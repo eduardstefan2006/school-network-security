@@ -85,7 +85,7 @@
                         <td><small class="text-muted">{{ log.id }}</small></td>
                         <td>
                             <small class="text-muted">
-                                {{ log.timestamp.strftime('%d.%m.%Y %H:%M:%S') }}
+                                {{ (log.timestamp|to_local).strftime('%d.%m.%Y %H:%M:%S') }}
                             </small>
                         </td>
                         <td>

@@ -3,10 +3,18 @@ Inițializarea aplicației Flask.
 Folosim pattern-ul Application Factory pentru a crea instanța Flask.
 """
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+
+try:
+    from zoneinfo import ZoneInfo
+    _LOCAL_TZ = ZoneInfo('Europe/Bucharest')
+except ImportError:
+    # Fallback pentru Python < 3.9: offset fix UTC+2 (fără DST).
+    # Notă: nu reflectă ora de vară (UTC+3) — folosiți Python 3.9+ cu zoneinfo.
+    _LOCAL_TZ = timezone(timedelta(hours=2))
 
 # Instanțele extensiilor (fără a fi legate de aplicație)
 db = SQLAlchemy()
@@ -99,9 +107,18 @@ def create_app(config_name=None):
         app.mikrotik_client = mikrotik_client
         print(f"[MikroTik] Integrare activată pentru {app.config['MIKROTIK_HOST']}")
 
+    @app.template_filter('to_local')
+    def to_local_filter(dt):
+        """Convertește un datetime UTC la ora locală a României."""
+        if dt is None:
+            return ''
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(_LOCAL_TZ)
+
     @app.context_processor
     def inject_now():
-        """Injectează data curentă în toate template-urile Jinja2."""
-        return {'now': datetime.now(timezone.utc)}
+        """Injectează data curentă (ora României) în toate template-urile Jinja2."""
+        return {'now': datetime.now(timezone.utc).astimezone(_LOCAL_TZ)}
 
     return app

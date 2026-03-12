@@ -201,7 +201,7 @@
                                 {{ alert.message[:60] }}{% if alert.message|length > 60 %}...{% endif %}
                             </small>
                         </td>
-                        <td><small class="text-muted">{{ alert.timestamp.strftime('%d.%m %H:%M:%S') }}</small></td>
+                        <td><small class="text-muted">{{ (alert.timestamp|to_local).strftime('%d.%m %H:%M:%S') }}</small></td>
                         <td>
                             {% if alert.status == 'active' %}
                                 <span class="badge bg-danger">Activă</span>
