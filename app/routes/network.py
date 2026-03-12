@@ -47,7 +47,6 @@ def index():
     total = len(devices)
     online = sum(1 for d in devices if d.is_online)
     unknown = sum(1 for d in devices if not d.is_known)
-    new_device_alerts = Alert.query.filter_by(alert_type='new_device', status='active').count()
 
     # Statistici pe tip de dispozitiv
     type_counts = {}
@@ -60,7 +59,6 @@ def index():
         total=total,
         online=online,
         unknown=unknown,
-        new_device_alerts=new_device_alerts,
         type_counts=type_counts,
     )
 

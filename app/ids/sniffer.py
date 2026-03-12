@@ -786,27 +786,6 @@ def _flush_device_buffer(app):
                             vlan=str(vlan_val) if vlan_val is not None else None,
                         )
                         db.session.add(device)
-                        # Alertă pentru dispozitiv nou necunoscut (fără duplicate)
-                        if not is_known and not Alert.query.filter_by(
-                            alert_type='new_device',
-                            source_ip=ip,
-                            status='active',
-                        ).first():
-                            alert = Alert(
-                                alert_type='new_device',
-                                source_ip=ip,
-                                message=f'Dispozitiv nou detectat în rețea: {ip}',
-                                severity='medium',
-                                status='active',
-                            )
-                            db.session.add(alert)
-                            log = SecurityLog(
-                                event_type='new_device',
-                                source_ip=ip,
-                                message=f'Dispozitiv nou necunoscut detectat: {ip}',
-                                severity='warning',
-                            )
-                            db.session.add(log)
                 except Exception as e:
                     print(f"[Sniffer] Eroare la actualizarea dispozitivului {ip}: {e}")
                     db.session.rollback()
