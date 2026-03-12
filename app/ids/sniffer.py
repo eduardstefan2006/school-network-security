@@ -1582,11 +1582,15 @@ def _cleanup_inactive_mobile_devices(app, ttl_hours=24):
 
 
 def _mobile_reset_scheduler(app):
-    """Scheduler independent care rulează _reset_mobile_devices și _cleanup_inactive_mobile_devices
-    la fiecare _MOBILE_RESET_INTERVAL secunde.
+    """Scheduler independent care rulează task-uri periodice de întreținere a dispozitivelor
+    la fiecare _MOBILE_RESET_INTERVAL secunde (10 minute).
 
-    Funcționează indiferent de existența traficului de rețea, spre deosebire de mecanismul
-    anterior din _maybe_flush_devices care era dependent de pachete primite.
+    Rulează:
+    - _reset_mobile_devices: șterge dispozitivele mobile inactive
+    - _cleanup_inactive_mobile_devices: curăță mobile cu MAC randomizat >24h
+    - _fix_device_types: reclasifică tipurile de dispozitive
+    - _fix_device_vlans: setează VLAN-urile lipsă
+    - _deduplicate_devices: consolidează dispozitive duplicate (același MAC)
     """
     global _mobile_reset_running
     while _running:
@@ -1599,6 +1603,9 @@ def _mobile_reset_scheduler(app):
         try:
             _reset_mobile_devices(app)
             _cleanup_inactive_mobile_devices(app)
+            _fix_device_types(app)
+            _fix_device_vlans(app)
+            _deduplicate_devices(app)
         finally:
             _mobile_reset_running = False
 
