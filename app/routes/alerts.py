@@ -340,3 +340,76 @@ def api_recent_alerts():
         Alert.timestamp.desc()
     ).limit(10).all()
     return jsonify([a.to_dict() for a in alerts])
+
+
+@alerts_bp.route('/api/ip-lookup/<ip>')
+@login_required
+def ip_lookup(ip):
+    """API endpoint pentru informații detaliate despre un IP."""
+    import ipaddress
+    import requests as http_requests
+
+    # Validăm că parametrul este un IP valid
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+    except ValueError:
+        return jsonify({'error': 'IP invalid'}), 400
+
+    result = {
+        'ip': ip,
+        'whois': None,
+        'is_blocked': False,
+        'blocked_by': None,
+        'blocked_at': None,
+        'alert_history': [],
+        'device': None,
+    }
+
+    # 1. WHOIS / Geolocation via ip-api.com (gratuit, fără API key)
+    try:
+        if not ip_obj.is_private:
+            resp = http_requests.get(
+                f'http://ip-api.com/json/{ip}',
+                params={
+                    'fields': 'status,message,country,countryCode,region,'
+                              'regionName,city,zip,lat,lon,timezone,isp,org,as,query'
+                },
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                result['whois'] = resp.json()
+        else:
+            result['whois'] = {
+                'status': 'fail',
+                'message': 'IP privat — informații WHOIS indisponibile',
+                'query': ip,
+            }
+    except Exception as e:
+        result['whois'] = {'status': 'fail', 'message': str(e)}
+
+    # 2. Stare blocare
+    blocked = BlockedIP.query.filter_by(ip_address=ip, is_active=True).first()
+    if blocked:
+        result['is_blocked'] = True
+        result['blocked_by'] = blocked.blocked_by
+        result['blocked_at'] = blocked.blocked_at.strftime('%d.%m.%Y %H:%M')
+
+    # 3. Istoricul alertelor (ultimele 20 pentru acest IP)
+    ip_alerts = Alert.query.filter_by(source_ip=ip).order_by(
+        Alert.timestamp.desc()
+    ).limit(20).all()
+    result['alert_history'] = [a.to_dict() for a in ip_alerts]
+
+    # 4. Informații dispozitiv din rețea
+    device = NetworkDevice.query.filter_by(ip_address=ip).first()
+    if device:
+        result['device'] = {
+            'mac_address': device.mac_address,
+            'hostname': device.hostname,
+            'device_type': device.device_type,
+            'vlan': device.vlan,
+            'first_seen': device.first_seen.strftime('%d.%m.%Y %H:%M') if device.first_seen else None,
+            'last_seen': device.last_seen.strftime('%d.%m.%Y %H:%M') if device.last_seen else None,
+        }
+
+    return jsonify(result)

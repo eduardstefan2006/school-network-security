@@ -191,7 +191,14 @@
                             {% endif %}
                             <small>{{ alert.alert_type | replace('_', ' ') | title }}</small>
                         </td>
-                        <td><code class="text-danger small">{{ alert.source_ip }}</code></td>
+                        <td>
+                            <a href="#" class="ip-lookup-link text-danger text-decoration-none"
+                               data-ip="{{ alert.source_ip }}"
+                               data-bs-toggle="modal" data-bs-target="#ipLookupModal">
+                                <code>{{ alert.source_ip }}</code>
+                                <i class="bi bi-search ms-1" style="font-size:0.7rem;"></i>
+                            </a>
+                        </td>
                         <td>
                             <code class="text-muted small">{{ alert.destination_ip or '-' }}</code>
                         </td>

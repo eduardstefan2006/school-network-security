@@ -137,6 +137,32 @@
     {% endwith %}
 
     {% block content %}{% endblock %}
+
+    <!-- IP Lookup Modal (disponibil pe toate paginile) -->
+    <div class="modal fade" id="ipLookupModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content bg-dark text-light border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">
+                        <i class="bi bi-search me-2"></i>Detalii IP: <code id="ipLookupAddress" class="text-danger"></code>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="ipLookupBody">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-info" role="status"></div>
+                        <p class="text-muted mt-2">Se încarcă informațiile...</p>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <a id="ipLookupExternalLink" href="#" target="_blank" class="btn btn-sm btn-outline-info">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>Vezi pe ip-api.com
+                    </a>
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Închide</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </main>
 
 <!-- Footer -->
@@ -154,6 +180,126 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <!-- JS personalizat -->
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+
+<script>
+/* IP Lookup Modal — disponibil pe toate paginile */
+document.addEventListener('DOMContentLoaded', function () {
+    /* Funcție locală de sanitizare HTML (protecție XSS). */
+    function escHtml(text) {
+        var map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+        return String(text).replace(/[&<>"']/g, function (m) { return map[m]; });
+    }
+    document.addEventListener('click', function (e) {
+        const link = e.target.closest('.ip-lookup-link');
+        if (!link) return;
+        e.preventDefault();
+        const ip = link.dataset.ip;
+        if (!ip) return;
+
+        document.getElementById('ipLookupAddress').textContent = ip;
+        document.getElementById('ipLookupExternalLink').href = 'http://ip-api.com/json/' + encodeURIComponent(ip);
+        document.getElementById('ipLookupBody').innerHTML =
+            '<div class="text-center py-4">' +
+            '<div class="spinner-border text-info" role="status"></div>' +
+            '<p class="text-muted mt-2">Se încarcă informațiile pentru ' + escHtml(ip) + '...</p>' +
+            '</div>';
+
+        fetch('/api/ip-lookup/' + encodeURIComponent(ip))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var html = '';
+
+                /* Secțiunea 1: WHOIS / Geolocalizare */
+                html += '<div class="card bg-black border-secondary mb-3">';
+                html += '<div class="card-header border-secondary"><i class="bi bi-globe me-2"></i>WHOIS &amp; Geolocalizare</div>';
+                html += '<div class="card-body">';
+                if (data.whois && data.whois.status === 'success') {
+                    var w = data.whois;
+                    html += '<div class="row g-2">';
+                    html += '<div class="col-6"><small class="text-muted">Țara:</small><br><span class="text-light">' +
+                        escHtml(w.country || '-') +
+                        (w.countryCode ? ' <img src="https://flagcdn.com/16x12/' + escHtml(w.countryCode.toLowerCase()) + '.png" class="ms-1">' : '') +
+                        '</span></div>';
+                    html += '<div class="col-6"><small class="text-muted">Oraș:</small><br><span class="text-light">' + escHtml(w.city || '-') + '</span></div>';
+                    html += '<div class="col-6"><small class="text-muted">ISP:</small><br><span class="text-light">' + escHtml(w.isp || '-') + '</span></div>';
+                    html += '<div class="col-6"><small class="text-muted">Organizație:</small><br><span class="text-light">' + escHtml(w.org || '-') + '</span></div>';
+                    html += '<div class="col-6"><small class="text-muted">AS:</small><br><code class="text-info">' + escHtml(w.as || '-') + '</code></div>';
+                    html += '<div class="col-6"><small class="text-muted">Regiune:</small><br><span class="text-light">' + escHtml(w.regionName || '-') + '</span></div>';
+                    if (w.lat && w.lon) {
+                        html += '<div class="col-12 mt-2"><small class="text-muted">Coordonate:</small> <code>' + escHtml(String(w.lat)) + ', ' + escHtml(String(w.lon)) + '</code></div>';
+                    }
+                    html += '</div>';
+                } else {
+                    html += '<p class="text-muted mb-0"><i class="bi bi-exclamation-circle me-1"></i>Nu s-au putut obține informații WHOIS (IP privat sau serviciu indisponibil).</p>';
+                }
+                html += '</div></div>';
+
+                /* Secțiunea 2: Stare blocare */
+                html += '<div class="card bg-black border-secondary mb-3">';
+                html += '<div class="card-header border-secondary"><i class="bi bi-shield me-2"></i>Stare Blocare</div>';
+                html += '<div class="card-body">';
+                if (data.is_blocked) {
+                    html += '<span class="badge bg-danger me-2">Blocat</span>';
+                    html += '<small class="text-muted">Blocat de ' + escHtml(data.blocked_by || 'system') + ' la ' + escHtml(data.blocked_at || '-') + '</small>';
+                } else {
+                    html += '<span class="badge bg-success">Neblocat</span>';
+                }
+                html += '</div></div>';
+
+                /* Secțiunea 3: Istoricul alertelor */
+                html += '<div class="card bg-black border-secondary mb-3">';
+                html += '<div class="card-header border-secondary"><i class="bi bi-clock-history me-2"></i>Istoricul Alertelor pentru acest IP</div>';
+                html += '<div class="card-body p-0">';
+                if (data.alert_history && data.alert_history.length > 0) {
+                    html += '<div class="table-responsive"><table class="table table-dark table-sm table-hover mb-0">';
+                    html += '<thead><tr><th>#</th><th>Tip</th><th>Severitate</th><th>Mesaj</th><th>Data</th><th>Stare</th></tr></thead><tbody>';
+                    data.alert_history.forEach(function (a) {
+                        var sevClass = a.severity === 'critical' ? 'bg-danger' : a.severity === 'high' ? 'bg-warning text-dark' : 'bg-secondary';
+                        var statusClass = a.status === 'active' ? 'bg-danger' : a.status === 'resolved' ? 'bg-success' : 'bg-secondary';
+                        var msg = escHtml(a.message || '');
+                        if (msg.length > 60) msg = msg.substring(0, 60) + '...';
+                        html += '<tr>' +
+                            '<td><small class="text-muted">' + escHtml(String(a.id)) + '</small></td>' +
+                            '<td><small>' + escHtml((a.alert_type || '').replace(/_/g, ' ')) + '</small></td>' +
+                            '<td><span class="badge ' + sevClass + '">' + escHtml((a.severity || '').toUpperCase()) + '</span></td>' +
+                            '<td><small class="text-light">' + msg + '</small></td>' +
+                            '<td><small class="text-muted">' + escHtml(a.timestamp || '') + '</small></td>' +
+                            '<td><span class="badge ' + statusClass + '">' + escHtml(a.status || '') + '</span></td>' +
+                            '</tr>';
+                    });
+                    html += '</tbody></table></div>';
+                } else {
+                    html += '<p class="text-muted p-3 mb-0">Nicio altă alertă pentru acest IP.</p>';
+                }
+                html += '</div></div>';
+
+                /* Secțiunea 4: Dispozitiv în rețea */
+                if (data.device) {
+                    var d = data.device;
+                    html += '<div class="card bg-black border-secondary">';
+                    html += '<div class="card-header border-secondary"><i class="bi bi-pc-display me-2"></i>Dispozitiv în Rețea</div>';
+                    html += '<div class="card-body"><div class="row g-2">';
+                    html += '<div class="col-6"><small class="text-muted">MAC:</small><br><code>' + escHtml(d.mac_address || '-') + '</code></div>';
+                    html += '<div class="col-6"><small class="text-muted">Hostname:</small><br><span class="text-light">' + escHtml(d.hostname || '-') + '</span></div>';
+                    html += '<div class="col-6"><small class="text-muted">Tip:</small><br><span class="text-light">' + escHtml(d.device_type || '-') + '</span></div>';
+                    html += '<div class="col-6"><small class="text-muted">VLAN:</small><br><span class="text-light">' + escHtml(String(d.vlan || '-')) + '</span></div>';
+                    html += '<div class="col-6"><small class="text-muted">Prima detectare:</small><br><small class="text-muted">' + escHtml(d.first_seen || '-') + '</small></div>';
+                    html += '<div class="col-6"><small class="text-muted">Ultima activitate:</small><br><small class="text-muted">' + escHtml(d.last_seen || '-') + '</small></div>';
+                    html += '</div></div></div>';
+                }
+
+                document.getElementById('ipLookupBody').innerHTML = html;
+            })
+            .catch(function (err) {
+                document.getElementById('ipLookupBody').innerHTML =
+                    '<div class="text-center text-danger py-4">' +
+                    '<i class="bi bi-exclamation-triangle" style="font-size:2rem;"></i>' +
+                    '<p class="mt-2">Eroare la obținerea informațiilor: ' + escHtml(String(err)) + '</p>' +
+                    '</div>';
+            });
+    });
+});
+</script>
 
 {% block scripts %}{% endblock %}
 </body>

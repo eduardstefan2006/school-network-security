@@ -165,7 +165,13 @@
                                 <small class="text-light">{{ alert.alert_type | replace('_', ' ') | title }}</small>
                                 <br>
                                 <small class="text-muted">
-                                    <i class="bi bi-geo-alt me-1"></i>{{ alert.source_ip }}
+                                    <i class="bi bi-geo-alt me-1"></i>
+                                    <a href="#" class="ip-lookup-link text-muted text-decoration-none"
+                                       data-ip="{{ alert.source_ip }}"
+                                       data-bs-toggle="modal" data-bs-target="#ipLookupModal">
+                                        {{ alert.source_ip }}
+                                        <i class="bi bi-search ms-1" style="font-size:0.65rem;"></i>
+                                    </a>
                                     &mdash; {{ (alert.timestamp|to_local).strftime('%H:%M:%S') }}
                                 </small>
                             </div>

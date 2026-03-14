@@ -93,7 +93,18 @@
                                 {{ log.event_type | replace('_', ' ') | title }}
                             </small>
                         </td>
-                        <td><code class="text-success small">{{ log.source_ip or '-' }}</code></td>
+                        <td>
+                            {% if log.source_ip and log.source_ip != '-' %}
+                            <a href="#" class="ip-lookup-link text-success text-decoration-none"
+                               data-ip="{{ log.source_ip }}"
+                               data-bs-toggle="modal" data-bs-target="#ipLookupModal">
+                                <code class="text-success small">{{ log.source_ip }}</code>
+                                <i class="bi bi-search ms-1" style="font-size:0.65rem;"></i>
+                            </a>
+                            {% else %}
+                            <code class="text-success small">{{ log.source_ip or '-' }}</code>
+                            {% endif %}
+                        </td>
                         <td><code class="text-muted small">{{ log.destination_ip or '-' }}</code></td>
                         <td>
                             {% if log.protocol %}
