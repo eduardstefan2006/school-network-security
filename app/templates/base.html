@@ -156,7 +156,7 @@
                 </div>
                 <div class="modal-footer border-secondary">
                     <a id="ipLookupExternalLink" href="#" target="_blank" class="btn btn-sm btn-outline-info">
-                        <i class="bi bi-box-arrow-up-right me-1"></i>Vezi pe ipwho.is
+                        <i class="bi bi-box-arrow-up-right me-1"></i>Vezi pe ipinfo.io
                     </a>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Închide</button>
                 </div>
@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!ip) return;
 
         document.getElementById('ipLookupAddress').textContent = ip;
-        document.getElementById('ipLookupExternalLink').href = 'https://ipwho.is/' + encodeURIComponent(ip);
+        document.getElementById('ipLookupExternalLink').href = 'https://ipinfo.io/' + encodeURIComponent(ip);
         document.getElementById('ipLookupBody').innerHTML =
             '<div class="text-center py-4">' +
             '<div class="spinner-border text-info" role="status"></div>' +
