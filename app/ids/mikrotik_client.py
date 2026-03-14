@@ -351,6 +351,93 @@ class MikrotikClient:
                 result[key] = 0
         return result
 
+    def block_mac_on_router(self, mac_address: str, comment: str = '') -> bool:
+        """Adaugă reguli bridge filter pentru a bloca un MAC pe bridge-ul RETEA.
+
+        Adaugă câte o regulă pentru chain=forward și chain=input.
+        Endpoint RouterOS: /interface/bridge/filter/add
+        Returnează True dacă reușit, False dacă eroare.
+        """
+        if not self.is_connected():
+            return False
+        mac_upper = mac_address.upper()
+        src_mac = f'{mac_upper}/FF:FF:FF:FF:FF:FF'
+        success = True
+        for chain in ('forward', 'input'):
+            try:
+                self._connection('/interface/bridge/filter/add', **{
+                    'chain': chain,
+                    'in-bridge': 'RETEA',
+                    'src-mac-address': src_mac,
+                    'action': 'drop',
+                    'comment': comment,
+                })
+                print(f"[MikroTik] Regulă bridge filter adăugată: chain={chain} src-mac={mac_upper}")
+            except Exception as e:
+                print(f"[MikroTik] Eroare block_mac_on_router({mac_upper}, chain={chain}): {e}")
+                success = False
+        return success
+
+    def unblock_mac_on_router(self, mac_address: str) -> bool:
+        """Elimină regulile bridge filter care blochează un MAC de pe bridge-ul RETEA.
+
+        Endpoint RouterOS: /interface/bridge/filter/print + /remove
+        Returnează True dacă cel puțin o regulă a fost eliminată, False altfel.
+        """
+        if not self.is_connected():
+            return False
+        mac_upper = mac_address.upper()
+        src_mac = f'{mac_upper}/FF:FF:FF:FF:FF:FF'
+        removed = 0
+        try:
+            entries = list(self._connection('/interface/bridge/filter/print', **{
+                '?src-mac-address': src_mac,
+            }))
+            for entry in entries:
+                try:
+                    self._connection('/interface/bridge/filter/remove', **{
+                        '.id': entry['.id'],
+                    })
+                    removed += 1
+                except Exception as e:
+                    print(f"[MikroTik] Eroare la eliminarea regulii bridge filter {entry.get('.id')}: {e}")
+            if removed:
+                print(f"[MikroTik] {removed} reguli bridge filter eliminate pentru MAC {mac_upper}.")
+            else:
+                print(f"[MikroTik] Nicio regulă bridge filter găsită pentru MAC {mac_upper}.")
+        except Exception as e:
+            print(f"[MikroTik] Eroare unblock_mac_on_router({mac_upper}): {e}")
+            return False
+        return removed > 0
+
+    def get_blocked_macs_on_router(self) -> list:
+        """Returnează regulile bridge filter adăugate de SchoolSec (cu comentariu 'SchoolSec').
+
+        Endpoint RouterOS: /interface/bridge/filter/print
+        Returnează: lista de dict-uri cu mac_address, comment, chain, disabled, .id
+        """
+        if not self.is_connected():
+            return []
+        try:
+            results = []
+            for item in self._connection('/interface/bridge/filter/print'):
+                comment = item.get('comment', '')
+                if 'SchoolSec' in comment or 'schoolsec' in comment.lower():
+                    src_mac = item.get('src-mac-address', '')
+                    # Extragem doar adresa MAC fără mască
+                    mac = src_mac.split('/')[0] if '/' in src_mac else src_mac
+                    results.append({
+                        'mac_address': mac,
+                        'comment': comment,
+                        'chain': item.get('chain', ''),
+                        'disabled': item.get('disabled', False),
+                        '.id': item.get('.id', ''),
+                    })
+            return results
+        except Exception as e:
+            print(f"[MikroTik] Eroare get_blocked_macs_on_router: {e}")
+            return []
+
     def get_address_list_entries(self, list_name='schoolsec-blocked') -> list:
         """Returnează intrările din address list-ul specificat.
 

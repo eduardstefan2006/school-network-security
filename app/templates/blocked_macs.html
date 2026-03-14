@@ -1,21 +1,21 @@
 {% extends "base.html" %}
 
-{% block title %}IP-uri Blocate - SchoolSec{% endblock %}
+{% block title %}MAC-uri Blocate - SchoolSec{% endblock %}
 
 {% block content %}
 <div class="row mb-4 align-items-center">
     <div class="col">
-        <h2 class="text-warning"><i class="bi bi-shield-x me-2"></i>IP-uri Blocate</h2>
-        <small class="text-muted">Gestionarea IP-urilor blocate din rețea</small>
+        <h2 class="text-warning"><i class="bi bi-shield-x me-2"></i>MAC-uri Blocate</h2>
+        <small class="text-muted">Gestionarea dispozitivelor blocate pe baza adresei MAC</small>
     </div>
     <div class="col-auto">
-        <a href="{{ url_for('alerts.blocked_macs') }}" class="btn btn-outline-warning btn-sm">
-            <i class="bi bi-cpu me-1"></i>MAC-uri Blocate
+        <a href="{{ url_for('alerts.blocked_ips') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-hdd-network me-1"></i>IP-uri Blocate
         </a>
     </div>
 </div>
 
-{% if blocked_ips %}
+{% if blocked_macs %}
 <div class="card schoolsec-card border-secondary">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -23,7 +23,8 @@
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Adresă IP</th>
+                        <th>Adresă MAC</th>
+                        <th>IP Asociat</th>
                         <th>Motiv</th>
                         <th>Blocat De</th>
                         <th>Data Blocării</th>
@@ -34,19 +35,26 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for ip in blocked_ips %}
-                    <tr {% if not ip.is_active %}class="opacity-50"{% endif %}>
-                        <td><small class="text-muted">{{ ip.id }}</small></td>
-                        <td><code class="text-danger">{{ ip.ip_address }}</code></td>
+                    {% for mac in blocked_macs %}
+                    <tr {% if not mac.is_active %}class="opacity-50"{% endif %}>
+                        <td><small class="text-muted">{{ mac.id }}</small></td>
+                        <td><code class="text-danger">{{ mac.mac_address }}</code></td>
                         <td>
-                            <small class="text-muted" title="{{ ip.reason }}">
-                                {{ ip.reason[:60] }}{% if ip.reason|length > 60 %}...{% endif %}
+                            {% if mac.associated_ip %}
+                                <code class="text-warning">{{ mac.associated_ip }}</code>
+                            {% else %}
+                                <small class="text-muted">—</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted" title="{{ mac.reason }}">
+                                {{ mac.reason[:60] }}{% if mac.reason|length > 60 %}...{% endif %}
                             </small>
                         </td>
-                        <td><small class="text-muted">{{ ip.blocked_by }}</small></td>
-                        <td><small class="text-muted">{{ (ip.blocked_at|to_local).strftime('%d.%m.%Y %H:%M') }}</small></td>
+                        <td><small class="text-muted">{{ mac.blocked_by }}</small></td>
+                        <td><small class="text-muted">{{ (mac.blocked_at|to_local).strftime('%d.%m.%Y %H:%M') }}</small></td>
                         <td>
-                            {% if ip.is_active %}
+                            {% if mac.is_active %}
                                 <span class="badge bg-danger">Activ Blocat</span>
                             {% else %}
                                 <span class="badge bg-secondary">Deblocat</span>
@@ -54,13 +62,13 @@
                         </td>
                         {% if current_user.is_admin() %}
                         <td>
-                            {% if ip.is_active %}
+                            {% if mac.is_active %}
                             <form method="POST"
-                                  action="{{ url_for('alerts.unblock_ip', ip_id=ip.id) }}"
+                                  action="{{ url_for('alerts.unblock_mac', mac_id=mac.id) }}"
                                   class="d-inline">
                                 <button type="submit" class="btn btn-sm btn-outline-success"
-                                        title="Deblochează IP-ul"
-                                        onclick="return confirm('Ești sigur că vrei să deblochezi IP-ul {{ ip.ip_address }}?')">
+                                        title="Deblochează MAC-ul"
+                                        onclick="return confirm('Ești sigur că vrei să deblochezi MAC-ul {{ mac.mac_address }}?')">
                                     <i class="bi bi-shield-check me-1"></i>Deblochează
                                 </button>
                             </form>
@@ -77,8 +85,8 @@
 {% else %}
 <div class="text-center text-muted py-5">
     <i class="bi bi-shield-check text-success" style="font-size: 3rem;"></i>
-    <h5 class="mt-3">Niciun IP blocat</h5>
-    <p>Niciun IP nu a fost blocat în sistem.</p>
+    <h5 class="mt-3">Niciun MAC blocat</h5>
+    <p>Niciun dispozitiv nu a fost blocat pe baza adresei MAC.</p>
     <a href="{{ url_for('alerts.index') }}" class="btn btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>Înapoi la Alerte
     </a>

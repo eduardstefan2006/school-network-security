@@ -173,6 +173,43 @@ class BlockedIP(db.Model):
 
 
 # =============================================================================
+# Model MAC Blocat
+# =============================================================================
+class BlockedMAC(db.Model):
+    """Model pentru MAC-urile blocate în sistem."""
+    __tablename__ = 'blocked_macs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    # Adresa MAC blocată (format AA:BB:CC:DD:EE:FF)
+    mac_address = db.Column(db.String(17), unique=True, nullable=False)
+    # Motivul blocării
+    reason = db.Column(db.Text, nullable=False)
+    # Cine a blocat (utilizator sau sistem automat)
+    blocked_by = db.Column(db.String(80), default='system', nullable=False)
+    # Timestamp-ul blocării
+    blocked_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    # Este activă blocarea?
+    is_active = db.Column(db.Boolean, default=True)
+    # IP-ul asociat la momentul blocării (informativ)
+    associated_ip = db.Column(db.String(45), nullable=True)
+
+    def to_dict(self):
+        """Convertește MAC-ul blocat în dicționar."""
+        return {
+            'id': self.id,
+            'mac_address': self.mac_address,
+            'reason': self.reason,
+            'blocked_by': self.blocked_by,
+            'blocked_at': self.blocked_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'is_active': self.is_active,
+            'associated_ip': self.associated_ip,
+        }
+
+    def __repr__(self):
+        return f'<BlockedMAC {self.mac_address}>'
+
+
+# =============================================================================
 # Model Dispozitiv Rețea
 # =============================================================================
 class NetworkDevice(db.Model):
