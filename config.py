@@ -67,6 +67,10 @@ class Config:
     MIKROTIK_ENABLED = os.environ.get('MIKROTIK_ENABLED', 'false').lower() == 'true'
     MIKROTIK_SYNC_INTERVAL = int(os.environ.get('MIKROTIK_SYNC_INTERVAL', 60))  # secunde
 
+    # Monitorizare securitate externă (atacuri din internet)
+    # Activat automat când MikroTik este activ
+    EXTERNAL_MONITOR_ENABLED = os.environ.get('EXTERNAL_MONITOR_ENABLED', 'true').lower() == 'true'
+
 
 class DevelopmentConfig(Config):
     """Configurare pentru dezvoltare."""

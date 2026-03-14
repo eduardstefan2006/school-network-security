@@ -240,3 +240,139 @@ class MikrotikClient:
         except Exception as e:
             print(f"[MikroTik] Eroare get_router_identity: {e}")
         return ''
+
+    # ------------------------------------------------------------------
+    # Securitate externă
+    # ------------------------------------------------------------------
+
+    def get_firewall_log(self, limit=200) -> list:
+        """Citește ultimele intrări din logul RouterOS filtrate pe topic 'firewall'.
+
+        Endpoint RouterOS: /log/print
+        Filtrare: topics conține 'firewall'
+        Returnează: lista de dict-uri cu time, topics, message
+        """
+        if not self.is_connected():
+            return []
+        try:
+            entries = []
+            for item in self._connection('/log/print'):
+                topics = item.get('topics', '')
+                if 'firewall' in topics:
+                    entries.append({
+                        'time': item.get('time', ''),
+                        'topics': topics,
+                        'message': item.get('message', ''),
+                    })
+                    if len(entries) >= limit:
+                        break
+            return entries
+        except Exception as e:
+            print(f"[MikroTik] Eroare get_firewall_log: {e}")
+            return []
+
+    def get_system_resources(self) -> dict:
+        """Returnează starea resurselor routerului (CPU, RAM, uptime).
+
+        Endpoint RouterOS: /system/resource/print
+        Returnează: dict cu cpu_load, free_memory, total_memory, uptime, version, board_name
+        """
+        if not self.is_connected():
+            return {}
+        try:
+            result = list(self._connection('/system/resource/print'))
+            if result:
+                item = result[0]
+                free_mem = int(item.get('free-memory', 0))
+                total_mem = int(item.get('total-memory', 1))
+                return {
+                    'cpu_load': int(item.get('cpu-load', 0)),
+                    'free_memory': free_mem,
+                    'total_memory': total_mem,
+                    'uptime': item.get('uptime', ''),
+                    'version': item.get('version', ''),
+                    'board_name': item.get('board-name', ''),
+                }
+        except Exception as e:
+            print(f"[MikroTik] Eroare get_system_resources: {e}")
+        return {}
+
+    def get_login_attempts(self, limit=100) -> list:
+        """Citește logurile de login din RouterOS (reușite și eșuate).
+
+        Endpoint RouterOS: /log/print
+        Filtrare: topics conține 'system' și message conține 'login' sau 'logged in' sau 'login failure'
+        Returnează: lista de dict-uri cu time, message, ip (extras din mesaj)
+        """
+        if not self.is_connected():
+            return []
+        try:
+            import re
+            entries = []
+            _ip_re = re.compile(r'(\d{1,3}(?:\.\d{1,3}){3})')
+            for item in self._connection('/log/print'):
+                topics = item.get('topics', '')
+                message = item.get('message', '').lower()
+                if 'system' in topics and ('login' in message or 'logged in' in message):
+                    raw_msg = item.get('message', '')
+                    ip_match = _ip_re.search(raw_msg)
+                    entries.append({
+                        'time': item.get('time', ''),
+                        'topics': topics,
+                        'message': raw_msg,
+                        'ip': ip_match.group(1) if ip_match else '',
+                        'success': 'failure' not in message and 'failed' not in message,
+                    })
+                    if len(entries) >= limit:
+                        break
+            return entries
+        except Exception as e:
+            print(f"[MikroTik] Eroare get_login_attempts: {e}")
+            return []
+
+    def get_firewall_rules_count(self) -> dict:
+        """Returnează numărul de reguli din fiecare chain firewall.
+
+        Endpoint RouterOS: /ip/firewall/filter/print, /ip/firewall/nat/print, /ip/firewall/mangle/print
+        Returnează: dict cu filter_rules, nat_rules, mangle_rules
+        """
+        if not self.is_connected():
+            return {}
+        result = {}
+        for key, endpoint in [
+            ('filter_rules', '/ip/firewall/filter/print'),
+            ('nat_rules', '/ip/firewall/nat/print'),
+            ('mangle_rules', '/ip/firewall/mangle/print'),
+        ]:
+            try:
+                result[key] = len(list(self._connection(endpoint)))
+            except Exception as e:
+                print(f"[MikroTik] Eroare get_firewall_rules_count ({key}): {e}")
+                result[key] = 0
+        return result
+
+    def get_address_list_entries(self, list_name='schoolsec-blocked') -> list:
+        """Returnează intrările din address list-ul specificat.
+
+        Endpoint RouterOS: /ip/firewall/address-list/print
+        Returnează: lista de dict-uri cu address, list, comment, creation_time, timeout
+        """
+        if not self.is_connected():
+            return []
+        try:
+            entries = []
+            for item in self._connection('/ip/firewall/address-list/print', **{
+                '?list': list_name,
+            }):
+                entries.append({
+                    'address': item.get('address', ''),
+                    'list': item.get('list', ''),
+                    'comment': item.get('comment', ''),
+                    'creation_time': item.get('creation-time', ''),
+                    'timeout': item.get('timeout', ''),
+                    '.id': item.get('.id', ''),
+                })
+            return entries
+        except Exception as e:
+            print(f"[MikroTik] Eroare get_address_list_entries({list_name}): {e}")
+            return []

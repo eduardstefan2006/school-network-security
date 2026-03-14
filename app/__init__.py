@@ -74,6 +74,7 @@ def create_app(config_name=None):
     from app.routes.reports import reports_bp
     from app.routes.network import network_bp
     from app.routes.mikrotik import mikrotik_bp
+    from app.routes.external import external_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -85,6 +86,7 @@ def create_app(config_name=None):
     app.register_blueprint(reports_bp)
     app.register_blueprint(network_bp)
     app.register_blueprint(mikrotik_bp)
+    app.register_blueprint(external_bp)
 
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():
@@ -106,6 +108,12 @@ def create_app(config_name=None):
         start_mikrotik_sync(app, mikrotik_client)
         app.mikrotik_client = mikrotik_client
         print(f"[MikroTik] Integrare activată pentru {app.config['MIKROTIK_HOST']}")
+
+        # Monitorizare securitate externă
+        if app.config.get('EXTERNAL_MONITOR_ENABLED', True):
+            from app.ids.external_monitor import ExternalMonitor
+            app._external_monitor = ExternalMonitor(app, mikrotik_client)
+            print("[External Monitor] Monitorizare securitate externă activată.")
 
     @app.template_filter('to_local')
     def to_local_filter(dt):
