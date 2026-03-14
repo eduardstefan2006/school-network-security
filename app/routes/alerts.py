@@ -365,63 +365,48 @@ def ip_lookup(ip):
         'device': None,
     }
 
-    # 1. WHOIS / Geolocation via ipwho.is (gratuit, fără API key, suportă HTTPS)
+    # 1. WHOIS / Geolocation via ipwho.is (gratuit, HTTPS, fără API key)
     try:
         if not ip_obj.is_private:
-            whois_data = None
-            # Primary: ipwho.is (HTTPS supported)
-            try:
-                resp = http_requests.get(
-                    f'https://ipwho.is/{ip}',
-                    timeout=5,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get('success', False):
-                        whois_data = {
-                            'status': 'success',
-                            'country': data.get('country', ''),
-                            'countryCode': data.get('country_code', ''),
-                            'region': data.get('region_code', ''),
-                            'regionName': data.get('region', ''),
-                            'city': data.get('city', ''),
-                            'zip': data.get('postal', ''),
-                            'lat': data.get('latitude', 0),
-                            'lon': data.get('longitude', 0),
-                            'timezone': data.get('timezone', {}).get('id', ''),
-                            'isp': data.get('connection', {}).get('isp', ''),
-                            'org': data.get('connection', {}).get('org', ''),
-                            'as': ' '.join(filter(None, [
-                                f"AS{data.get('connection', {}).get('asn', '')}" if data.get('connection', {}).get('asn') else None,
-                                data.get('connection', {}).get('org', '') or None,
-                            ])),
-                            'query': ip,
-                        }
-                    else:
-                        whois_data = {
-                            'status': 'fail',
-                            'message': data.get('message', 'Unknown error'),
-                            'query': ip,
-                        }
-            except Exception:
-                pass
-
-            # Fallback: ip-api.com (HTTP only)
-            if whois_data is None:
-                resp = http_requests.get(
-                    f'http://ip-api.com/json/{ip}',
-                    params={
-                        'fields': 'status,message,country,countryCode,region,'
-                                  'regionName,city,zip,lat,lon,timezone,isp,org,as,query'
-                    },
-                    timeout=5,
-                )
-                if resp.status_code == 200:
-                    whois_data = resp.json()
-
-            if whois_data is None:
-                whois_data = {'status': 'fail', 'message': 'Geolocation indisponibilă', 'query': ip}
-            result['whois'] = whois_data
+            resp = http_requests.get(
+                f'https://ipwho.is/{ip}',
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get('success', False):
+                    conn = data.get('connection', {})
+                    tz = data.get('timezone', {})
+                    asn = conn.get('asn', '')
+                    org = conn.get('org', '')
+                    result['whois'] = {
+                        'status': 'success',
+                        'country': data.get('country', ''),
+                        'countryCode': data.get('country_code', ''),
+                        'region': data.get('region_code', ''),
+                        'regionName': data.get('region', ''),
+                        'city': data.get('city', ''),
+                        'zip': data.get('postal', ''),
+                        'lat': data.get('latitude', 0),
+                        'lon': data.get('longitude', 0),
+                        'timezone': tz.get('id', ''),
+                        'isp': conn.get('isp', ''),
+                        'org': org,
+                        'as': f"AS{asn} {org}".strip() if asn else org,
+                        'query': ip,
+                    }
+                else:
+                    result['whois'] = {
+                        'status': 'fail',
+                        'message': data.get('message', 'Eroare necunoscută'),
+                        'query': ip,
+                    }
+            else:
+                result['whois'] = {
+                    'status': 'fail',
+                    'message': f'Geolocation indisponibilă (HTTP {resp.status_code})',
+                    'query': ip,
+                }
         else:
             result['whois'] = {
                 'status': 'fail',
