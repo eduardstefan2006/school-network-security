@@ -205,6 +205,38 @@ SYN_FLOOD_RULES = {
 }
 
 # =============================================================================
+# Reguli pentru monitorizarea securității externe (atacuri din internet)
+# =============================================================================
+EXTERNAL_PORT_SCAN_RULES = {
+    'enabled': True,
+    'threshold': 20,           # pachete droppate de la același IP
+    'window_seconds': 60,
+    'severity': 'high',
+}
+
+EXTERNAL_BRUTE_FORCE_RULES = {
+    'enabled': True,
+    'threshold': 5,            # tentative login eșuate
+    'window_seconds': 300,     # 5 minute
+    'severity': 'critical',
+}
+
+EXTERNAL_DDOS_RULES = {
+    'enabled': True,
+    'threshold': 1000,         # total pachete droppate
+    'window_seconds': 60,
+    'severity': 'critical',
+}
+
+ROUTER_HEALTH_RULES = {
+    'enabled': True,
+    'cpu_threshold': 80,       # procent
+    'memory_threshold': 20,    # procent liber minim
+    'severity_cpu': 'high',
+    'severity_memory': 'medium',
+}
+
+# =============================================================================
 # Porturile considerate sensibile (accesul la acestea generează loguri)
 # =============================================================================
 SENSITIVE_PORTS = [

@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+
+{% block title %}Securitate Externă - SchoolSec{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h2 class="text-warning"><i class="bi bi-globe me-2"></i>Securitate Externă</h2>
+        <small class="text-muted">Monitorizare atacuri din internet asupra routerului MikroTik</small>
+    </div>
+    <div class="col-auto">
+        {% if connected %}
+        <span class="badge bg-success" id="statusBadge">
+            <i class="bi bi-circle-fill me-1"></i>Router conectat
+        </span>
+        {% else %}
+        <span class="badge bg-secondary" id="statusBadge">
+            <i class="bi bi-circle me-1"></i>Router deconectat
+        </span>
+        {% endif %}
+        <span class="badge bg-dark border border-secondary ms-2">
+            <i class="bi bi-arrow-clockwise me-1"></i>Auto-refresh 30s
+        </span>
+    </div>
+</div>
+
+{% if not connected %}
+<div class="alert alert-secondary border-secondary">
+    <i class="bi bi-info-circle me-2"></i>
+    <strong>Routerul MikroTik nu este conectat.</strong>
+    Monitorizarea securității externe necesită conexiunea la RouterOS API.
+    Verificați variabilele de mediu <code>MIKROTIK_HOST</code>, <code>MIKROTIK_USERNAME</code>,
+    <code>MIKROTIK_PASSWORD</code> și <code>MIKROTIK_ENABLED=true</code>.
+</div>
+{% endif %}
+
+<!-- Rândul 1 — Carduri statistici -->
+<div class="row g-3 mb-4">
+    <!-- Atacuri blocate 24h -->
+    <div class="col-md-3">
+        <div class="card schoolsec-card border-danger h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">Atacuri Blocate (24h)</p>
+                        <h3 class="text-danger fw-bold" id="externalAttacks">{{ external_attacks_24h }}</h3>
+                    </div>
+                    <i class="bi bi-shield-exclamation text-danger" style="font-size: 2rem; opacity: 0.5;"></i>
+                </div>
+                <small class="text-muted">
+                    <i class="bi bi-globe me-1"></i>Port scan, brute force, DDoS
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tentative login -->
+    <div class="col-md-3">
+        <div class="card schoolsec-card border-warning h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">Tentative Login Router</p>
+                        <h3 class="text-warning fw-bold" id="loginFailures">{{ login_failures_count }}</h3>
+                    </div>
+                    <i class="bi bi-key text-warning" style="font-size: 2rem; opacity: 0.5;"></i>
+                </div>
+                <small class="text-muted">
+                    <i class="bi bi-x-circle me-1"></i>Login-uri eșuate recente
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- CPU Router -->
+    <div class="col-md-3">
+        <div class="card schoolsec-card h-100
+            {% if cpu_load > 80 %}border-danger
+            {% elif cpu_load > 50 %}border-warning
+            {% else %}border-success{% endif %}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">CPU Router</p>
+                        <h3 class="fw-bold
+                            {% if cpu_load > 80 %}text-danger
+                            {% elif cpu_load > 50 %}text-warning
+                            {% else %}text-success{% endif %}" id="cpuLoad">
+                            {% if connected %}{{ cpu_load }}%{% else %}—{% endif %}
+                        </h3>
+                    </div>
+                    <i class="bi bi-cpu
+                        {% if cpu_load > 80 %}text-danger
+                        {% elif cpu_load > 50 %}text-warning
+                        {% else %}text-success{% endif %}"
+                       style="font-size: 2rem; opacity: 0.5;"></i>
+                </div>
+                {% if router_health %}
+                <small class="text-muted">
+                    <i class="bi bi-clock me-1"></i>Uptime: {{ router_health.get('uptime', '—') }}
+                </small>
+                {% else %}
+                <small class="text-muted">—</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- RAM Router -->
+    <div class="col-md-3">
+        <div class="card schoolsec-card h-100
+            {% if ram_free_pct < 10 %}border-danger
+            {% elif ram_free_pct < 20 %}border-warning
+            {% else %}border-info{% endif %}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">RAM Liberă Router</p>
+                        <h3 class="fw-bold
+                            {% if ram_free_pct < 10 %}text-danger
+                            {% elif ram_free_pct < 20 %}text-warning
+                            {% else %}text-info{% endif %}" id="ramFree">
+                            {% if connected %}{{ ram_free_pct }}%{% else %}—{% endif %}
+                        </h3>
+                    </div>
+                    <i class="bi bi-memory
+                        {% if ram_free_pct < 10 %}text-danger
+                        {% elif ram_free_pct < 20 %}text-warning
+                        {% else %}text-info{% endif %}"
+                       style="font-size: 2rem; opacity: 0.5;"></i>
+                </div>
+                {% if router_health and router_health.get('board_name') %}
+                <small class="text-muted">
+                    <i class="bi bi-router me-1"></i>{{ router_health.get('board_name', '') }}
+                    {% if router_health.get('version') %}
+                    v{{ router_health.get('version', '') }}
+                    {% endif %}
+                </small>
+                {% else %}
+                <small class="text-muted">—</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rândul 2 — Reguli firewall (info) -->
+{% if firewall_rules %}
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card schoolsec-card border-secondary">
+            <div class="card-header border-secondary">
+                <h6 class="mb-0"><i class="bi bi-funnel me-2"></i>Reguli Firewall Active</h6>
+            </div>
+            <div class="card-body py-2">
+                <div class="row g-2 text-center">
+                    <div class="col-md-4">
+                        <span class="text-muted small">Filter</span>
+                        <div class="fw-bold text-info">{{ firewall_rules.get('filter_rules', 0) }} reguli</div>
+                    </div>
+                    <div class="col-md-4">
+                        <span class="text-muted small">NAT</span>
+                        <div class="fw-bold text-info">{{ firewall_rules.get('nat_rules', 0) }} reguli</div>
+                    </div>
+                    <div class="col-md-4">
+                        <span class="text-muted small">Mangle</span>
+                        <div class="fw-bold text-info">{{ firewall_rules.get('mangle_rules', 0) }} reguli</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Rândul 3 — Tabel log firewall -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card schoolsec-card border-secondary">
+            <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-fire me-2 text-danger"></i>Log Firewall — Pachete Blocate (ultimele 50)
+                </h6>
+                <span class="badge bg-secondary" id="firewallLogCount">{{ firewall_logs | length }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if connected %}
+                <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+                    <table class="table table-dark table-sm table-hover mb-0" id="firewallLogTable">
+                        <thead class="sticky-top schoolsec-card">
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Topic</th>
+                                <th>Mesaj</th>
+                            </tr>
+                        </thead>
+                        <tbody id="firewallLogBody">
+                            {% for entry in firewall_logs %}
+                            <tr>
+                                <td><small class="text-muted font-monospace">{{ entry.get('time', '—') }}</small></td>
+                                <td>
+                                    <span class="badge bg-danger bg-opacity-75">
+                                        {{ entry.get('topics', '—') }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <small class="text-warning">{{ entry.get('message', '—') }}</small>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted py-3">
+                                    <i class="bi bi-check-circle text-success me-1"></i>
+                                    Nicio intrare în logul firewall
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-plug-fill" style="font-size: 2rem;"></i>
+                    <p class="mt-2">Router deconectat — date indisponibile</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rândul 4 — Tabel login-uri router -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card schoolsec-card border-secondary">
+            <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-person-lock me-2 text-warning"></i>Login-uri Router (ultimele 20)
+                </h6>
+                <span class="badge bg-secondary" id="loginCount">{{ login_attempts | length }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if connected %}
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-dark table-sm table-hover mb-0" id="loginAttemptsTable">
+                        <thead class="sticky-top schoolsec-card">
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>IP Sursă</th>
+                                <th>Status</th>
+                                <th>Mesaj</th>
+                            </tr>
+                        </thead>
+                        <tbody id="loginAttemptsBody">
+                            {% for attempt in login_attempts %}
+                            <tr>
+                                <td><small class="text-muted font-monospace">{{ attempt.get('time', '—') }}</small></td>
+                                <td>
+                                    <code class="{% if attempt.get('ip') and not attempt.get('success') %}text-danger{% else %}text-info{% endif %}">
+                                        {{ attempt.get('ip') or '—' }}
+                                    </code>
+                                </td>
+                                <td>
+                                    {% if attempt.get('success') %}
+                                    <span class="badge bg-success">Reușit</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Eșuat</span>
+                                    {% endif %}
+                                </td>
+                                <td><small class="text-muted">{{ attempt.get('message', '—') }}</small></td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-3">
+                                    <i class="bi bi-check-circle text-success me-1"></i>
+                                    Nicio tentativă de login înregistrată
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-plug-fill" style="font-size: 2rem;"></i>
+                    <p class="mt-2">Router deconectat — date indisponibile</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rândul 5 — IP-uri blocate pe router -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card schoolsec-card border-secondary">
+            <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-shield-x me-2 text-danger"></i>IP-uri Blocate pe Router
+                    <small class="text-muted ms-1">(schoolsec-blocked)</small>
+                </h6>
+                <span class="badge bg-danger" id="blockedCount">{{ blocked_list | length }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if connected %}
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-dark table-sm table-hover mb-0" id="blockedListTable">
+                        <thead class="sticky-top schoolsec-card">
+                            <tr>
+                                <th>IP / Subnet</th>
+                                <th>Comentariu</th>
+                                <th>Data blocării</th>
+                                <th>Timeout</th>
+                                <th class="text-center">Acțiuni</th>
+                            </tr>
+                        </thead>
+                        <tbody id="blockedListBody">
+                            {% for entry in blocked_list %}
+                            <tr id="blocked-row-{{ loop.index }}">
+                                <td>
+                                    <code class="text-danger">{{ entry.get('address', '—') }}</code>
+                                </td>
+                                <td><small class="text-muted">{{ entry.get('comment') or '—' }}</small></td>
+                                <td><small class="text-muted font-monospace">{{ entry.get('creation_time') or '—' }}</small></td>
+                                <td>
+                                    {% if entry.get('timeout') %}
+                                    <span class="badge bg-secondary">{{ entry.get('timeout') }}</span>
+                                    {% else %}
+                                    <span class="text-muted small">Permanent</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-outline-success"
+                                            onclick="unblockRouterIP('{{ entry.get('address', '') }}', {{ loop.index }})"
+                                            title="Deblochează pe router">
+                                        <i class="bi bi-shield-check me-1"></i>Deblochează
+                                    </button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-3">
+                                    <i class="bi bi-check-circle text-success me-1"></i>
+                                    Niciun IP blocat în address-list
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-plug-fill" style="font-size: 2rem;"></i>
+                    <p class="mt-2">Router deconectat — date indisponibile</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rândul 6 — Alerte externe recente din DB -->
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="card schoolsec-card border-secondary">
+            <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-bell me-2 text-warning"></i>Alerte Securitate Externă (ultimele 20)
+                </h6>
+                <a href="{{ url_for('alerts.index') }}" class="btn btn-sm btn-outline-secondary">
+                    Toate alertele
+                </a>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_external_alerts %}
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-dark table-sm table-hover mb-0">
+                        <thead class="sticky-top schoolsec-card">
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Tip</th>
+                                <th>IP Sursă</th>
+                                <th>Severitate</th>
+                                <th>Mesaj</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for alert in recent_external_alerts %}
+                            <tr>
+                                <td><small class="text-muted font-monospace">{{ (alert.timestamp|to_local).strftime('%d.%m %H:%M:%S') }}</small></td>
+                                <td><code class="text-warning small">{{ alert.alert_type | replace('_', ' ') }}</code></td>
+                                <td><code class="text-danger">{{ alert.source_ip }}</code></td>
+                                <td>
+                                    <span class="badge severity-{{ alert.severity }}">
+                                        {{ alert.severity | upper }}
+                                    </span>
+                                </td>
+                                <td><small class="text-muted">{{ alert.message[:80] }}{% if alert.message|length > 80 %}…{% endif %}</small></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-check-circle text-success" style="font-size: 2rem;"></i>
+                    <p class="mt-2">Nicio alertă externă înregistrată</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Auto-refresh statistici la fiecare 30 secunde
+    setInterval(refreshExternalStats, 30000);
+
+    function refreshExternalStats() {
+        fetch('/api/external/stats')
+            .then(r => r.ok ? r.json() : Promise.reject(r.status))
+            .then(data => {
+                document.getElementById('externalAttacks').textContent = data.external_attacks_24h ?? '—';
+                document.getElementById('loginFailures').textContent = data.login_failures_count ?? '—';
+                const cpuVal = data.connected && data.cpu_load != null ? (data.cpu_load + '%') : '—';
+                const ramVal = data.connected && data.ram_free_pct != null ? (data.ram_free_pct + '%') : '—';
+                document.getElementById('cpuLoad').textContent = cpuVal;
+                document.getElementById('ramFree').textContent = ramVal;
+
+                const badge = document.getElementById('statusBadge');
+                if (data.connected) {
+                    badge.className = 'badge bg-success';
+                    badge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>Router conectat';
+                } else {
+                    badge.className = 'badge bg-secondary';
+                    badge.innerHTML = '<i class="bi bi-circle me-1"></i>Router deconectat';
+                }
+            })
+            .catch(err => console.warn('[ExternalSec] Eroare refresh stats:', err));
+    }
+
+    function unblockRouterIP(ip, rowIndex) {
+        if (!confirm('Deblochează IP-ul ' + ip + ' de pe router?')) return;
+        fetch('/api/mikrotik/unblock/' + encodeURIComponent(ip), { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const row = document.getElementById('blocked-row-' + rowIndex);
+                    if (row) row.remove();
+                    // Actualizează contorul din tabelul vizibil
+                    const tbody = document.getElementById('blockedListBody');
+                    const cnt = document.getElementById('blockedCount');
+                    if (cnt && tbody) cnt.textContent = tbody.querySelectorAll('tr[id^="blocked-row-"]').length;
+                } else {
+                    alert('Eroare: ' + (data.message || 'Necunoscută'));
+                }
+            })
+            .catch(err => alert('Eroare la comunicarea cu serverul: ' + err));
+    }
+</script>
+{% endblock %}

@@ -128,3 +128,13 @@ def _run_sync(app, mikrotik_client):
 
         print(f"[MikroTik Sync] Sincronizare completă: {len(leases)} lease-uri, "
               f"{len(arp_table)} ARP, {len(connections)} conexiuni.")
+
+        # ------------------------------------------------------------------
+        # 4. Monitorizare securitate externă
+        # ------------------------------------------------------------------
+        external_monitor = getattr(app, '_external_monitor', None)
+        if external_monitor:
+            try:
+                external_monitor.run_check()
+            except Exception as e:
+                print(f"[ExternalMonitor] Eroare în run_check: {e}")
