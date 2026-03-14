@@ -6,7 +6,7 @@ import io
 from datetime import datetime, timezone
 from flask import Blueprint, render_template, jsonify, request, Response
 from flask_login import login_required
-from app.models import Alert, SecurityLog, BlockedIP
+from app.models import Alert, SecurityLog, BlockedIP, BlockedHostname
 from app.ids.sniffer import get_stats
 from app import db
 
@@ -21,6 +21,8 @@ def index():
     active_alerts = Alert.query.filter_by(status='active').count()
     # Numărul de IP-uri blocate
     blocked_ips_count = BlockedIP.query.filter_by(is_active=True).count()
+    # Numărul de hostname-uri blocate
+    blocked_hostnames_count = BlockedHostname.query.filter_by(is_active=True).count()
     # Ultimele 5 alerte
     recent_alerts = Alert.query.order_by(Alert.timestamp.desc()).limit(5).all()
     # Statistici trafic
@@ -30,6 +32,7 @@ def index():
         'dashboard.html',
         active_alerts=active_alerts,
         blocked_ips_count=blocked_ips_count,
+        blocked_hostnames_count=blocked_hostnames_count,
         recent_alerts=recent_alerts,
         stats=stats
     )
@@ -42,12 +45,14 @@ def api_stats():
     stats = get_stats()
     active_alerts = Alert.query.filter_by(status='active').count()
     blocked_ips = BlockedIP.query.filter_by(is_active=True).count()
+    blocked_hostnames = BlockedHostname.query.filter_by(is_active=True).count()
 
     return jsonify({
         'total_packets': stats['total_packets'],
         'bytes_total': stats['bytes_total'],
         'active_alerts': active_alerts,
         'blocked_ips': blocked_ips,
+        'blocked_hostnames': blocked_hostnames,
         'protocols': stats['protocols'],
         'top_sources': stats['top_sources'],
         'last_packets': stats['last_packets'],

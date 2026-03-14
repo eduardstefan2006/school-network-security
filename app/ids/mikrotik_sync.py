@@ -31,7 +31,7 @@ def _run_sync(app, mikrotik_client):
 
     with app.app_context():
         from app import db
-        from app.models import NetworkDevice
+        from app.models import NetworkDevice, BlockedHostname, SecurityLog
         from app.ids.sniffer import (
             _get_vlan_from_ip,
             traffic_stats,
@@ -85,6 +85,61 @@ def _run_sync(app, mikrotik_client):
             # Dispozitiv cunoscut dacă are comment în DHCP
             if comment:
                 device.is_known = True
+
+            # ------------------------------------------------------------------
+            # Verificare hostname blocat — detectează reapariția cu MAC nou
+            # ------------------------------------------------------------------
+            if hostname:
+                hostname_lower = hostname.lower()
+                blocked_hn = BlockedHostname.query.filter_by(
+                    hostname=hostname_lower, is_active=True
+                ).first()
+                if blocked_hn:
+                    # Dispozitivul blocat a reapărut (posibil cu MAC nou)
+                    new_mac = mac.upper() if mac else ''
+                    old_mac = (blocked_hn.associated_mac or '').upper()
+                    server = lease.get('server', '')
+
+                    # Dacă MAC-ul s-a schimbat, blocăm noul MAC automat
+                    if new_mac and new_mac != old_mac:
+                        print(f"[MikroTik Sync] Hostname blocat '{hostname_lower}' detectat cu MAC nou {new_mac} pe {server}")
+
+                        # Log eveniment
+                        log = SecurityLog(
+                            event_type='blocked_hostname_reappeared',
+                            source_ip=ip,
+                            message=(f"Dispozitiv blocat '{hostname_lower}' detectat cu MAC nou "
+                                     f"{new_mac} pe {server}"),
+                            severity='critical',
+                        )
+                        db.session.add(log)
+
+                        # Actualizăm MAC-ul asociat în înregistrarea blocată
+                        blocked_hn.associated_mac = new_mac
+                        blocked_hn.associated_ip = ip
+                        if server:
+                            blocked_hn.dhcp_server = server
+
+                        # Auto-block MAC nou pe bridge filter
+                        try:
+                            comment_block = f'SchoolSec: hostname={hostname_lower} MAC nou detectat'
+                            mikrotik_client.block_mac_on_router(new_mac, comment=comment_block)
+                        except Exception as e:
+                            print(f"[MikroTik Sync] Eroare auto-block MAC nou {new_mac}: {e}")
+
+                        # Notificare prin callback-uri (alertă critică)
+                        try:
+                            detector = getattr(app, '_ids_detector', None)
+                            if detector:
+                                detector._fire_alert(
+                                    alert_type='blocked_hostname_reappeared',
+                                    source_ip=ip,
+                                    message=(f"Dispozitiv blocat '{hostname_lower}' detectat cu MAC nou "
+                                             f"{new_mac} pe {server}"),
+                                    severity='critical',
+                                )
+                        except Exception as e:
+                            print(f"[MikroTik Sync] Eroare fire_alert pentru hostname reapărut: {e}")
 
         try:
             db.session.commit()

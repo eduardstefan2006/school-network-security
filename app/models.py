@@ -210,6 +210,43 @@ class BlockedMAC(db.Model):
 
 
 # =============================================================================
+# Model Hostname Blocat
+# =============================================================================
+class BlockedHostname(db.Model):
+    """Model pentru hostname-urile blocate în sistem (dispozitive cu MAC randomizat)."""
+    __tablename__ = 'blocked_hostnames'
+
+    id = db.Column(db.Integer, primary_key=True)
+    hostname = db.Column(db.String(255), unique=True, nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    blocked_by = db.Column(db.String(80), default='system', nullable=False)
+    blocked_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    # IP-ul și MAC-ul asociate la momentul blocării (informativ)
+    associated_ip = db.Column(db.String(45), nullable=True)
+    associated_mac = db.Column(db.String(17), nullable=True)
+    # DHCP server name pe care a fost văzut (ex: Sala2Parter)
+    dhcp_server = db.Column(db.String(100), nullable=True)
+
+    def to_dict(self):
+        """Convertește hostname-ul blocat în dicționar."""
+        return {
+            'id': self.id,
+            'hostname': self.hostname,
+            'reason': self.reason,
+            'blocked_by': self.blocked_by,
+            'blocked_at': self.blocked_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'is_active': self.is_active,
+            'associated_ip': self.associated_ip,
+            'associated_mac': self.associated_mac,
+            'dhcp_server': self.dhcp_server,
+        }
+
+    def __repr__(self):
+        return f'<BlockedHostname {self.hostname}>'
+
+
+# =============================================================================
 # Model Dispozitiv Rețea
 # =============================================================================
 class NetworkDevice(db.Model):

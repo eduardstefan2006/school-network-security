@@ -163,6 +163,69 @@ def blocked_macs_on_router():
 
 
 # ------------------------------------------------------------------
+# POST /api/mikrotik/block-hostname/<hostname>
+# ------------------------------------------------------------------
+
+@mikrotik_bp.route('/api/mikrotik/block-hostname/<path:hostname>', methods=['POST'])
+@login_required
+def block_hostname(hostname):
+    """Blochează hostname-ul pe router prin DHCP lease și bridge filter (doar admin)."""
+    if not current_user.is_admin():
+        return jsonify({'success': False, 'message': 'Acces interzis.'}), 403
+
+    mikrotik = _get_mikrotik()
+    if mikrotik is None or not mikrotik.is_connected():
+        return jsonify({'success': False, 'message': 'Routerul MikroTik nu este conectat.'}), 503
+
+    success = mikrotik.block_hostname_on_router(
+        hostname,
+        comment=f'Blocat din SchoolSec de {current_user.username}',
+    )
+    if success:
+        return jsonify({'success': True, 'message': f'Hostname {hostname} blocat pe router.'})
+    return jsonify({'success': False, 'message': f'Eroare la blocarea hostname-ului {hostname}.'}), 500
+
+
+# ------------------------------------------------------------------
+# POST /api/mikrotik/unblock-hostname/<hostname>
+# ------------------------------------------------------------------
+
+@mikrotik_bp.route('/api/mikrotik/unblock-hostname/<path:hostname>', methods=['POST'])
+@login_required
+def unblock_hostname(hostname):
+    """Deblochează hostname-ul de pe router (doar admin)."""
+    if not current_user.is_admin():
+        return jsonify({'success': False, 'message': 'Acces interzis.'}), 403
+
+    mikrotik = _get_mikrotik()
+    if mikrotik is None or not mikrotik.is_connected():
+        return jsonify({'success': False, 'message': 'Routerul MikroTik nu este conectat.'}), 503
+
+    success = mikrotik.unblock_hostname_on_router(hostname)
+    if success:
+        return jsonify({'success': True, 'message': f'Hostname {hostname} deblocat pe router.'})
+    return jsonify({'success': False, 'message': f'Eroare la deblocarea hostname-ului {hostname}.'}), 500
+
+
+# ------------------------------------------------------------------
+# GET /api/mikrotik/find-device/<hostname>
+# ------------------------------------------------------------------
+
+@mikrotik_bp.route('/api/mikrotik/find-device/<path:hostname>')
+@login_required
+def find_device_by_hostname(hostname):
+    """Caută un dispozitiv în DHCP leases după hostname."""
+    mikrotik = _get_mikrotik()
+    if mikrotik is None or not mikrotik.is_connected():
+        return jsonify({'found': False, 'message': 'Routerul MikroTik nu este conectat.'})
+
+    device = mikrotik.find_device_by_hostname(hostname)
+    if device:
+        return jsonify({'found': True, 'device': device})
+    return jsonify({'found': False, 'message': f'Niciun dispozitiv cu hostname {hostname} găsit în DHCP.'})
+
+
+# ------------------------------------------------------------------
 # POST /api/mikrotik/unblock/<ip>
 # ------------------------------------------------------------------
 

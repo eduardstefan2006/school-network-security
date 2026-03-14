@@ -14,7 +14,7 @@ from app import create_app, db
 from sqlalchemy import text
 
 
-_ALLOWED_TABLES = {'network_devices'}
+_ALLOWED_TABLES = {'network_devices', 'blocked_hostnames'}
 
 
 def column_exists(connection, table_name, column_name):
@@ -24,6 +24,14 @@ def column_exists(connection, table_name, column_name):
     result = connection.execute(text(f"PRAGMA table_info({table_name})"))
     columns = [row[1] for row in result]
     return column_name in columns
+
+
+def table_exists(connection, table_name):
+    """Verifică dacă o tabelă există în baza de date."""
+    result = connection.execute(text(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=:table"
+    ), {'table': table_name})
+    return result.fetchone() is not None
 
 
 def migrate():
@@ -42,6 +50,27 @@ def migrate():
                 print("  ✓ Coloana 'hostname' adăugată cu succes.")
             else:
                 print("  ✓ Coloana 'hostname' există deja.")
+
+            # Crează tabela blocked_hostnames dacă nu există
+            if not table_exists(conn, 'blocked_hostnames'):
+                print("  Creez tabela 'blocked_hostnames'...")
+                conn.execute(text("""
+                    CREATE TABLE blocked_hostnames (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        hostname VARCHAR(255) UNIQUE NOT NULL,
+                        reason TEXT NOT NULL,
+                        blocked_by VARCHAR(80) NOT NULL DEFAULT 'system',
+                        blocked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        is_active BOOLEAN NOT NULL DEFAULT 1,
+                        associated_ip VARCHAR(45),
+                        associated_mac VARCHAR(17),
+                        dhcp_server VARCHAR(100)
+                    )
+                """))
+                conn.commit()
+                print("  ✓ Tabela 'blocked_hostnames' creată cu succes.")
+            else:
+                print("  ✓ Tabela 'blocked_hostnames' există deja.")
 
             print("\nMigrare completă!")
             print("Repornește aplicația cu: python run.py")
