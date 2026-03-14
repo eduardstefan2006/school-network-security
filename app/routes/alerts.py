@@ -172,12 +172,24 @@ def block_ip(alert_id):
     return redirect(request.referrer or url_for('alerts.index'))
 
 
+@alerts_bp.route('/blocked')
+@login_required
+def blocked_devices():
+    """Pagina unificată cu toate elementele blocate (IP-uri, MAC-uri, Hostname-uri)."""
+    ips = BlockedIP.query.order_by(BlockedIP.blocked_at.desc()).all()
+    macs = BlockedMAC.query.order_by(BlockedMAC.blocked_at.desc()).all()
+    hostnames = BlockedHostname.query.order_by(BlockedHostname.blocked_at.desc()).all()
+    return render_template('blocked_devices.html',
+                           blocked_ips=ips,
+                           blocked_macs=macs,
+                           blocked_hostnames=hostnames)
+
+
 @alerts_bp.route('/blocked-ips')
 @login_required
 def blocked_ips():
-    """Pagina cu lista IP-urilor blocate."""
-    ips = BlockedIP.query.order_by(BlockedIP.blocked_at.desc()).all()
-    return render_template('blocked_ips.html', blocked_ips=ips)
+    """Redirectează către pagina unificată de blocări (tab IP-uri)."""
+    return redirect(url_for('alerts.blocked_devices'))
 
 
 @alerts_bp.route('/blocked-ips/<int:ip_id>/unblock', methods=['POST'])
@@ -186,7 +198,7 @@ def unblock_ip(ip_id):
     """Deblochează un IP (și MAC-ul asociat dacă există)."""
     if not current_user.is_admin():
         flash('Nu ai permisiunea de a debloca IP-uri.', 'danger')
-        return redirect(url_for('alerts.blocked_ips'))
+        return redirect(url_for('alerts.blocked_devices'))
 
     blocked = BlockedIP.query.get_or_404(ip_id)
     blocked.is_active = False
@@ -222,15 +234,14 @@ def unblock_ip(ip_id):
         flash(f'IP-ul {blocked.ip_address} și hostname-ul {associated_hostname.hostname} au fost deblocate.', 'success')
     else:
         flash(f'IP-ul {blocked.ip_address} a fost deblocat.', 'success')
-    return redirect(url_for('alerts.blocked_ips'))
+    return redirect(url_for('alerts.blocked_devices'))
 
 
 @alerts_bp.route('/blocked-macs')
 @login_required
 def blocked_macs():
-    """Pagina cu lista MAC-urilor blocate."""
-    macs = BlockedMAC.query.order_by(BlockedMAC.blocked_at.desc()).all()
-    return render_template('blocked_macs.html', blocked_macs=macs)
+    """Redirectează către pagina unificată de blocări (tab MAC-uri)."""
+    return redirect(url_for('alerts.blocked_devices', _anchor='macs'))
 
 
 @alerts_bp.route('/blocked-macs/<int:mac_id>/unblock', methods=['POST'])
@@ -239,7 +250,7 @@ def unblock_mac(mac_id):
     """Deblochează un MAC."""
     if not current_user.is_admin():
         flash('Nu ai permisiunea de a debloca MAC-uri.', 'danger')
-        return redirect(url_for('alerts.blocked_macs'))
+        return redirect(url_for('alerts.blocked_devices'))
 
     blocked = BlockedMAC.query.get_or_404(mac_id)
     blocked.is_active = False
@@ -251,15 +262,14 @@ def unblock_mac(mac_id):
         mikrotik.unblock_mac_on_router(blocked.mac_address)
 
     flash(f'MAC-ul {blocked.mac_address} a fost deblocat.', 'success')
-    return redirect(url_for('alerts.blocked_macs'))
+    return redirect(url_for('alerts.blocked_devices', _anchor='macs'))
 
 
 @alerts_bp.route('/blocked-hostnames')
 @login_required
 def blocked_hostnames():
-    """Pagina cu lista hostname-urilor blocate."""
-    hostnames = BlockedHostname.query.order_by(BlockedHostname.blocked_at.desc()).all()
-    return render_template('blocked_hostnames.html', blocked_hostnames=hostnames)
+    """Redirectează către pagina unificată de blocări (tab Hostname-uri)."""
+    return redirect(url_for('alerts.blocked_devices', _anchor='hostnames'))
 
 
 @alerts_bp.route('/blocked-hostnames/<int:hostname_id>/unblock', methods=['POST'])
@@ -268,7 +278,7 @@ def unblock_hostname(hostname_id):
     """Deblochează un hostname."""
     if not current_user.is_admin():
         flash('Nu ai permisiunea de a debloca hostname-uri.', 'danger')
-        return redirect(url_for('alerts.blocked_hostnames'))
+        return redirect(url_for('alerts.blocked_devices'))
 
     blocked = BlockedHostname.query.get_or_404(hostname_id)
     blocked.is_active = False
@@ -280,7 +290,7 @@ def unblock_hostname(hostname_id):
         mikrotik.unblock_hostname_on_router(blocked.hostname)
 
     flash(f'Hostname-ul {blocked.hostname} a fost deblocat.', 'success')
-    return redirect(url_for('alerts.blocked_hostnames'))
+    return redirect(url_for('alerts.blocked_devices', _anchor='hostnames'))
 
 
 @alerts_bp.route('/alerts/dismiss-all', methods=['POST'])
