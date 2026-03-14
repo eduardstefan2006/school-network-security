@@ -85,7 +85,7 @@ class MikrotikClient:
         """Returnează lista sesiunilor DHCP active de pe router.
 
         Endpoint RouterOS: /ip/dhcp-server/lease
-        Câmpuri returnate: ip, mac, hostname, status, expires_after, comment
+        Câmpuri returnate: ip, mac, hostname, status, expires_after, comment, server
         """
         if not self.is_connected():
             return []
@@ -99,6 +99,7 @@ class MikrotikClient:
                     'status': item.get('status', ''),
                     'expires_after': item.get('expires-after', ''),
                     'comment': item.get('comment', ''),
+                    'server': item.get('server', ''),
                 })
             return leases
         except Exception as e:
@@ -437,6 +438,123 @@ class MikrotikClient:
         except Exception as e:
             print(f"[MikroTik] Eroare get_blocked_macs_on_router: {e}")
             return []
+
+    def find_device_by_hostname(self, hostname: str) -> dict | None:
+        """Caută un dispozitiv activ în DHCP leases după hostname.
+
+        Endpoint RouterOS: /ip/dhcp-server/lease
+        Returnează dict cu ip, mac, server, hostname sau None dacă nu a fost găsit.
+        """
+        if not self.is_connected():
+            return None
+        hostname_lower = hostname.lower()
+        try:
+            for item in self._connection('/ip/dhcp-server/lease/print'):
+                if item.get('status') != 'bound':
+                    continue
+                lease_hostname = item.get('host-name', '').lower()
+                if lease_hostname == hostname_lower:
+                    return {
+                        'ip': item.get('address', ''),
+                        'mac': item.get('mac-address', ''),
+                        'server': item.get('server', ''),
+                        'hostname': item.get('host-name', ''),
+                    }
+        except Exception as e:
+            print(f"[MikroTik] Eroare find_device_by_hostname({hostname}): {e}")
+        return None
+
+    def block_hostname_on_router(self, hostname: str, dhcp_servers: list | None = None,
+                                 comment: str = '') -> bool:
+        """Blochează un dispozitiv identificat prin hostname pe router.
+
+        Strategia practică:
+        1. Caută MAC-ul curent din DHCP leases active corespunzând hostname-ului
+        2. Creează static DHCP lease cu block-access=yes pentru acel MAC
+        3. Adaugă regulă bridge filter pentru MAC-ul curent (backup)
+        Hostname-ul este stocat în comentariu pentru tracking.
+        Returnează True dacă cel puțin un pas a reușit.
+        """
+        if not self.is_connected():
+            return False
+
+        full_comment = f'SchoolSec: hostname={hostname.lower()} - {comment}' if comment else f'SchoolSec: hostname={hostname.lower()}'
+        success = False
+
+        # Caută dispozitivul curent după hostname
+        device = self.find_device_by_hostname(hostname)
+        if device and device.get('mac'):
+            mac = device['mac']
+            server = device.get('server', '')
+
+            # Adaugă static DHCP lease cu block-access=yes
+            if server:
+                try:
+                    self._connection('/ip/dhcp-server/lease/add', **{
+                        'mac-address': mac,
+                        'server': server,
+                        'block-access': 'yes',
+                        'comment': full_comment,
+                    })
+                    print(f"[MikroTik] DHCP lease blocat pentru MAC {mac} pe server {server} (hostname={hostname})")
+                    success = True
+                except Exception as e:
+                    print(f"[MikroTik] Eroare adăugare DHCP lease blocat pentru {hostname}: {e}")
+
+            # Adaugă bridge filter pentru MAC-ul curent
+            mac_success = self.block_mac_on_router(mac, comment=full_comment)
+            if mac_success:
+                success = True
+
+        return success
+
+    def unblock_hostname_on_router(self, hostname: str) -> bool:
+        """Elimină regulile de blocare pentru un hostname de pe router.
+
+        Șterge:
+        - DHCP leases statice cu comentariu conținând hostname-ul și 'SchoolSec'
+        - Reguli bridge filter cu comentariu conținând hostname-ul și 'SchoolSec'
+        Returnează True dacă cel puțin o regulă a fost eliminată.
+        """
+        if not self.is_connected():
+            return False
+
+        hostname_lower = hostname.lower()
+        removed = 0
+
+        # Elimină DHCP leases statice blocate
+        try:
+            for item in self._connection('/ip/dhcp-server/lease/print'):
+                comment = item.get('comment', '')
+                if 'SchoolSec' in comment and hostname_lower in comment.lower():
+                    try:
+                        self._connection('/ip/dhcp-server/lease/remove', **{
+                            '.id': item['.id'],
+                        })
+                        removed += 1
+                    except Exception as e:
+                        print(f"[MikroTik] Eroare eliminare DHCP lease {item.get('.id')}: {e}")
+        except Exception as e:
+            print(f"[MikroTik] Eroare la căutarea DHCP leases pentru {hostname}: {e}")
+
+        # Elimină reguli bridge filter
+        try:
+            for item in self._connection('/interface/bridge/filter/print'):
+                comment = item.get('comment', '')
+                if 'SchoolSec' in comment and hostname_lower in comment.lower():
+                    try:
+                        self._connection('/interface/bridge/filter/remove', **{
+                            '.id': item['.id'],
+                        })
+                        removed += 1
+                    except Exception as e:
+                        print(f"[MikroTik] Eroare eliminare bridge filter {item.get('.id')}: {e}")
+        except Exception as e:
+            print(f"[MikroTik] Eroare la căutarea bridge filter pentru {hostname}: {e}")
+
+        if removed:
+            print(f"[MikroTik] {removed} reguli eliminate pentru hostname {hostname}.")
+        return removed > 0
 
     def get_address_list_entries(self, list_name='schoolsec-blocked') -> list:
         """Returnează intrările din address list-ul specificat.

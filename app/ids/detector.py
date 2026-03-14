@@ -34,6 +34,10 @@ _BLOCKED_CACHE_TTL = 60  # secunde
 _blocked_mac_cache = None
 _blocked_mac_cache_time = 0.0
 
+# Cache pentru hostname-urile blocate (evită interogarea DB la fiecare pachet)
+_blocked_hostname_cache = None
+_blocked_hostname_cache_time = 0.0
+
 
 def invalidate_whitelist_cache():
     """Invalidează cache-ul listei albe (apelat după fiecare modificare a JSON-ului)."""
@@ -162,6 +166,7 @@ class IntrusionDetector:
             # Căutăm MAC-ul dispozitivului din NetworkDevice
             device = NetworkDevice.query.filter_by(ip_address=source_ip).first()
             mac_blocked = False
+            hostname_blocked = False
             if device and device.mac_address:
                 mac = device.mac_address.upper()
                 # Blocăm MAC-ul doar dacă nu pare randomizat (bitul U/L)
@@ -176,6 +181,24 @@ class IntrusionDetector:
                         )
                         db.session.add(blocked_mac)
                         mac_blocked = True
+                else:
+                    # MAC randomizat → blocăm pe hostname dacă există
+                    if device.hostname:
+                        hostname_lower = device.hostname.lower()
+                        from app.models import BlockedHostname
+                        existing_hn = BlockedHostname.query.filter_by(
+                            hostname=hostname_lower, is_active=True
+                        ).first()
+                        if not existing_hn:
+                            blocked_hn = BlockedHostname(
+                                hostname=hostname_lower,
+                                reason=f'Auto-blocat: {alert_type} - {reason}',
+                                blocked_by='system-auto',
+                                associated_ip=source_ip,
+                                associated_mac=mac,
+                            )
+                            db.session.add(blocked_hn)
+                            hostname_blocked = True
 
             # Log de securitate
             log = SecurityLog(
@@ -183,7 +206,8 @@ class IntrusionDetector:
                 source_ip=source_ip,
                 message=(f'IP {source_ip} blocat automat '
                          f'(severitate: {severity}, tip alertă: {alert_type})'
-                         + (f'; MAC {device.mac_address} blocat' if mac_blocked else '')),
+                         + (f'; MAC {device.mac_address} blocat' if mac_blocked else '')
+                         + (f'; hostname {device.hostname} blocat' if hostname_blocked else '')),
                 severity='warning',
             )
             db.session.add(log)
@@ -191,9 +215,10 @@ class IntrusionDetector:
 
             # Actualizăm cooldown-ul și invalidăm cache-urile
             self._auto_block_cooldown[source_ip] = current_time
-            global _blocked_cache, _blocked_mac_cache
+            global _blocked_cache, _blocked_mac_cache, _blocked_hostname_cache
             _blocked_cache = None
             _blocked_mac_cache = None
+            _blocked_hostname_cache = None
 
             print(f"[IDS] IP {source_ip} blocat automat (severitate: {severity})")
 
@@ -204,6 +229,8 @@ class IntrusionDetector:
                     comment = f'Auto-blocat SchoolSec: {alert_type}'
                     if mac_blocked:
                         mikrotik.block_mac_on_router(device.mac_address, comment=comment)
+                    elif hostname_blocked:
+                        mikrotik.block_hostname_on_router(device.hostname, comment=comment)
                     else:
                         mikrotik.block_ip_on_router(source_ip, comment=comment)
             except Exception as e:
@@ -260,6 +287,22 @@ class IntrusionDetector:
             except Exception:
                 return False
         return mac.upper() in (_blocked_mac_cache or set())
+
+    def _is_blocked_hostname(self, hostname):
+        """Verifică dacă hostname-ul este blocat în baza de date (cu cache TTL 60s)."""
+        if not hostname:
+            return False
+        global _blocked_hostname_cache, _blocked_hostname_cache_time
+        now = time.time()
+        if _blocked_hostname_cache is None or (now - _blocked_hostname_cache_time) > _BLOCKED_CACHE_TTL:
+            try:
+                from app.models import BlockedHostname
+                blocked_hostnames = BlockedHostname.query.filter_by(is_active=True).all()
+                _blocked_hostname_cache = {b.hostname.lower() for b in blocked_hostnames}
+                _blocked_hostname_cache_time = now
+            except Exception:
+                return False
+        return hostname.lower() in (_blocked_hostname_cache or set())
 
     def _clean_old_entries(self, dq, window_seconds):
         """Elimină intrările mai vechi decât fereastra de timp."""

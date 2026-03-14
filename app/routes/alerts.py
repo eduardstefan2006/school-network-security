@@ -3,7 +3,7 @@ Rutele pentru gestionarea alertelor de securitate.
 """
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, current_app
 from flask_login import login_required, current_user
-from app.models import Alert, BlockedIP, BlockedMAC, NetworkDevice, SecurityLog
+from app.models import Alert, BlockedIP, BlockedMAC, BlockedHostname, NetworkDevice, SecurityLog
 from app import db
 
 alerts_bp = Blueprint('alerts', __name__)
@@ -108,6 +108,8 @@ def block_ip(alert_id):
     device = NetworkDevice.query.filter_by(ip_address=alert.source_ip).first()
     mac_blocked = False
     blocked_mac_addr = None
+    hostname_blocked = False
+    blocked_hostname_val = None
     if device and device.mac_address:
         from app.ids.detector import _is_randomized_mac
         mac = device.mac_address.upper()
@@ -123,6 +125,24 @@ def block_ip(alert_id):
                 db.session.add(blocked_mac)
                 mac_blocked = True
                 blocked_mac_addr = mac
+        else:
+            # MAC randomizat → blocăm pe hostname dacă există
+            if device.hostname:
+                hostname_lower = device.hostname.lower()
+                existing_hn = BlockedHostname.query.filter_by(
+                    hostname=hostname_lower, is_active=True
+                ).first()
+                if not existing_hn:
+                    blocked_hn = BlockedHostname(
+                        hostname=hostname_lower,
+                        reason=f'Blocat din alertă #{alert_id}: {alert.alert_type} - {alert.message}',
+                        blocked_by=current_user.username,
+                        associated_ip=alert.source_ip,
+                        associated_mac=mac,
+                    )
+                    db.session.add(blocked_hn)
+                    hostname_blocked = True
+                    blocked_hostname_val = hostname_lower
 
     db.session.commit()
 
@@ -134,6 +154,10 @@ def block_ip(alert_id):
             success = mikrotik.block_mac_on_router(blocked_mac_addr, comment=comment)
             if success:
                 flash(f'MAC-ul {blocked_mac_addr} a fost blocat și pe routerul MikroTik.', 'info')
+        elif hostname_blocked:
+            success = mikrotik.block_hostname_on_router(blocked_hostname_val, comment=comment)
+            if success:
+                flash(f'Hostname-ul {blocked_hostname_val} a fost blocat și pe routerul MikroTik.', 'info')
         else:
             success = mikrotik.block_ip_on_router(alert.source_ip, comment=comment)
             if success:
@@ -141,6 +165,8 @@ def block_ip(alert_id):
 
     if mac_blocked:
         flash(f'IP-ul {alert.source_ip} și MAC-ul {blocked_mac_addr} au fost blocate cu succes.', 'success')
+    elif hostname_blocked:
+        flash(f'IP-ul {alert.source_ip} și hostname-ul {blocked_hostname_val} au fost blocate cu succes.', 'success')
     else:
         flash(f'IP-ul {alert.source_ip} a fost blocat cu succes.', 'success')
     return redirect(request.referrer or url_for('alerts.index'))
@@ -172,6 +198,13 @@ def unblock_ip(ip_id):
     if associated_mac:
         associated_mac.is_active = False
 
+    # Deblochează și hostname-ul asociat dacă există
+    associated_hostname = BlockedHostname.query.filter_by(
+        associated_ip=blocked.ip_address, is_active=True
+    ).first()
+    if associated_hostname:
+        associated_hostname.is_active = False
+
     db.session.commit()
 
     # Dacă MikroTik este configurat, deblochează și pe router
@@ -179,10 +212,14 @@ def unblock_ip(ip_id):
     if mikrotik and mikrotik.is_connected():
         if associated_mac:
             mikrotik.unblock_mac_on_router(associated_mac.mac_address)
+        if associated_hostname:
+            mikrotik.unblock_hostname_on_router(associated_hostname.hostname)
         mikrotik.unblock_ip_on_router(blocked.ip_address)
 
     if associated_mac:
         flash(f'IP-ul {blocked.ip_address} și MAC-ul {associated_mac.mac_address} au fost deblocate.', 'success')
+    elif associated_hostname:
+        flash(f'IP-ul {blocked.ip_address} și hostname-ul {associated_hostname.hostname} au fost deblocate.', 'success')
     else:
         flash(f'IP-ul {blocked.ip_address} a fost deblocat.', 'success')
     return redirect(url_for('alerts.blocked_ips'))
@@ -215,6 +252,35 @@ def unblock_mac(mac_id):
 
     flash(f'MAC-ul {blocked.mac_address} a fost deblocat.', 'success')
     return redirect(url_for('alerts.blocked_macs'))
+
+
+@alerts_bp.route('/blocked-hostnames')
+@login_required
+def blocked_hostnames():
+    """Pagina cu lista hostname-urilor blocate."""
+    hostnames = BlockedHostname.query.order_by(BlockedHostname.blocked_at.desc()).all()
+    return render_template('blocked_hostnames.html', blocked_hostnames=hostnames)
+
+
+@alerts_bp.route('/blocked-hostnames/<int:hostname_id>/unblock', methods=['POST'])
+@login_required
+def unblock_hostname(hostname_id):
+    """Deblochează un hostname."""
+    if not current_user.is_admin():
+        flash('Nu ai permisiunea de a debloca hostname-uri.', 'danger')
+        return redirect(url_for('alerts.blocked_hostnames'))
+
+    blocked = BlockedHostname.query.get_or_404(hostname_id)
+    blocked.is_active = False
+    db.session.commit()
+
+    # Dacă MikroTik este configurat, deblochează și pe router
+    mikrotik = getattr(current_app, 'mikrotik_client', None)
+    if mikrotik and mikrotik.is_connected():
+        mikrotik.unblock_hostname_on_router(blocked.hostname)
+
+    flash(f'Hostname-ul {blocked.hostname} a fost deblocat.', 'success')
+    return redirect(url_for('alerts.blocked_hostnames'))
 
 
 @alerts_bp.route('/alerts/dismiss-all', methods=['POST'])
