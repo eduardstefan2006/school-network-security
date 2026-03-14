@@ -104,6 +104,65 @@ def block_ip(ip):
 
 
 # ------------------------------------------------------------------
+# POST /api/mikrotik/block-mac/<mac>
+# ------------------------------------------------------------------
+
+@mikrotik_bp.route('/api/mikrotik/block-mac/<path:mac>', methods=['POST'])
+@login_required
+def block_mac(mac):
+    """Blochează MAC-ul pe router via bridge filter (doar admin)."""
+    if not current_user.is_admin():
+        return jsonify({'success': False, 'message': 'Acces interzis.'}), 403
+
+    mikrotik = _get_mikrotik()
+    if mikrotik is None or not mikrotik.is_connected():
+        return jsonify({'success': False, 'message': 'Routerul MikroTik nu este conectat.'}), 503
+
+    success = mikrotik.block_mac_on_router(
+        mac,
+        comment=f'Blocat din SchoolSec de {current_user.username}',
+    )
+    if success:
+        return jsonify({'success': True, 'message': f'MAC {mac} blocat pe router.'})
+    return jsonify({'success': False, 'message': f'Eroare la blocarea MAC-ului {mac}.'}), 500
+
+
+# ------------------------------------------------------------------
+# POST /api/mikrotik/unblock-mac/<mac>
+# ------------------------------------------------------------------
+
+@mikrotik_bp.route('/api/mikrotik/unblock-mac/<path:mac>', methods=['POST'])
+@login_required
+def unblock_mac(mac):
+    """Deblochează MAC-ul de pe router (doar admin)."""
+    if not current_user.is_admin():
+        return jsonify({'success': False, 'message': 'Acces interzis.'}), 403
+
+    mikrotik = _get_mikrotik()
+    if mikrotik is None or not mikrotik.is_connected():
+        return jsonify({'success': False, 'message': 'Routerul MikroTik nu este conectat.'}), 503
+
+    success = mikrotik.unblock_mac_on_router(mac)
+    if success:
+        return jsonify({'success': True, 'message': f'MAC {mac} deblocat pe router.'})
+    return jsonify({'success': False, 'message': f'Eroare la deblocarea MAC-ului {mac}.'}), 500
+
+
+# ------------------------------------------------------------------
+# GET /api/mikrotik/blocked-macs
+# ------------------------------------------------------------------
+
+@mikrotik_bp.route('/api/mikrotik/blocked-macs')
+@login_required
+def blocked_macs_on_router():
+    """Listează MAC-urile blocate prin bridge filter de SchoolSec."""
+    mikrotik = _get_mikrotik()
+    if mikrotik is None or not mikrotik.is_connected():
+        return jsonify([])
+    return jsonify(mikrotik.get_blocked_macs_on_router())
+
+
+# ------------------------------------------------------------------
 # POST /api/mikrotik/unblock/<ip>
 # ------------------------------------------------------------------
 

@@ -30,11 +30,29 @@ _blocked_cache = None
 _blocked_cache_time = 0.0
 _BLOCKED_CACHE_TTL = 60  # secunde
 
+# Cache pentru MAC-urile blocate (evită interogarea DB la fiecare pachet)
+_blocked_mac_cache = None
+_blocked_mac_cache_time = 0.0
+
 
 def invalidate_whitelist_cache():
     """Invalidează cache-ul listei albe (apelat după fiecare modificare a JSON-ului)."""
     global _whitelist_cache
     _whitelist_cache = None
+
+
+def _is_randomized_mac(mac: str) -> bool:
+    """Returnează True dacă MAC-ul pare a fi randomizat/privat (bitul U/L setat).
+
+    Adresele MAC locale administrate (bitul U/L, bitul 1 al primului octet = 1) sunt de obicei
+    generate aleator de sistemele de operare moderne pentru protecția vieții private.
+    """
+    try:
+        first_octet = int(mac.split(':')[0], 16)
+        # Bitul 1 (valoare 2) din primul octet indică adresă administrată local
+        return bool(first_octet & 0x02)
+    except (ValueError, IndexError):
+        return False
 
 
 class IntrusionDetector:
@@ -65,6 +83,8 @@ class IntrusionDetector:
         self._dhcp_spoof_cooldown = {}
         # Dicționar: ip -> last_alert_time pentru blocked_ip_active (5 min cooldown)
         self._blocked_ip_alert_cooldown = {}
+        # Dicționar: mac -> last_alert_time pentru blocked_mac_active (5 min cooldown)
+        self._blocked_mac_alert_cooldown = {}
         # Dicționar: ip -> last_auto_block_time pentru auto-block (5 min cooldown)
         self._auto_block_cooldown = {}
         # Callback pentru salvarea alertelor
@@ -99,7 +119,7 @@ class IntrusionDetector:
         self._maybe_auto_block(source_ip, severity, alert_type, message)
 
     def _maybe_auto_block(self, source_ip, severity, alert_type, reason):
-        """Blochează automat IP-ul dacă severitatea o cere și dacă nu este whitelisted."""
+        """Blochează automat IP-ul și/sau MAC-ul dacă severitatea o cere și dacă nu este whitelisted."""
         try:
             from flask import current_app
             cfg = current_app.config
@@ -124,7 +144,7 @@ class IntrusionDetector:
 
         try:
             from app import db
-            from app.models import BlockedIP, SecurityLog
+            from app.models import BlockedIP, BlockedMAC, NetworkDevice, SecurityLog
 
             # Verificăm dacă IP-ul nu este deja blocat
             existing = BlockedIP.query.filter_by(ip_address=source_ip, is_active=True).first()
@@ -139,21 +159,41 @@ class IntrusionDetector:
             )
             db.session.add(blocked)
 
+            # Căutăm MAC-ul dispozitivului din NetworkDevice
+            device = NetworkDevice.query.filter_by(ip_address=source_ip).first()
+            mac_blocked = False
+            if device and device.mac_address:
+                mac = device.mac_address.upper()
+                # Blocăm MAC-ul doar dacă nu pare randomizat (bitul U/L)
+                if not _is_randomized_mac(mac):
+                    existing_mac = BlockedMAC.query.filter_by(mac_address=mac, is_active=True).first()
+                    if not existing_mac:
+                        blocked_mac = BlockedMAC(
+                            mac_address=mac,
+                            reason=f'Auto-blocat: {alert_type} - {reason}',
+                            blocked_by='system-auto',
+                            associated_ip=source_ip,
+                        )
+                        db.session.add(blocked_mac)
+                        mac_blocked = True
+
             # Log de securitate
             log = SecurityLog(
                 event_type='auto_block',
                 source_ip=source_ip,
                 message=(f'IP {source_ip} blocat automat '
-                         f'(severitate: {severity}, tip alertă: {alert_type})'),
+                         f'(severitate: {severity}, tip alertă: {alert_type})'
+                         + (f'; MAC {device.mac_address} blocat' if mac_blocked else '')),
                 severity='warning',
             )
             db.session.add(log)
             db.session.commit()
 
-            # Actualizăm cooldown-ul și invalidăm cache-ul blocked IPs
+            # Actualizăm cooldown-ul și invalidăm cache-urile
             self._auto_block_cooldown[source_ip] = current_time
-            global _blocked_cache
+            global _blocked_cache, _blocked_mac_cache
             _blocked_cache = None
+            _blocked_mac_cache = None
 
             print(f"[IDS] IP {source_ip} blocat automat (severitate: {severity})")
 
@@ -161,10 +201,11 @@ class IntrusionDetector:
             try:
                 mikrotik = getattr(current_app, 'mikrotik_client', None)
                 if mikrotik and mikrotik.is_connected():
-                    mikrotik.block_ip_on_router(
-                        source_ip,
-                        comment=f'Auto-blocat SchoolSec: {alert_type}',
-                    )
+                    comment = f'Auto-blocat SchoolSec: {alert_type}'
+                    if mac_blocked:
+                        mikrotik.block_mac_on_router(device.mac_address, comment=comment)
+                    else:
+                        mikrotik.block_ip_on_router(source_ip, comment=comment)
             except Exception as e:
                 print(f"[IDS] Eroare auto-block MikroTik pentru {source_ip}: {e}")
 
@@ -206,6 +247,20 @@ class IntrusionDetector:
                 return False
         return ip in _blocked_cache
 
+    def _is_blocked_mac(self, mac):
+        """Verifică dacă MAC-ul este blocat în baza de date (cu cache TTL 60s)."""
+        global _blocked_mac_cache, _blocked_mac_cache_time
+        now = time.time()
+        if _blocked_mac_cache is None or (now - _blocked_mac_cache_time) > _BLOCKED_CACHE_TTL:
+            try:
+                from app.models import BlockedMAC
+                blocked_macs = BlockedMAC.query.filter_by(is_active=True).all()
+                _blocked_mac_cache = {b.mac_address.upper() for b in blocked_macs}
+                _blocked_mac_cache_time = now
+            except Exception:
+                return False
+        return mac.upper() in (_blocked_mac_cache or set())
+
     def _clean_old_entries(self, dq, window_seconds):
         """Elimină intrările mai vechi decât fereastra de timp."""
         cutoff = time.time() - window_seconds
@@ -216,18 +271,33 @@ class IntrusionDetector:
         """
         Analizează informațiile unui pachet și detectează amenințări.
         packet_info este un dicționar cu: src_ip, dst_ip, protocol, src_port, dst_port, size
+        Opțional: src_mac — adresa MAC sursă a pachetului
         """
         src_ip = packet_info.get('src_ip', '')
         dst_ip = packet_info.get('dst_ip', '')
         protocol = packet_info.get('protocol', '')
         dst_port = packet_info.get('dst_port')
         size = packet_info.get('size', 0)
+        src_mac = packet_info.get('src_mac', '')
 
         # Nu analizăm IP-urile din lista albă
         if self._is_whitelisted(src_ip):
             return
 
         current_time = time.time()
+
+        # Verificăm dacă un MAC blocat continuă să trimită trafic
+        if src_mac and self._is_blocked_mac(src_mac):
+            last_alert = self._blocked_mac_alert_cooldown.get(src_mac, 0)
+            if current_time - last_alert >= 300:  # cooldown 5 minute
+                self._blocked_mac_alert_cooldown[src_mac] = current_time
+                self._fire_alert(
+                    alert_type='blocked_mac_active',
+                    source_ip=src_ip,
+                    message=f"Dispozitiv cu MAC blocat {src_mac} (IP: {src_ip}) continuă să trimită trafic.",
+                    severity='critical',
+                )
+            return  # Nu mai analizăm alte reguli pentru dispozitive blocate pe MAC
 
         # Verificăm dacă un IP blocat continuă să trimită trafic
         if self._is_blocked(src_ip):
