@@ -12,10 +12,19 @@ from app.ids.rules import (
     EXTERNAL_BRUTE_FORCE_RULES,
     EXTERNAL_DDOS_RULES,
     ROUTER_HEALTH_RULES,
+    EXTERNAL_TRUSTED_IPS,
+    EXTERNAL_TRUSTED_SUBNETS,
 )
 
 # Interval cooldown implicit în secunde (5 minute)
 _ALERT_COOLDOWN_SECONDS = 300
+
+# Set pentru lookup rapid al IP-urilor de încredere (O(1))
+_TRUSTED_IPS_SET: frozenset = frozenset(EXTERNAL_TRUSTED_IPS)
+# Rețele VPN de încredere pre-compilate
+_TRUSTED_NETWORKS: list = [
+    ipaddress.ip_network(s, strict=False) for s in EXTERNAL_TRUSTED_SUBNETS
+]
 
 # Regex pentru extragerea portului dintr-un mesaj de log RouterOS
 # Exemple: "in:ether1 out:(unknown 0), src-mac ... proto TCP (SYN), 1.2.3.4:54321->10.0.0.1:80"
@@ -27,6 +36,25 @@ def _is_private_ip(ip: str) -> bool:
     """Returnează True dacă IP-ul este privat/loopback."""
     try:
         return ipaddress.ip_address(ip).is_private
+    except ValueError:
+        return False
+
+
+def _is_trusted_ip(ip: str) -> bool:
+    """Returnează True dacă IP-ul este de încredere și nu trebuie să genereze alerte externe.
+
+    Un IP este considerat de încredere dacă:
+    - este privat (RFC1918 / loopback) — atacurile externe vin întotdeauna de pe IP-uri publice
+    - este listat explicit în EXTERNAL_TRUSTED_IPS (tunnel-uri inter-școli, IP-uri publice partenere)
+    - aparține unui subnet VPN din EXTERNAL_TRUSTED_SUBNETS (WireGuard, L2TP/PPTP)
+    """
+    if _is_private_ip(ip):
+        return True
+    if ip in _TRUSTED_IPS_SET:
+        return True
+    try:
+        addr = ipaddress.ip_address(ip)
+        return any(addr in net for net in _TRUSTED_NETWORKS)
     except ValueError:
         return False
 
@@ -53,6 +81,10 @@ class ExternalMonitor:
         # Cheile logurilor deja procesate: set pentru lookup O(1), deque pentru evicție FIFO
         self._seen_log_keys_set: set = set()
         self._seen_log_keys_queue: deque = deque(maxlen=500)
+        print(
+            f"[ExternalMonitor] IP-uri de încredere configurate: "
+            f"{len(_TRUSTED_IPS_SET)} IP-uri + {len(_TRUSTED_NETWORKS)} subnet-uri VPN."
+        )
 
     # ------------------------------------------------------------------
     # Punct de intrare principal
@@ -127,8 +159,8 @@ class ExternalMonitor:
                 continue
             src_ip = ips[0]
 
-            # Ignorăm IP-urile private (atacuri interne deja acoperite)
-            if _is_private_ip(src_ip):
+            # Ignorăm IP-urile de încredere (private, tunnel-uri inter-școli, VPN)
+            if _is_trusted_ip(src_ip):
                 continue
 
             # Extragem portul destinație (dacă există)
@@ -199,8 +231,8 @@ class ExternalMonitor:
             success = attempt.get('success', True)
             message = attempt.get('message', '')
 
-            # Login reușit de la IP extern
-            if success and src_ip and not _is_private_ip(src_ip):
+            # Login reușit de la IP extern (nu de la IP de încredere)
+            if success and src_ip and not _is_trusted_ip(src_ip):
                 self._fire_external_alert(
                     alert_type='external_login_success',
                     source_ip=src_ip,
@@ -209,8 +241,8 @@ class ExternalMonitor:
                 )
                 continue
 
-            # Login eșuat
-            if not success and src_ip:
+            # Login eșuat de la IP extern (nu de la IP de încredere)
+            if not success and src_ip and not _is_trusted_ip(src_ip):
                 self._login_failure_tracker[src_ip].append(now)
 
         # Verifică brute force
