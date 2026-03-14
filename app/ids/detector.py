@@ -7,13 +7,28 @@ from collections import defaultdict, deque
 from datetime import datetime, timezone
 from app.ids.rules import (
     PORT_SCAN_RULES, BRUTE_FORCE_RULES,
-    HIGH_TRAFFIC_RULES, ARP_RULES, WHITELIST_IPS
+    HIGH_TRAFFIC_RULES, ARP_RULES, WHITELIST_IPS,
+    DNS_TUNNELING_RULES, DHCP_RULES, PACKET_FLOOD_RULES,
+    INSECURE_PROTOCOL_RULES, SYN_FLOOD_RULES,
+)
+
+# Lungimea maximă a unui query DNS afișat în mesajele de alertă
+_DNS_QUERY_MAX_DISPLAY_LEN = 80
+# Mulțimile de caractere hex/base64 folosite la detectarea DNS tunneling
+_HEX_CHARS = frozenset('0123456789abcdefABCDEF')
+_B64_CHARS = frozenset(
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
 )
 
 # Cache pentru lista albă personalizată (evită citirea JSON la fiecare pachet)
 _whitelist_cache = None
 _whitelist_cache_time = 0.0
 _WHITELIST_CACHE_TTL = 60  # secunde
+
+# Cache pentru IP-urile blocate (evită interogarea DB la fiecare pachet)
+_blocked_cache = None
+_blocked_cache_time = 0.0
+_BLOCKED_CACHE_TTL = 60  # secunde
 
 
 def invalidate_whitelist_cache():
@@ -38,6 +53,20 @@ class IntrusionDetector:
         self._traffic_tracker = defaultdict(deque)
         # Dicționar: ip -> deque de timestamp-uri pentru ARP
         self._arp_tracker = defaultdict(deque)
+        # Dicționar: ip -> deque de (timestamp, query) pentru DNS tunneling
+        self._dns_tracker = defaultdict(deque)
+        # Dicționar: ip -> deque de timestamp-uri pentru packet flood
+        self._packet_flood_tracker = defaultdict(deque)
+        # Dicționar: ip -> {dst_port -> deque} pentru SYN flood
+        self._syn_flood_tracker = defaultdict(lambda: defaultdict(deque))
+        # Dicționar: (src_ip, port) -> last_alert_time pentru protocol nesecurizat
+        self._insecure_protocol_cooldown = {}
+        # Dicționar: ip -> last_alert_time pentru DHCP spoofing cooldown
+        self._dhcp_spoof_cooldown = {}
+        # Dicționar: ip -> last_alert_time pentru blocked_ip_active (5 min cooldown)
+        self._blocked_ip_alert_cooldown = {}
+        # Dicționar: ip -> last_auto_block_time pentru auto-block (5 min cooldown)
+        self._auto_block_cooldown = {}
         # Callback pentru salvarea alertelor
         self._alert_callbacks = []
 
@@ -66,6 +95,86 @@ class IntrusionDetector:
                 callback(alert_data)
             except Exception as e:
                 print(f"[IDS] Eroare în callback: {e}")
+        # Auto-block după ce alerta a fost salvată prin callbacks
+        self._maybe_auto_block(source_ip, severity, alert_type, message)
+
+    def _maybe_auto_block(self, source_ip, severity, alert_type, reason):
+        """Blochează automat IP-ul dacă severitatea o cere și dacă nu este whitelisted."""
+        try:
+            from flask import current_app
+            cfg = current_app.config
+        except Exception:
+            return
+
+        if not cfg.get('AUTO_BLOCK_ENABLED', True):
+            return
+
+        auto_block_severities = cfg.get('AUTO_BLOCK_SEVERITY', ['critical', 'high'])
+        if severity not in auto_block_severities:
+            return
+
+        if self._is_whitelisted(source_ip):
+            return
+
+        # Cooldown: nu bloca același IP mai des de o dată la 5 minute
+        current_time = time.time()
+        last_block = self._auto_block_cooldown.get(source_ip, 0)
+        if current_time - last_block < 300:
+            return
+
+        try:
+            from app import db
+            from app.models import BlockedIP, SecurityLog
+
+            # Verificăm dacă IP-ul nu este deja blocat
+            existing = BlockedIP.query.filter_by(ip_address=source_ip, is_active=True).first()
+            if existing:
+                return
+
+            # Blocăm IP-ul în baza de date
+            blocked = BlockedIP(
+                ip_address=source_ip,
+                reason=f'Auto-blocat: {alert_type} - {reason}',
+                blocked_by='system-auto',
+            )
+            db.session.add(blocked)
+
+            # Log de securitate
+            log = SecurityLog(
+                event_type='auto_block',
+                source_ip=source_ip,
+                message=(f'IP {source_ip} blocat automat '
+                         f'(severitate: {severity}, tip alertă: {alert_type})'),
+                severity='warning',
+            )
+            db.session.add(log)
+            db.session.commit()
+
+            # Actualizăm cooldown-ul și invalidăm cache-ul blocked IPs
+            self._auto_block_cooldown[source_ip] = current_time
+            global _blocked_cache
+            _blocked_cache = None
+
+            print(f"[IDS] IP {source_ip} blocat automat (severitate: {severity})")
+
+            # Dacă MikroTik este conectat, blocăm și pe router
+            try:
+                mikrotik = getattr(current_app, 'mikrotik_client', None)
+                if mikrotik and mikrotik.is_connected():
+                    mikrotik.block_ip_on_router(
+                        source_ip,
+                        comment=f'Auto-blocat SchoolSec: {alert_type}',
+                    )
+            except Exception as e:
+                print(f"[IDS] Eroare auto-block MikroTik pentru {source_ip}: {e}")
+
+        except Exception as e:
+            print(f"[IDS] Eroare auto-block {source_ip}: {e}")
+            try:
+                from app import db
+                db.session.rollback()
+            except Exception:
+                pass
 
     def _is_whitelisted(self, ip):
         """Verifică dacă IP-ul este în lista albă (builtin + personalizată)."""
@@ -82,6 +191,20 @@ class IntrusionDetector:
             except Exception:
                 return False
         return ip in _whitelist_cache
+
+    def _is_blocked(self, ip):
+        """Verifică dacă IP-ul este blocat în baza de date (cu cache TTL 60s)."""
+        global _blocked_cache, _blocked_cache_time
+        now = time.time()
+        if _blocked_cache is None or (now - _blocked_cache_time) > _BLOCKED_CACHE_TTL:
+            try:
+                from app.models import BlockedIP
+                blocked_ips = BlockedIP.query.filter_by(is_active=True).all()
+                _blocked_cache = {b.ip_address for b in blocked_ips}
+                _blocked_cache_time = now
+            except Exception:
+                return False
+        return ip in _blocked_cache
 
     def _clean_old_entries(self, dq, window_seconds):
         """Elimină intrările mai vechi decât fereastra de timp."""
@@ -106,6 +229,19 @@ class IntrusionDetector:
 
         current_time = time.time()
 
+        # Verificăm dacă un IP blocat continuă să trimită trafic
+        if self._is_blocked(src_ip):
+            last_alert = self._blocked_ip_alert_cooldown.get(src_ip, 0)
+            if current_time - last_alert >= 300:  # cooldown 5 minute
+                self._blocked_ip_alert_cooldown[src_ip] = current_time
+                self._fire_alert(
+                    alert_type='blocked_ip_active',
+                    source_ip=src_ip,
+                    message=f"IP blocat {src_ip} continuă să trimită trafic în rețea.",
+                    severity='critical',
+                )
+            return  # Nu mai analizăm alte reguli pentru IP-uri blocate
+
         # Verificăm port scanning
         if PORT_SCAN_RULES['enabled'] and dst_port and protocol in ('TCP', 'UDP'):
             self._check_port_scan(src_ip, dst_ip, dst_port, current_time)
@@ -122,6 +258,27 @@ class IntrusionDetector:
         # Verificăm ARP spoofing
         if ARP_RULES['enabled'] and protocol == 'ARP':
             self._check_arp_sweep(src_ip, current_time)
+
+        # Verificăm DNS tunneling
+        dns_query = packet_info.get('dns_query')
+        if DNS_TUNNELING_RULES['enabled'] and dns_query:
+            self._check_dns_tunneling(src_ip, dns_query, current_time)
+
+        # Verificăm DHCP spoofing
+        if DHCP_RULES['enabled'] and protocol == 'DHCP':
+            self._check_dhcp_spoofing(src_ip, dst_port, current_time)
+
+        # Verificăm packet flood
+        if PACKET_FLOOD_RULES['enabled']:
+            self._check_packet_flood(src_ip, current_time)
+
+        # Verificăm protocoale nesecurizate
+        if INSECURE_PROTOCOL_RULES['enabled'] and dst_port:
+            self._check_insecure_protocol(src_ip, dst_port, current_time)
+
+        # Verificăm SYN flood (conexiuni TCP brute)
+        if SYN_FLOOD_RULES['enabled'] and dst_port and protocol == 'TCP':
+            self._check_syn_flood(src_ip, dst_ip, dst_port, current_time)
 
     def _check_port_scan(self, src_ip, dst_ip, dst_port, current_time):
         """Detectează scanarea porturilor."""
@@ -231,6 +388,163 @@ class IntrusionDetector:
                 severity=rules['severity']
             )
             self._arp_tracker[src_ip].clear()
+
+    def _check_dns_tunneling(self, src_ip, dns_query, current_time):
+        """Detectează DNS tunneling prin analiza query-urilor DNS."""
+        rules = DNS_TUNNELING_RULES
+        window = rules['window_seconds']
+        tracker = self._dns_tracker[src_ip]
+
+        tracker.append((current_time, dns_query))
+
+        # Elimină intrările vechi
+        cutoff = current_time - window
+        while tracker and tracker[0][0] < cutoff:
+            tracker.popleft()
+
+        # Verifică subdomain anormal de lung
+        parts = dns_query.split('.')
+        if len(parts) > 2:
+            subdomain = '.'.join(parts[:-2])
+            if len(subdomain) > rules['max_subdomain_length']:
+                self._fire_alert(
+                    alert_type='dns_tunneling',
+                    source_ip=src_ip,
+                    message=(f"DNS tunneling posibil: {src_ip} a trimis un query cu subdomain "
+                             f"anormal de lung ({len(subdomain)} caractere): "
+                             f"{dns_query[:_DNS_QUERY_MAX_DISPLAY_LEN]}"),
+                    severity=rules['severity'],
+                )
+                self._dns_tracker[src_ip].clear()
+                return
+
+        # Verifică număr mare de query-uri DNS unice în fereastră
+        unique_queries = {q for _, q in tracker}
+        if len(unique_queries) >= rules['unique_queries_threshold']:
+            self._fire_alert(
+                alert_type='dns_tunneling',
+                source_ip=src_ip,
+                message=(f"DNS tunneling posibil: {src_ip} a trimis {len(unique_queries)} "
+                         f"query-uri DNS unice în {window} secunde."),
+                severity=rules['severity'],
+            )
+            self._dns_tracker[src_ip].clear()
+            return
+
+        # Verifică pattern de encoding (hex / base64) în primul subdomain
+        if len(parts) > 2:
+            first_label = parts[0]
+            if len(first_label) > 8:
+                hex_ratio = sum(1 for c in first_label if c in _HEX_CHARS) / len(first_label)
+                b64_ratio = sum(1 for c in first_label if c in _B64_CHARS) / len(first_label)
+                if hex_ratio > 0.8 or b64_ratio > 0.9:
+                    self._fire_alert(
+                        alert_type='dns_tunneling',
+                        source_ip=src_ip,
+                        message=(f"DNS tunneling posibil: {src_ip} folosește subdomenii cu "
+                                 f"pattern de encoding în query-ul DNS: "
+                                 f"{dns_query[:_DNS_QUERY_MAX_DISPLAY_LEN]}"),
+                        severity=rules['severity'],
+                    )
+                    self._dns_tracker[src_ip].clear()
+
+    def _check_dhcp_spoofing(self, src_ip, dst_port, current_time):
+        """Detectează un DHCP rogue server în rețea."""
+        rules = DHCP_RULES
+        # Verificăm doar pachetele DHCP reply (server→client: dst_port=68)
+        if dst_port != 68:
+            return
+
+        legitimate_servers = set(rules['legitimate_servers'])
+        if src_ip in legitimate_servers or self._is_whitelisted(src_ip):
+            return
+
+        # Cooldown: nu genera alertă pentru același IP mai des de o dată la 5 minute
+        last_alert = self._dhcp_spoof_cooldown.get(src_ip, 0)
+        if current_time - last_alert < 300:
+            return
+
+        self._dhcp_spoof_cooldown[src_ip] = current_time
+        self._fire_alert(
+            alert_type='dhcp_spoofing',
+            source_ip=src_ip,
+            message=(f"DHCP spoofing posibil: {src_ip} trimite pachete DHCP reply "
+                     f"dar nu este un server DHCP legitim."),
+            severity=rules['severity'],
+        )
+
+    def _check_packet_flood(self, src_ip, current_time):
+        """Detectează packet flood de la un singur IP."""
+        rules = PACKET_FLOOD_RULES
+        window = rules['window_seconds']
+        tracker = self._packet_flood_tracker[src_ip]
+
+        tracker.append(current_time)
+
+        # Elimină intrările vechi
+        cutoff = current_time - window
+        while tracker and tracker[0] < cutoff:
+            tracker.popleft()
+
+        if len(tracker) >= rules['threshold']:
+            self._fire_alert(
+                alert_type='packet_flood',
+                source_ip=src_ip,
+                message=(f"Packet flood detectat: {src_ip} a trimis {len(tracker)} "
+                         f"pachete în {window} secunde."),
+                severity=rules['severity'],
+            )
+            self._packet_flood_tracker[src_ip].clear()
+
+    def _check_insecure_protocol(self, src_ip, dst_port, current_time):
+        """Detectează utilizarea protocoalelor nesecurizate."""
+        rules = INSECURE_PROTOCOL_RULES
+        monitored = rules['monitored_ports']
+
+        if dst_port not in monitored:
+            return
+
+        # Cooldown: alertează o dată la 10 minute per IP/port
+        key = (src_ip, dst_port)
+        last_alert = self._insecure_protocol_cooldown.get(key, 0)
+        if current_time - last_alert < rules['cooldown_seconds']:
+            return
+
+        protocol_name = monitored[dst_port]
+        self._insecure_protocol_cooldown[key] = current_time
+        self._fire_alert(
+            alert_type='insecure_protocol',
+            source_ip=src_ip,
+            port=dst_port,
+            message=(f"Protocol nesecurizat detectat: {src_ip} folosește "
+                     f"{protocol_name} (port {dst_port})."),
+            severity=rules['severity'],
+        )
+
+    def _check_syn_flood(self, src_ip, dst_ip, dst_port, current_time):
+        """Detectează SYN flood (număr mare de conexiuni TCP către același port)."""
+        rules = SYN_FLOOD_RULES
+        window = rules['window_seconds']
+        tracker = self._syn_flood_tracker[src_ip][dst_port]
+
+        tracker.append(current_time)
+
+        # Elimină intrările vechi
+        cutoff = current_time - window
+        while tracker and tracker[0] < cutoff:
+            tracker.popleft()
+
+        if len(tracker) >= rules['threshold']:
+            self._fire_alert(
+                alert_type='syn_flood',
+                source_ip=src_ip,
+                destination_ip=dst_ip,
+                port=dst_port,
+                message=(f"SYN flood detectat: {src_ip} a trimis {len(tracker)} "
+                         f"conexiuni TCP către portul {dst_port} în {window} secunde."),
+                severity=rules['severity'],
+            )
+            self._syn_flood_tracker[src_ip][dst_port].clear()
 
 
 # Instanța globală a detectorului
