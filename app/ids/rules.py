@@ -237,6 +237,41 @@ ROUTER_HEALTH_RULES = {
 }
 
 # =============================================================================
+# IP-uri de încredere pentru monitorizarea externă (tunnel-uri inter-școli, VPN)
+# Login-urile și traficul de la aceste IP-uri NU generează alerte externe.
+# =============================================================================
+EXTERNAL_TRUSTED_IPS = [
+    # Tunnel-uri IPIP
+    '172.0.2.1',    # Acasă
+    '172.0.2.2',    # Acasă (capăt local)
+    '172.2.4.1',    # Școala 4 (capăt local)
+    '172.2.4.2',    # Școala 4
+    '172.2.6.1',    # Școala Hanu Corp A2 (capăt local)
+    '172.2.6.2',    # Școala Hanu Corp A2
+    # Tunnel-uri GRE
+    '172.1.2.1',    # Școala 1
+    '172.1.2.2',    # Școala 1 (capăt local)
+    '172.2.3.1',    # Școala 3 (capăt local)
+    '172.2.3.2',    # Școala 3
+    '172.2.5.1',    # Grădinița 3 (capăt local)
+    '172.2.5.2',    # Grădinița 3
+    '172.2.7.1',    # Școala Hanu Corp B (capăt local)
+    '172.2.7.2',    # Școala Hanu Corp B
+    # IP-uri publice ale celorlalte școli (pot face login legitim pe router)
+    '82.79.117.30',       # Școala 4
+    '86.120.144.133',     # Școala Hanu Corp A
+    '86.120.144.134',     # Școala Hanu Corp B
+]
+
+# Subnet-uri VPN de încredere (WireGuard + L2TP/PPTP)
+EXTERNAL_TRUSTED_SUBNETS = [
+    '192.168.89.0/24',      # VPN L2TP/PPTP pool
+    '192.168.250.0/29',     # WireGuard 1 (Grigoras Mirela)
+    '192.168.251.0/29',     # WireGuard 2 (Contabil 1)
+    '192.168.252.0/29',     # WireGuard 3 (Director)
+]
+
+# =============================================================================
 # Porturile considerate sensibile (accesul la acestea generează loguri)
 # =============================================================================
 SENSITIVE_PORTS = [
