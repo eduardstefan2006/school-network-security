@@ -134,6 +134,77 @@ WHITELIST_IPS = [
 ]
 
 # =============================================================================
+# Reguli pentru detectarea DNS Tunneling
+# =============================================================================
+DNS_TUNNELING_RULES = {
+    'enabled': True,
+    # Lungimea maximă permisă a subdomain-ului (caractere)
+    'max_subdomain_length': 50,
+    # Numărul de query-uri DNS unice care declanșează alerta
+    'unique_queries_threshold': 30,
+    # Fereastra de timp în secunde
+    'window_seconds': 60,
+    # Severitatea alertei
+    'severity': 'high',
+}
+
+# =============================================================================
+# Reguli pentru detectarea DHCP Spoofing (server DHCP rogue)
+# =============================================================================
+DHCP_RULES = {
+    'enabled': True,
+    # IP-urile serverelor DHCP legitime din rețea
+    'legitimate_servers': ['192.168.2.1'],
+    # Severitatea alertei
+    'severity': 'critical',
+}
+
+# =============================================================================
+# Reguli pentru detectarea Packet Flood (rata de pachete per IP)
+# =============================================================================
+PACKET_FLOOD_RULES = {
+    'enabled': True,
+    # Numărul maxim de pachete permis în fereastra de timp
+    'threshold': 500,          # pachete
+    # Fereastra de timp în secunde
+    'window_seconds': 1,       # per secundă
+    # Severitatea alertei
+    'severity': 'high',
+}
+
+# =============================================================================
+# Reguli pentru detectarea protocoalelor nesecurizate
+# =============================================================================
+INSECURE_PROTOCOL_RULES = {
+    'enabled': True,
+    # Porturile monitorizate și denumirile protocoalelor asociate
+    'monitored_ports': {
+        23: 'Telnet',
+        21: 'FTP',
+        110: 'POP3',
+        143: 'IMAP',
+        25: 'SMTP',
+    },
+    # Cooldown în secunde — alertează o dată la 10 minute per IP/port
+    'cooldown_seconds': 600,
+    # Severitatea alertei
+    'severity': 'medium',
+}
+
+# =============================================================================
+# Reguli pentru detectarea SYN Flood
+# =============================================================================
+SYN_FLOOD_RULES = {
+    'enabled': True,
+    # Numărul de conexiuni TCP care declanșează alerta
+    'threshold': 200,
+    # Fereastra de timp în secunde
+    'window_seconds': 10,
+    # Severitatea alertei
+    'severity': 'critical',
+}
+
+# =============================================================================
 # Porturile considerate sensibile (accesul la acestea generează loguri)
 # =============================================================================
 SENSITIVE_PORTS = [

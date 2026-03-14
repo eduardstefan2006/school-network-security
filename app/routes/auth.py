@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import User, SecurityLog
 from app import db
+from app.utils import validate_password
 
 # Creăm blueprint-ul pentru autentificare
 auth_bp = Blueprint('auth', __name__)
@@ -75,8 +76,9 @@ def change_own_password():
             return redirect(url_for('auth.change_own_password'))
 
         # Validare parola nouă
-        if not new_password or len(new_password) < 6:
-            flash('Parola nouă trebuie să aibă cel puțin 6 caractere.', 'danger')
+        valid, error_msg = validate_password(new_password)
+        if not valid:
+            flash(error_msg, 'danger')
             return redirect(url_for('auth.change_own_password'))
 
         if new_password != confirm_password:

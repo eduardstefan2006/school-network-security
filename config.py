@@ -37,6 +37,11 @@ class Config:
     # Interfața de rețea pentru captură (None = auto-detectare)
     NETWORK_INTERFACE = os.environ.get('NETWORK_INTERFACE') or None
 
+    # Auto-blocare IP la alerte critice / înalte
+    AUTO_BLOCK_ENABLED = os.environ.get('AUTO_BLOCK_ENABLED', 'true').lower() == 'true'
+    # Severitățile care declanșează auto-block
+    AUTO_BLOCK_SEVERITY = ['critical', 'high']
+
     # Modul simulat (fără Scapy/drepturi root)
     SIMULATION_MODE = os.environ.get('SIMULATION_MODE', 'false').lower() == 'true'
 

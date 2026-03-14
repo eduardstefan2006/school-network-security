@@ -5,6 +5,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from app.models import User, SecurityLog
 from app import db
+from app.utils import validate_password
 from functools import wraps
 
 users_bp = Blueprint('users', __name__)
@@ -44,6 +45,11 @@ def add_user():
         # Validare
         if not username or not password:
             flash('Numele de utilizator și parola sunt obligatorii.', 'danger')
+            return render_template('users.html', users=User.query.all())
+
+        valid, error_msg = validate_password(password)
+        if not valid:
+            flash(error_msg, 'danger')
             return render_template('users.html', users=User.query.all())
 
         # Verificăm dacă username-ul există deja
@@ -129,8 +135,9 @@ def change_password(user_id):
     user = User.query.get_or_404(user_id)
     new_password = request.form.get('new_password', '')
 
-    if not new_password or len(new_password) < 6:
-        flash('Parola trebuie să aibă cel puțin 6 caractere.', 'danger')
+    valid, error_msg = validate_password(new_password)
+    if not valid:
+        flash(error_msg, 'danger')
         return redirect(url_for('users.index'))
 
     user.set_password(new_password)
