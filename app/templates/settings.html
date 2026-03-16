@@ -17,12 +17,17 @@
     <div class="card-body">
         <div class="row mb-3">
             <div class="col-md-3 text-muted">Status:</div>
-            <div class="col-md-9">
-                {% if telegram_enabled %}
-                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Activat</span>
-                {% else %}
-                    <span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>Dezactivat</span>
-                {% endif %}
+            <div class="col-md-9 d-flex align-items-center gap-2">
+                <span id="telegramStatusBadge" class="badge {% if telegram_enabled %}bg-success{% else %}bg-secondary{% endif %}">
+                    <i class="bi {% if telegram_enabled %}bi-check-circle{% else %}bi-x-circle{% endif %} me-1"></i>
+                    <span id="telegramStatusText">{% if telegram_enabled %}Activat{% else %}Dezactivat{% endif %}</span>
+                </span>
+                <button type="button" id="btnToggleTelegram"
+                        class="btn btn-sm {% if telegram_enabled %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                    <i class="bi {% if telegram_enabled %}bi-toggle-on{% else %}bi-toggle-off{% endif %} me-1"></i>
+                    <span id="btnToggleTelegramText">{% if telegram_enabled %}Dezactivează{% else %}Activează{% endif %}</span>
+                </button>
+                <span id="telegramToggleResult" class="small"></span>
             </div>
         </div>
         <div class="row mb-3">
@@ -180,6 +185,65 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+
+    // Toggle Telegram
+    const btnToggle = document.getElementById('btnToggleTelegram');
+    const toggleResult = document.getElementById('telegramToggleResult');
+    if (btnToggle) {
+        btnToggle.addEventListener('click', function () {
+            const isCurrentlyEnabled = document.getElementById('telegramStatusBadge').classList.contains('bg-success');
+            btnToggle.disabled = true;
+            btnToggle.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se procesează...';
+            toggleResult.textContent = '';
+            fetch('/api/settings/telegram/toggle', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        const enabled = data.enabled;
+                        const badge = document.getElementById('telegramStatusBadge');
+                        const statusText = document.getElementById('telegramStatusText');
+                        const btnTestTg = document.getElementById('btnTestTelegram');
+
+                        if (enabled) {
+                            badge.className = 'badge bg-success';
+                            badge.querySelector('i').className = 'bi bi-check-circle me-1';
+                            statusText.textContent = 'Activat';
+                            btnToggle.className = 'btn btn-sm btn-outline-warning';
+                            btnToggle.innerHTML = '<i class="bi bi-toggle-on me-1"></i><span id="btnToggleTelegramText">Dezactivează</span>';
+                            if (btnTestTg) btnTestTg.disabled = false;
+                        } else {
+                            badge.className = 'badge bg-secondary';
+                            badge.querySelector('i').className = 'bi bi-x-circle me-1';
+                            statusText.textContent = 'Dezactivat';
+                            btnToggle.className = 'btn btn-sm btn-outline-success';
+                            btnToggle.innerHTML = '<i class="bi bi-toggle-off me-1"></i><span id="btnToggleTelegramText">Activează</span>';
+                            if (btnTestTg) btnTestTg.disabled = true;
+                        }
+                        toggleResult.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>' + data.message + '</span>';
+                        setTimeout(() => { toggleResult.textContent = ''; }, 4000);
+                    } else {
+                        // Restaurăm starea anterioară a butonului
+                        const prevIcon = isCurrentlyEnabled ? 'bi-toggle-on' : 'bi-toggle-off';
+                        const prevText = isCurrentlyEnabled ? 'Dezactivează' : 'Activează';
+                        const prevClass = isCurrentlyEnabled ? 'btn btn-sm btn-outline-warning' : 'btn btn-sm btn-outline-success';
+                        btnToggle.className = prevClass;
+                        btnToggle.innerHTML = '<i class="bi ' + prevIcon + ' me-1"></i><span id="btnToggleTelegramText">' + prevText + '</span>';
+                        toggleResult.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>' + (data.error || 'Eroare necunoscută') + '</span>';
+                    }
+                })
+                .catch(() => {
+                    const prevIcon = isCurrentlyEnabled ? 'bi-toggle-on' : 'bi-toggle-off';
+                    const prevText = isCurrentlyEnabled ? 'Dezactivează' : 'Activează';
+                    const prevClass = isCurrentlyEnabled ? 'btn btn-sm btn-outline-warning' : 'btn btn-sm btn-outline-success';
+                    btnToggle.className = prevClass;
+                    btnToggle.innerHTML = '<i class="bi ' + prevIcon + ' me-1"></i><span id="btnToggleTelegramText">' + prevText + '</span>';
+                    toggleResult.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Eroare de rețea.</span>';
+                })
+                .finally(() => {
+                    btnToggle.disabled = false;
+                });
+        });
+    }
 
     // Test Telegram
     const btnTest = document.getElementById('btnTestTelegram');

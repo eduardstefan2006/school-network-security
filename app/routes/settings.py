@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 # Fișierul pentru lista albă personalizată
 _WHITELIST_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'whitelist_custom.json')
 
+# Fișierul pentru configurația persistentă Telegram
+_TELEGRAM_CONFIG_FILE = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'telegram_config.json')
+
 # Descrierile IP-urilor predefinite (folosite la migrarea automată din rules.py)
 _BUILTIN_DESCRIPTIONS = {
     '127.0.0.1': 'Localhost',
@@ -60,6 +63,36 @@ _BUILTIN_DESCRIPTIONS = {
     '1.1.1.1': 'Cloudflare DNS',
     '8.8.8.8': 'Google DNS',
 }
+
+
+def _get_telegram_enabled():
+    """Returnează starea persistentă a notificărilor Telegram.
+
+    Citește din fișierul JSON de configurare; dacă nu există,
+    folosește valoarea din variabila de mediu (app.config).
+    """
+    try:
+        if os.path.exists(_TELEGRAM_CONFIG_FILE):
+            with open(_TELEGRAM_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            enabled = bool(data.get('enabled', False))
+            # Sincronizăm și app.config pentru a fi folosit de notificări
+            current_app.config['TELEGRAM_ENABLED'] = enabled
+            return enabled
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning('Eroare la citirea configurației Telegram (%s): %s', _TELEGRAM_CONFIG_FILE, e)
+    return current_app.config.get('TELEGRAM_ENABLED', False)
+
+
+def _set_telegram_enabled(enabled: bool):
+    """Salvează starea notificărilor Telegram în fișierul persistent și actualizează app.config."""
+    try:
+        os.makedirs(os.path.dirname(_TELEGRAM_CONFIG_FILE), exist_ok=True)
+        with open(_TELEGRAM_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump({'enabled': enabled}, f)
+    except OSError as e:
+        logger.warning('Eroare la salvarea configurației Telegram (%s): %s', _TELEGRAM_CONFIG_FILE, e)
+    current_app.config['TELEGRAM_ENABLED'] = enabled
 
 
 def _load_custom_whitelist():
@@ -119,7 +152,7 @@ def index():
     from app.ids.sniffer import traffic_stats
 
     # Configurare Telegram
-    telegram_enabled = current_app.config.get('TELEGRAM_ENABLED', False)
+    telegram_enabled = _get_telegram_enabled()
     chat_id_raw = current_app.config.get('TELEGRAM_CHAT_ID', '')
     chat_id_masked = ('*' * (len(chat_id_raw) - 4) + chat_id_raw[-4:]) if len(chat_id_raw) > 4 else ('*' * len(chat_id_raw))
 
@@ -165,6 +198,37 @@ def index():
         whitelist_entries=whitelist_entries,
         system_info=system_info,
     )
+
+
+@settings_bp.route('/api/settings/telegram/toggle', methods=['POST'])
+@login_required
+def toggle_telegram():
+    """Activează sau dezactivează notificările Telegram în mod persistent."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis. Doar administratorii pot modifica setările.'}), 403
+
+    token = current_app.config.get('TELEGRAM_BOT_TOKEN', '')
+    chat_id = current_app.config.get('TELEGRAM_CHAT_ID', '')
+
+    current_enabled = _get_telegram_enabled()
+    new_enabled = not current_enabled
+
+    # Validăm că token-ul și chat_id-ul sunt configurate înainte de activare
+    if new_enabled and (not token or not chat_id):
+        return jsonify({
+            'error': 'TELEGRAM_BOT_TOKEN și TELEGRAM_CHAT_ID trebuie configurate înainte de activare.'
+        }), 400
+
+    _set_telegram_enabled(new_enabled)
+
+    action_label = 'activate' if new_enabled else 'dezactivate'
+    logger.info('[Settings] Notificările Telegram au fost %s de %s.', action_label, current_user.username)
+
+    return jsonify({
+        'success': True,
+        'enabled': new_enabled,
+        'message': f'Notificările Telegram au fost {"activate" if new_enabled else "dezactivate"}.'
+    })
 
 
 @settings_bp.route('/api/settings/whitelist', methods=['GET'])
