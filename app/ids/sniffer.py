@@ -230,8 +230,9 @@ def _is_private_ip(ip_str):
         return False
 
 
-# Mapare statică subnet → VLAN-ID (din configurația MikroTik setari.rsc)
-_VLAN_MAP = [
+# Mapare statică subnet → VLAN-ID (fallback pentru rețeaua școlii / compatibilitate inversă)
+# Dacă există înregistrări în tabela discovered_vlans, acestea au prioritate.
+_STATIC_VLAN_MAP = [
     (ipaddress.ip_network('192.168.231.0/26'), 200),  # LaboratorInfo
     (ipaddress.ip_network('192.168.221.0/28'), 201),  # Sala1Parter
     (ipaddress.ip_network('192.168.222.0/27'), 202),  # Sala2Parter
@@ -251,18 +252,95 @@ _VLAN_MAP = [
     (ipaddress.ip_network('192.168.237.0/28'), 217),  # Psiholog
 ]
 
+# Cache dinamic pentru VLAN-uri descoperite (None = nu a fost încărcat din BD)
+# Format: list of (ipaddress.IPv4Network, vlan_id)
+_dynamic_vlan_map: list | None = None
+_vlan_map_lock = threading.Lock()
+
+# Cache dinamic pentru tipurile de dispozitive cunoscute din BD
+# Format: {ip_address: device_type}
+_known_device_types: dict = {}
+_device_types_lock = threading.Lock()
+
+
+def invalidate_vlan_cache():
+    """Invalidează cache-ul VLAN dinamic, forțând reîncărcarea din BD la următoarea apelare."""
+    global _dynamic_vlan_map
+    with _vlan_map_lock:
+        _dynamic_vlan_map = None
+
+
+def invalidate_device_type_cache():
+    """Invalidează cache-ul tipurilor de dispozitive, forțând reîncărcarea din BD."""
+    global _known_device_types
+    with _device_types_lock:
+        _known_device_types = {}
+
+
+def _load_vlan_map_from_db() -> list | None:
+    """Încearcă să încarce VLAN-urile din tabela discovered_vlans.
+
+    Returnează lista dacă există înregistrări, sau None pentru fallback la static.
+    """
+    try:
+        from app.models import DiscoveredVLAN
+        vlans = DiscoveredVLAN.query.filter_by(is_active=True).all()
+        if not vlans:
+            return None
+        result = []
+        for v in vlans:
+            if v.subnet:
+                try:
+                    net = ipaddress.ip_network(v.subnet, strict=False)
+                    result.append((net, v.vlan_id))
+                except ValueError:
+                    pass
+        return result if result else None
+    except Exception:
+        return None
+
+
+def _load_device_types_from_db() -> dict:
+    """Încarcă tipurile de dispozitive fixe (is_known=True) din BD.
+
+    Returnează un dict {ip: device_type} pentru dispozitivele cu clasificare fixă.
+    """
+    try:
+        from app.models import NetworkDevice
+        devices = NetworkDevice.query.filter(
+            NetworkDevice.is_known == True,
+            NetworkDevice.device_type.in_(tuple(_FIXED_DEVICE_TYPES))
+        ).all()
+        return {d.ip_address: d.device_type for d in devices}
+    except Exception:
+        return {}
+
 
 def _get_vlan_from_ip(ip_str):
-    """Returnează VLAN-ID-ul pentru un IP pe baza mapării statice subnet→VLAN.
+    """Returnează VLAN-ID-ul pentru un IP.
 
-    Returnează None dacă IP-ul nu aparține niciunui subnet VLAN cunoscut
-    (ex: 192.168.2.x - rețea principală fără tag VLAN, sau 192.168.239.x - Cancelarie).
+    Prioritate:
+    1. VLAN-uri descoperite dinamic din BD (auto-discovery)
+    2. Mapare statică (fallback pentru compatibilitate inversă)
+
+    Returnează None dacă IP-ul nu aparține niciunui subnet VLAN cunoscut.
     """
+    global _dynamic_vlan_map
     try:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return None
-    for network, vlan_id in _VLAN_MAP:
+
+    # Dacă nu am încărcat cache-ul dinamic, încercăm acum
+    if _dynamic_vlan_map is None:
+        with _vlan_map_lock:
+            if _dynamic_vlan_map is None:
+                loaded = _load_vlan_map_from_db()
+                _dynamic_vlan_map = loaded  # poate rămâne None dacă BD e gol
+
+    # Folosim harta dinamică dacă există
+    vlan_map = _dynamic_vlan_map if _dynamic_vlan_map is not None else _STATIC_VLAN_MAP
+    for network, vlan_id in vlan_map:
         if ip in network:
             return vlan_id
     return None
@@ -488,7 +566,7 @@ def _looks_like_ap(mac: str | None, vlan_id: int | None, ip: str | None) -> bool
         ip: Adresa IP ca string, folosită ca fallback pentru detecția VLAN din subnet.
     Returns:
         True dacă OUI-ul MAC aparține unui vendor AP cunoscut (TP-Link/ASUS) și
-        dispozitivul se află pe un VLAN (vlan_id furnizat sau IP aparține unui subnet VLAN din _VLAN_MAP).
+        dispozitivul se află pe un VLAN (vlan_id furnizat sau IP aparține unui subnet VLAN din harta dinamică).
         False în orice alt caz (MAC lipsă, OUI necunoscut, sau nu e pe VLAN).
     """
     if not mac:
@@ -573,16 +651,29 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
 
     Prioritate de detecție:
     1. Dacă MAC aparține unui vendor AP (TP-Link/ASUS) și dispozitivul e pe un VLAN → 'ap'
-    2. IP hardcodat (router, switch, cameră, server, AP din _AP_IPS)
-    3. Dacă MAC aparține unui producător de camere de supraveghere (Kedacom/Tiandy) → 'camera'
-    4. Dacă MAC aparține unui producător de dispozitive mobile (Apple, Samsung, etc.) → 'mobile'
-    5. Dacă hostname-ul (DHCP/DNS) sugerează un dispozitiv mobil → 'mobile'
-    6. Dacă MAC-ul este randomizat (LAA bit setat) și dispozitivul e pe un subnet VLAN client → 'mobile'
-    7. Fallback → 'client'
+    2. Clasificare din BD (dispozitive is_known cu tip fix salvat via auto-discovery)
+    3. IP hardcodat (compatibilitate inversă: router, switch, cameră, server, AP din _AP_IPS)
+    4. Dacă MAC aparține unui producător de camere de supraveghere (Kedacom/Tiandy) → 'camera'
+    5. Dacă MAC aparține unui producător de dispozitive mobile (Apple, Samsung, etc.) → 'mobile'
+    6. Dacă hostname-ul (DHCP/DNS) sugerează un dispozitiv mobil → 'mobile'
+    7. Dacă MAC-ul este randomizat (LAA bit setat) și dispozitivul e pe un subnet VLAN client → 'mobile'
+    8. Fallback → 'client'
     """
     # 1. Detecție automată AP pe baza OUI + VLAN (are prioritate față de IP)
     if _looks_like_ap(mac, vlan_id, ip_str):
         return 'ap'
+
+    # 2. Clasificare din BD (populat de auto-discovery)
+    # Lazy-load: încărcăm cache-ul dacă este gol
+    if not _known_device_types:
+        with _device_types_lock:
+            if not _known_device_types:
+                loaded = _load_device_types_from_db()
+                if loaded:
+                    _known_device_types.update(loaded)
+    if ip_str in _known_device_types:
+        return _known_device_types[ip_str]
+
     try:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
@@ -593,6 +684,7 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     def _ip_int(addr):
         return int(ipaddress.ip_address(addr))
 
+    # 3. IP hardcodat (compatibilitate inversă — rețea școlară)
     # Router principal
     if ip_str == '192.168.2.1':
         return 'router'
@@ -616,15 +708,15 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     if ip_str in _AP_IPS:
         return 'ap'
 
-    # 3. Detecție automată camere de supraveghere pe baza OUI producător
+    # 4. Detecție automată camere de supraveghere pe baza OUI producător
     if _looks_like_camera(mac):
         return 'camera'
 
-    # 4. Detecție automată dispozitive mobile pe baza OUI producător (MAC real)
+    # 5. Detecție automată dispozitive mobile pe baza OUI producător (MAC real)
     if _looks_like_mobile(mac):
         return 'mobile'
 
-    # 5. Detecție pe baza hostname-ului (DHCP opțiunea 12 sau cache DNS)
+    # 6. Detecție pe baza hostname-ului (DHCP opțiunea 12 sau cache DNS)
     # Dacă hostname-ul nu e furnizat explicit, consultăm cache-ul global
     effective_hostname = hostname
     if not effective_hostname:
@@ -633,13 +725,13 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     if _hostname_suggests_mobile(effective_hostname):
         return 'mobile'
 
-    # 6. Detecție pe baza MAC randomizat (LAA bit) — telefoane moderne cu privacy MAC
+    # 7. Detecție pe baza MAC randomizat (LAA bit) — telefoane moderne cu privacy MAC
     # Aplicăm doar dacă dispozitivul este pe un subnet VLAN (rețea Wi-Fi de clienți)
     # și nu e pe subnet-ul principal 192.168.2.x (infrastructură)
     if _is_randomized_mac(mac) and _get_vlan_from_ip(ip_str) is not None:
         return 'mobile'
 
-    # 7. Hint din trafic (porturi mobile) - doar pe subnet VLAN
+    # 8. Hint din trafic (porturi mobile) - doar pe subnet VLAN
     if _mobile_traffic_hints.get(ip_str) and _get_vlan_from_ip(ip_str) is not None:
         return 'mobile'
 
