@@ -4,7 +4,7 @@ Folosim pattern-ul Application Factory pentru a crea instanța Flask.
 """
 import os
 from datetime import datetime, timezone, timedelta
-from flask import Flask
+from flask import Flask, request as flask_request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 
@@ -128,5 +128,35 @@ def create_app(config_name=None):
     def inject_now():
         """Injectează data curentă (ora României) în toate template-urile Jinja2."""
         return {'now': datetime.now(timezone.utc).astimezone(_LOCAL_TZ)}
+
+    @app.after_request
+    def add_security_headers(response):
+        """Adaugă headers HTTP de securitate la fiecare răspuns."""
+        # HSTS: forțează HTTPS — se trimite doar dacă cererea curentă e securizată
+        if flask_request.is_secure:
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        # Previne MIME-type sniffing
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        # Previne afișarea în iframe (clickjacking)
+        response.headers['X-Frame-Options'] = 'DENY'
+        # Politică de referrer minimă
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        # Dezactivează cache-ul pentru răspunsuri HTML (pagini cu date sensibile)
+        content_type = response.content_type or ''
+        if 'text/html' in content_type:
+            response.headers['Cache-Control'] = 'no-store'
+        # Politică de conținut: permite resurse proprii + CDN-uri utilizate de Bootstrap/Chart.js
+        # 'unsafe-inline' este necesar deoarece template-urile existente folosesc scripturi și
+        # stiluri inline; în viitor acestea pot fi mutate în fișiere externe.
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+            "font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'"
+        )
+        return response
 
     return app

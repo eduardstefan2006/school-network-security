@@ -2,16 +2,27 @@
 Configurarea aplicației Flask pentru sistemul de securitate al rețelei școlare.
 """
 import os
+import warnings
 
 # Directorul de bază al proiectului
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+_DEFAULT_SECRET_KEY = 'school-security-secret-key-2024'
 
 
 class Config:
     """Configurare de bază."""
     # Cheie secretă pentru sesiuni Flask
     # IMPORTANT: Setați variabila de mediu SECRET_KEY în producție!
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'school-security-secret-key-2024'
+    SECRET_KEY = os.environ.get('SECRET_KEY') or _DEFAULT_SECRET_KEY
+
+    # Setări cookie sesiune securizate
+    SESSION_COOKIE_HTTPONLY = True   # Cookie-ul de sesiune nu e accesibil din JavaScript
+    SESSION_COOKIE_SAMESITE = 'Lax'  # Protecție CSRF de bază
+
+    # Calea spre fișierele certificat SSL/TLS (opțional, pentru HTTPS)
+    SSL_CERT = os.environ.get('SSL_CERT', '')   # ex: cert.pem
+    SSL_KEY = os.environ.get('SSL_KEY', '')     # ex: key.pem
 
     # Baza de date SQLite
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
@@ -76,11 +87,27 @@ class DevelopmentConfig(Config):
     """Configurare pentru dezvoltare."""
     DEBUG = True
     SIMULATION_MODE = True  # Activăm modul simulat în dezvoltare
+    # Cookies securizate doar dacă HTTPS e activ în development
+    SESSION_COOKIE_SECURE = bool(os.environ.get('SSL_CERT') and os.environ.get('SSL_KEY'))
+    PREFERRED_URL_SCHEME = 'https' if (os.environ.get('SSL_CERT') and os.environ.get('SSL_KEY')) else 'http'
 
 
 class ProductionConfig(Config):
     """Configurare pentru producție."""
     DEBUG = False
+    SESSION_COOKIE_SECURE = True   # Cookie-ul de sesiune transmis doar prin HTTPS
+    PREFERRED_URL_SCHEME = 'https'
+
+    @classmethod
+    def init_app(cls, app):
+        """Validare configurare producție la pornire."""
+        if app.config.get('SECRET_KEY') == _DEFAULT_SECRET_KEY:
+            warnings.warn(
+                "\n\n⚠️  ATENȚIE SECURITATE: SECRET_KEY nu este setat!\n"
+                "   Setați variabila de mediu SECRET_KEY cu o valoare aleatorie puternică.\n"
+                "   Generați una cu: python -c \"import secrets; print(secrets.token_hex(32))\"\n",
+                stacklevel=2,
+            )
 
 
 # Dicționar de configurări disponibile
