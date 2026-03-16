@@ -297,6 +297,36 @@ class IPConnection(db.Model):
 
 
 # =============================================================================
+# Model Configurație MikroTik
+# =============================================================================
+class MikroTikConfig(db.Model):
+    """Configurație MikroTik stocată securizat în baza de date.
+
+    Parola este criptată cu Fernet (cheie derivată din SECRET_KEY).
+    Tabelul conține întotdeauna cel mult un rând (id=1).
+    """
+    __tablename__ = 'mikrotik_config'
+
+    id = db.Column(db.Integer, primary_key=True)
+    host = db.Column(db.String(255), nullable=False, default='')
+    port = db.Column(db.Integer, nullable=False, default=8728)
+    username = db.Column(db.String(255), nullable=False, default='admin')
+    # Parola criptată cu Fernet; None înseamnă „nesetată"
+    password_encrypted = db.Column(db.Text, nullable=True)
+    enabled = db.Column(db.Boolean, default=False, nullable=False)
+    # Câmpuri de audit
+    updated_by = db.Column(db.String(80), nullable=True)
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self):
+        return f'<MikroTikConfig host={self.host} enabled={self.enabled}>'
+
+
+# =============================================================================
 # Model Statistici Pachete
 # =============================================================================
 class PacketStat(db.Model):

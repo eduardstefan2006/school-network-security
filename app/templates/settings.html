@@ -126,7 +126,113 @@
     </div>
 </div>
 
-<!-- Secțiunea 3: Informații Sistem -->
+<!-- Secțiunea 3: Configurare MikroTik -->
+<div class="card schoolsec-card border-secondary mb-4">
+    <div class="card-header border-secondary d-flex align-items-center justify-content-between">
+        <h5 class="mb-0"><i class="bi bi-router me-2 text-primary"></i>Configurare MikroTik RouterOS</h5>
+        {% if mikrotik_config.source == 'database' %}
+            <span class="badge bg-success"><i class="bi bi-database me-1"></i>Salvat în BD</span>
+        {% else %}
+            <span class="badge bg-secondary"><i class="bi bi-file-earmark-text me-1"></i>Din .env</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form id="mikrotikForm">
+            <!-- Toggle Activat/Dezactivat -->
+            <div class="row mb-3 align-items-center">
+                <div class="col-md-3 text-muted">Status integrare:</div>
+                <div class="col-md-9 d-flex align-items-center gap-2">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="mikrotikEnabled"
+                               {% if mikrotik_config.enabled %}checked{% endif %}>
+                        <label class="form-check-label text-light" for="mikrotikEnabled">
+                            <span id="mikrotikEnabledLabel">{% if mikrotik_config.enabled %}Activat{% else %}Dezactivat{% endif %}</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Host -->
+            <div class="row mb-3">
+                <label class="col-md-3 col-form-label text-muted">Host (IP/hostname):</label>
+                <div class="col-md-9">
+                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                           id="mikrotikHost" placeholder="ex: 192.168.2.1"
+                           value="{{ mikrotik_config.host }}">
+                </div>
+            </div>
+
+            <!-- Port -->
+            <div class="row mb-3">
+                <label class="col-md-3 col-form-label text-muted">Port API:</label>
+                <div class="col-md-9">
+                    <input type="number" class="form-control form-control-sm bg-dark text-light border-secondary"
+                           id="mikrotikPort" placeholder="8728" min="1" max="65535"
+                           value="{{ mikrotik_config.port }}">
+                    <div class="form-text text-muted">8728 = plaintext, 8729 = SSL</div>
+                </div>
+            </div>
+
+            <!-- Username -->
+            <div class="row mb-3">
+                <label class="col-md-3 col-form-label text-muted">Utilizator:</label>
+                <div class="col-md-9">
+                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"
+                           id="mikrotikUsername" placeholder="admin"
+                           value="{{ mikrotik_config.username }}">
+                </div>
+            </div>
+
+            <!-- Password -->
+            <div class="row mb-3">
+                <label class="col-md-3 col-form-label text-muted">Parolă:</label>
+                <div class="col-md-9">
+                    <div class="input-group input-group-sm">
+                        <input type="password" class="form-control bg-dark text-light border-secondary"
+                               id="mikrotikPassword"
+                               placeholder="{% if mikrotik_config.source == 'database' %}••••••••  (lasă gol pentru a păstra parola existentă){% else %}Introduceți parola{% endif %}">
+                        <button type="button" class="btn btn-outline-secondary" id="btnTogglePassword"
+                                title="Afișează/Ascunde parola">
+                            <i class="bi bi-eye" id="passwordEyeIcon"></i>
+                        </button>
+                    </div>
+                    {% if mikrotik_config.source == 'database' %}
+                    <div class="form-text text-muted">Lasă câmpul gol pentru a păstra parola criptată existentă.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Butoane acțiuni -->
+            <div class="row">
+                <div class="col-md-9 offset-md-3 d-flex gap-2 align-items-center flex-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-info" id="btnTestMikrotik">
+                        <i class="bi bi-plug me-1"></i>Testează Conexiunea
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" id="btnSaveMikrotik">
+                        <i class="bi bi-floppy me-1"></i>Salvează
+                    </button>
+                    <span id="mikrotikActionResult" class="small ms-1"></span>
+                </div>
+            </div>
+        </form>
+
+        {% if mikrotik_config.updated_by %}
+        <div class="mt-3 text-muted small">
+            <i class="bi bi-clock-history me-1"></i>
+            Ultima modificare de <strong>{{ mikrotik_config.updated_by }}</strong>
+            {% if mikrotik_config.updated_at %}la {{ mikrotik_config.updated_at }}{% endif %}
+        </div>
+        {% endif %}
+
+        <div class="alert alert-secondary py-2 mt-3 mb-0">
+            <i class="bi bi-shield-lock me-1"></i>
+            Parola este stocată criptat (Fernet/AES-128) în baza de date.
+            Dacă nu există configurație în BD, se folosesc variabilele din <code>.env</code>.
+        </div>
+    </div>
+</div>
+
+<!-- Secțiunea 4: Informații Sistem -->
 <div class="card schoolsec-card border-secondary mb-4">
     <div class="card-header border-secondary">
         <h5 class="mb-0"><i class="bi bi-cpu me-2 text-warning"></i>Informații Sistem</h5>
@@ -406,6 +512,116 @@ document.addEventListener('DOMContentLoaded', function () {
     function escapeHtml(text) {
         const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
         return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+
+    // ==========================================================================
+    // MikroTik Settings
+    // ==========================================================================
+
+    // Toggle show/hide password
+    const btnTogglePwd = document.getElementById('btnTogglePassword');
+    const pwdInput = document.getElementById('mikrotikPassword');
+    const pwdEyeIcon = document.getElementById('passwordEyeIcon');
+    if (btnTogglePwd && pwdInput) {
+        btnTogglePwd.addEventListener('click', function () {
+            if (pwdInput.type === 'password') {
+                pwdInput.type = 'text';
+                pwdEyeIcon.className = 'bi bi-eye-slash';
+            } else {
+                pwdInput.type = 'password';
+                pwdEyeIcon.className = 'bi bi-eye';
+            }
+        });
+    }
+
+    // Toggle label for enabled switch
+    const mikrotikEnabledChk = document.getElementById('mikrotikEnabled');
+    const mikrotikEnabledLabel = document.getElementById('mikrotikEnabledLabel');
+    if (mikrotikEnabledChk) {
+        mikrotikEnabledChk.addEventListener('change', function () {
+            mikrotikEnabledLabel.textContent = this.checked ? 'Activat' : 'Dezactivat';
+        });
+    }
+
+    function getMikrotikFormData() {
+        return {
+            enabled: document.getElementById('mikrotikEnabled').checked,
+            host: document.getElementById('mikrotikHost').value.trim(),
+            port: parseInt(document.getElementById('mikrotikPort').value) || 8728,
+            username: document.getElementById('mikrotikUsername').value.trim() || 'admin',
+            password: document.getElementById('mikrotikPassword').value,
+        };
+    }
+
+    // Test connection
+    const btnTestMT = document.getElementById('btnTestMikrotik');
+    const mikrotikResult = document.getElementById('mikrotikActionResult');
+    if (btnTestMT) {
+        btnTestMT.addEventListener('click', function () {
+            const data = getMikrotikFormData();
+            if (!data.host) {
+                mikrotikResult.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Introduceți host-ul înainte de test.</span>';
+                return;
+            }
+            btnTestMT.disabled = true;
+            btnTestMT.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se testează...';
+            mikrotikResult.textContent = '';
+            fetch('/api/settings/mikrotik/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    mikrotikResult.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>' + d.message + '</span>';
+                } else {
+                    mikrotikResult.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>' + (d.error || 'Eroare necunoscută') + '</span>';
+                }
+            })
+            .catch(() => {
+                mikrotikResult.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Eroare de rețea.</span>';
+            })
+            .finally(() => {
+                btnTestMT.disabled = false;
+                btnTestMT.innerHTML = '<i class="bi bi-plug me-1"></i>Testează Conexiunea';
+            });
+        });
+    }
+
+    // Save config
+    const btnSaveMT = document.getElementById('btnSaveMikrotik');
+    if (btnSaveMT) {
+        btnSaveMT.addEventListener('click', function () {
+            const data = getMikrotikFormData();
+            btnSaveMT.disabled = true;
+            btnSaveMT.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se salvează...';
+            mikrotikResult.textContent = '';
+            fetch('/api/settings/mikrotik', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            })
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    mikrotikResult.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>' + d.message + '</span>';
+                    // Clear password field after save
+                    document.getElementById('mikrotikPassword').value = '';
+                    document.getElementById('mikrotikPassword').placeholder = '••••••••  (lasă gol pentru a păstra parola existentă)';
+                } else {
+                    mikrotikResult.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>' + (d.error || 'Eroare necunoscută') + '</span>';
+                }
+                setTimeout(() => { mikrotikResult.textContent = ''; }, 5000);
+            })
+            .catch(() => {
+                mikrotikResult.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Eroare de rețea.</span>';
+            })
+            .finally(() => {
+                btnSaveMT.disabled = false;
+                btnSaveMT.innerHTML = '<i class="bi bi-floppy me-1"></i>Salvează';
+            });
+        });
     }
 });
 </script>

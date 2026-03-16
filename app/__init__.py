@@ -40,6 +40,114 @@ def _run_migrations(app):
         print(f"[DB] Eroare la migrare automată: {e}")
 
 
+def _load_mikrotik_params(app):
+    """Returnează parametrii MikroTik (enabled, host, port, username, password).
+
+    Prioritate: înregistrare din baza de date → variabile de mediu (.env).
+    """
+    try:
+        from app.models import MikroTikConfig
+        import hashlib
+        import base64
+        from cryptography.fernet import Fernet
+
+        with app.app_context():
+            cfg = db.session.get(MikroTikConfig, 1)
+
+        if cfg is not None:
+            password = ''
+            if cfg.password_encrypted:
+                try:
+                    secret = app.config['SECRET_KEY'].encode()
+                    fernet_key = base64.urlsafe_b64encode(hashlib.sha256(secret).digest())
+                    password = Fernet(fernet_key).decrypt(cfg.password_encrypted.encode()).decode()
+                except Exception as e:
+                    print(f"[MikroTik] Eroare la decriptarea parolei din BD: {e}")
+            return {
+                'enabled': cfg.enabled,
+                'host': cfg.host,
+                'port': cfg.port,
+                'username': cfg.username,
+                'password': password,
+                'source': 'database',
+            }
+    except Exception as e:
+        print(f"[MikroTik] Fallback la .env (eroare BD: {e})")
+
+    # Fallback la .env
+    return {
+        'enabled': app.config.get('MIKROTIK_ENABLED', False),
+        'host': app.config.get('MIKROTIK_HOST', ''),
+        'port': app.config.get('MIKROTIK_PORT', 8728),
+        'username': app.config.get('MIKROTIK_USERNAME', 'admin'),
+        'password': app.config.get('MIKROTIK_PASSWORD', ''),
+        'source': 'env',
+    }
+
+
+def _init_mikrotik(app):
+    """Inițializează clientul MikroTik și serviciile asociate."""
+    params = _load_mikrotik_params(app)
+    if not params['enabled']:
+        return
+
+    from app.ids.mikrotik_client import MikrotikClient
+    from app.ids.mikrotik_sync import start_mikrotik_sync
+
+    mikrotik_client = MikrotikClient(
+        host=params['host'],
+        port=params['port'],
+        username=params['username'],
+        password=params['password'],
+    )
+    mikrotik_client.connect()
+    start_mikrotik_sync(app, mikrotik_client)
+    app.mikrotik_client = mikrotik_client
+    print(f"[MikroTik] Integrare activată pentru {params['host']} (sursă: {params['source']})")
+
+    # Monitorizare securitate externă
+    if app.config.get('EXTERNAL_MONITOR_ENABLED', True):
+        from app.ids.external_monitor import ExternalMonitor
+        app._external_monitor = ExternalMonitor(app, mikrotik_client)
+        print("[External Monitor] Monitorizare securitate externă activată.")
+
+
+def reload_mikrotik_client(app):
+    """Reîncarcă clientul MikroTik la runtime după modificarea configurației.
+
+    Deconectează clientul existent, creează unul nou cu parametrii actualizați
+    și pornește un nou thread de sincronizare.
+    """
+    # Deconectăm clientul existent (dacă există)
+    old_client = getattr(app, 'mikrotik_client', None)
+    if old_client is not None:
+        try:
+            old_client.disconnect()
+        except Exception:
+            pass
+        app.mikrotik_client = None
+
+    params = _load_mikrotik_params(app)
+    if not params['enabled']:
+        print("[MikroTik] Integrare dezactivată – clientul nu a fost reîncărcat.")
+        return
+
+    from app.ids.mikrotik_client import MikrotikClient
+    from app.ids.mikrotik_sync import start_mikrotik_sync
+
+    new_client = MikrotikClient(
+        host=params['host'],
+        port=params['port'],
+        username=params['username'],
+        password=params['password'],
+    )
+    new_client.connect()
+    start_mikrotik_sync(app, new_client)
+    app.mikrotik_client = new_client
+    print(f"[MikroTik] Client reîncărcat pentru {params['host']} (sursă: {params['source']})")
+
+
+
 def create_app(config_name=None):
     """
     Factory function pentru crearea aplicației Flask.
@@ -94,26 +202,8 @@ def create_app(config_name=None):
         # Migrare automată: adaugă coloane noi în tabele existente
         _run_migrations(app)
 
-    # Pornire integrare MikroTik (dacă este activată)
-    if app.config.get('MIKROTIK_ENABLED'):
-        from app.ids.mikrotik_client import MikrotikClient
-        from app.ids.mikrotik_sync import start_mikrotik_sync
-        mikrotik_client = MikrotikClient(
-            host=app.config['MIKROTIK_HOST'],
-            port=app.config['MIKROTIK_PORT'],
-            username=app.config['MIKROTIK_USERNAME'],
-            password=app.config['MIKROTIK_PASSWORD'],
-        )
-        mikrotik_client.connect()
-        start_mikrotik_sync(app, mikrotik_client)
-        app.mikrotik_client = mikrotik_client
-        print(f"[MikroTik] Integrare activată pentru {app.config['MIKROTIK_HOST']}")
-
-        # Monitorizare securitate externă
-        if app.config.get('EXTERNAL_MONITOR_ENABLED', True):
-            from app.ids.external_monitor import ExternalMonitor
-            app._external_monitor = ExternalMonitor(app, mikrotik_client)
-            print("[External Monitor] Monitorizare securitate externă activată.")
+    # Pornire integrare MikroTik – prioritate: config din BD, fallback la .env
+    _init_mikrotik(app)
 
     @app.template_filter('to_local')
     def to_local_filter(dt):
