@@ -40,6 +40,16 @@ if __name__ == '__main__':
     # Pornim snifferul de rețea într-un thread separat
     start_sniffer(app)
 
+    # Detectăm dacă sunt disponibile certificate SSL/TLS
+    ssl_cert = app.config.get('SSL_CERT', '')
+    ssl_key = app.config.get('SSL_KEY', '')
+    ssl_context = None
+    if ssl_cert and ssl_key and os.path.isfile(ssl_cert) and os.path.isfile(ssl_key):
+        ssl_context = (ssl_cert, ssl_key)
+
+    port = int(os.environ.get('PORT', 5000))
+    protocol = 'https' if ssl_context else 'http'
+
     print("=" * 60)
     print("  SchoolSec - Sistem de Securitate pentru Rețeaua Școlii")
     print("=" * 60)
@@ -56,14 +66,22 @@ if __name__ == '__main__':
         print(f"  MikroTik: {mikrotik_host} (ACTIVAT)")
     else:
         print(f"  MikroTik: DEZACTIVAT")
-    print("  Acces: http://localhost:5000")
-    print("  Credențiale implicite: admin / admin123")
+    if ssl_context:
+        print(f"  🔒 HTTPS activ cu certificat: {ssl_cert}")
+    else:
+        print("  ⚠️  HTTPS dezactivat. Setați SSL_CERT și SSL_KEY pentru HTTPS.")
+        print("     Generați un certificat auto-semnat cu:")
+        print("     openssl req -x509 -newkey rsa:4096 -nodes \\")
+        print("       -out cert.pem -keyout key.pem -days 365 -subj \"/CN=localhost\"")
+    print(f"  Acces: {protocol}://localhost:{port}")
+    print("  ⚠️  Credențiale implicite: admin / admin123 — schimbați-le!")
     print("=" * 60)
 
-    # Pornim serverul Flask
+    # Pornim serverul Flask (cu sau fără SSL)
     app.run(
         host='0.0.0.0',
-        port=int(os.environ.get('PORT', 5000)),
+        port=port,
         debug=app.config.get('DEBUG', False),
+        ssl_context=ssl_context,
         use_reloader=False  # Dezactivăm reloader pentru a evita pornirea dublă a snifferului
     )

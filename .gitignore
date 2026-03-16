@@ -35,6 +35,12 @@ Thumbs.db
 # Variabile de mediu
 .env
 
+# Certificate SSL/TLS (generate local, nu se commitează)
+*.pem
+*.key
+*.crt
+*.p12
+
 # Distribuție Python
 dist/
 build/

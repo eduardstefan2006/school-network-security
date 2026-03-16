@@ -139,6 +139,83 @@ python run.py
 | `TZSP_LISTEN_ADDRESS` | `0.0.0.0` | Adresa IP pe care ascultă listener-ul TZSP |
 | `TZSP_PORT` | `37008` | Portul UDP pentru primirea pachetelor TZSP de la MikroTik |
 | `PORT` | `5000` | Portul serverului web |
+| `SSL_CERT` | `` | Calea spre fișierul certificat SSL/TLS (ex: `cert.pem`) |
+| `SSL_KEY` | `` | Calea spre fișierul cheie privată SSL/TLS (ex: `key.pem`) |
+
+---
+
+## 🔒 HTTPS și Securitate
+
+### De ce HTTPS?
+
+Fără HTTPS, credențialele și datele de sesiune sunt transmise în text simplu și pot fi interceptate (atac MITM). Cu HTTPS:
+
+- ✅ Comunicarea este **criptată end-to-end**
+- ✅ Cookie-ul de sesiune are flag `Secure` (nu se trimite pe HTTP)
+- ✅ Headers de securitate HTTP sunt activate automat
+
+### Activare HTTPS local (certificat auto-semnat)
+
+```bash
+# 1. Generați certificat auto-semnat (valabil 365 zile)
+openssl req -x509 -newkey rsa:4096 -nodes \
+  -out cert.pem -keyout key.pem -days 365 \
+  -subj "/CN=localhost"
+
+# 2. Configurați .env
+cp .env.example .env
+# Editați .env și setați SSL_CERT=cert.pem, SSL_KEY=key.pem
+
+# 3. Porniți aplicația
+python run.py
+# Acces: https://localhost:5000
+```
+
+> Browserul va afișa un avertisment pentru certificatul auto-semnat — este normal în development. Adăugați o excepție sau importați cert.pem ca autoritate de certificare locală.
+
+### Activare HTTPS în producție (Let's Encrypt)
+
+```bash
+# 1. Instalați certbot
+sudo apt install certbot
+
+# 2. Obțineți certificat (necesită domeniu public)
+sudo certbot certonly --standalone -d domeniu.scoala.ro
+
+# 3. Configurați .env
+SSL_CERT=/etc/letsencrypt/live/domeniu.scoala.ro/fullchain.pem
+SSL_KEY=/etc/letsencrypt/live/domeniu.scoala.ro/privkey.pem
+FLASK_ENV=production
+SECRET_KEY=<cheie-aleatorie-puternica>
+```
+
+### Generare SECRET_KEY sigură
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### Headers de securitate HTTP activate automat
+
+La fiecare răspuns, aplicația adaugă automat:
+
+| Header | Valoare | Protecție |
+|--------|---------|-----------|
+| `Strict-Transport-Security` | `max-age=31536000` | Forțează HTTPS |
+| `X-Content-Type-Options` | `nosniff` | Previne MIME sniffing |
+| `X-Frame-Options` | `DENY` | Previne clickjacking |
+| `Content-Security-Policy` | (restricționat) | Previne XSS |
+| `Cache-Control` | `no-store` | Nu memorează date sensibile |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Limitează referrer |
+
+### Schimbarea credențialelor implicite
+
+```bash
+# Login cu admin / admin123 la https://localhost:5000
+# Mergeți la Setări → Utilizatori → Schimbați parola
+```
+
+> ⚠️ **Obligatoriu în producție:** schimbați parola `admin` și `monitor` imediat după instalare!
 
 ---
 
