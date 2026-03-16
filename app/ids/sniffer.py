@@ -1132,6 +1132,7 @@ def _tzsp_sniffer(app):
     Ascultă pachete TZSP (TaZmen Sniffer Protocol) pe UDP trimise de routerul MikroTik.
     Decodifică antetul TZSP, extrage frame-ul Ethernet original și îl procesează cu Scapy.
     Nu necesită privilegii root (portul 37008 > 1024).
+    Implementează retry logic cu exponential backoff și error handling robust.
     """
     try:
         from scapy.all import Ether, IP, TCP, UDP as ScapyUDP, ICMP, ARP, DNS, Dot1Q, DHCP, BOOTP
@@ -1142,158 +1143,196 @@ def _tzsp_sniffer(app):
     listen_addr = app.config.get('TZSP_LISTEN_ADDRESS', '0.0.0.0')
     listen_port = app.config.get('TZSP_PORT', 37008)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.settimeout(1.0)
-    try:
-        sock.bind((listen_addr, listen_port))
-    except OSError as e:
-        print(f"[Sniffer] Nu pot lega socket-ul TZSP la {listen_addr}:{listen_port}: {e}")
-        sock.close()
-        return
-
-    print(f"[Sniffer] Modul TZSP activat. Ascult pachete MikroTik pe {listen_addr}:{listen_port}")
-
     # Constante TZSP
     TZSP_TAG_END = 0x01
     TZSP_ENCAP_ETHERNET = 0x0001
 
-    try:
-        while _running:
+    # Parametri retry cu exponential backoff
+    retry_delay = 1
+    max_retry_delay = 30
+    packets_received = 0
+
+    while _running:
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.settimeout(1.0)
             try:
-                data, _ = sock.recvfrom(65535)
-            except socket.timeout:
-                continue
+                sock.bind((listen_addr, listen_port))
             except OSError as e:
-                if _running:
-                    print(f"[Sniffer] Eroare socket TZSP: {e}")
-                break
-
-            try:
-                # Antet TZSP: Version (1) + Type (1) + Encapsulated Protocol (2)
-                if len(data) < 4:
-                    continue
-
-                version = data[0]
-                pkt_type = data[1]
-                encap_proto = (data[2] << 8) | data[3]
-
-                if version != 1 or pkt_type != 0:
-                    # Ignorăm pachetele care nu sunt tip 0 (packet for capture)
-                    continue
-
-                if encap_proto != TZSP_ENCAP_ETHERNET:
-                    # Suportăm doar Ethernet encapsulat
-                    continue
-
-                # Parcurgem câmpurile tagged până la TAG_END (0x01)
-                offset = 4
-                while offset < len(data):
-                    tag = data[offset]
-                    offset += 1
-                    if tag == TZSP_TAG_END:
-                        # S-a găsit TAG_END; restul este frame-ul original
-                        break
-                    if tag == 0x00:
-                        # TAG_PADDING - fără date
-                        continue
-                    # Celelalte tag-uri au un byte lungime urmat de date
-                    if offset >= len(data):
-                        break
-                    tag_len = data[offset]
-                    offset += 1 + tag_len  # sărim peste date
-                else:
-                    # Nu s-a găsit TAG_END valid
-                    continue
-
-                raw_frame = data[offset:]
-                if not raw_frame:
-                    continue
-
-                pkt = Ether(raw_frame)
-
-                packet_info = {
-                    'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
-                    'src_ip': '',
-                    'dst_ip': '',
-                    'protocol': 'Unknown',
-                    'src_port': None,
-                    'dst_port': None,
-                    'size': len(raw_frame),
-                    'src_mac': pkt.src if pkt.haslayer(Ether) else None,
-                    'vlan_id': pkt[Dot1Q].vlan if pkt.haslayer(Dot1Q) else None,
-                }
-
-                if pkt.haslayer(IP):
-                    packet_info['src_ip'] = pkt[IP].src
-                    packet_info['dst_ip'] = pkt[IP].dst
-
-                    if pkt.haslayer(TCP):
-                        packet_info['protocol'] = 'TCP'
-                        packet_info['src_port'] = pkt[TCP].sport
-                        packet_info['dst_port'] = pkt[TCP].dport
-                        if pkt[TCP].dport in (80, 8080) or pkt[TCP].sport in (80, 8080):
-                            packet_info['protocol'] = 'HTTP'
-                        elif pkt[TCP].dport == 443 or pkt[TCP].sport == 443:
-                            packet_info['protocol'] = 'HTTPS'
-
-                    elif pkt.haslayer(ScapyUDP):
-                        packet_info['protocol'] = 'UDP'
-                        packet_info['src_port'] = pkt[ScapyUDP].sport
-                        packet_info['dst_port'] = pkt[ScapyUDP].dport
-                        if pkt[ScapyUDP].dport == 53 or pkt[ScapyUDP].sport == 53:
-                            packet_info['protocol'] = 'DNS'
-                            # Extrage hostname din query DNS
-                            try:
-                                if pkt.haslayer(DNS) and pkt[DNS].qr == 0 and pkt[DNS].qd:
-                                    qname = pkt[DNS].qd.qname
-                                    if isinstance(qname, bytes):
-                                        qname = qname.decode('utf-8', errors='ignore')
-                                    packet_info['dns_query'] = qname.rstrip('.')
-                            except Exception:
-                                pass
-                        # Detectăm DHCP pe porturile 67/68
-                        elif pkt[ScapyUDP].dport in (67, 68) or pkt[ScapyUDP].sport in (67, 68):
-                            packet_info['protocol'] = 'DHCP'
-                            try:
-                                if pkt.haslayer(BOOTP) and pkt.haslayer(DHCP):
-                                    # Extrage hostname din DHCP Option 12
-                                    for opt in pkt[DHCP].options:
-                                        if isinstance(opt, tuple) and opt[0] == 'hostname':
-                                            dhcp_hostname = opt[1]
-                                            if isinstance(dhcp_hostname, bytes):
-                                                dhcp_hostname = dhcp_hostname.decode('utf-8', errors='ignore')
-                                            dhcp_hostname = dhcp_hostname.strip()
-                                            packet_info['dhcp_hostname'] = dhcp_hostname
-                                            # Mapăm IP-ul clientului la hostname în cache
-                                            # yiaddr = IP alocat de server; ciaddr = IP curent al clientului
-                                            client_ip = pkt[BOOTP].yiaddr
-                                            if not client_ip or client_ip == '0.0.0.0':
-                                                client_ip = pkt[BOOTP].ciaddr
-                                            if not client_ip or client_ip == '0.0.0.0':
-                                                client_ip = pkt[IP].src if pkt.haslayer(IP) else None
-                                            if client_ip and client_ip != '0.0.0.0':
-                                                with _device_hostname_cache_lock:
-                                                    _device_hostname_cache[client_ip] = dhcp_hostname
-                                            break
-                            except Exception:
-                                pass
-
-                    elif pkt.haslayer(ICMP):
-                        packet_info['protocol'] = 'ICMP'
-
-                elif pkt.haslayer(ARP):
-                    packet_info['protocol'] = 'ARP'
-                    packet_info['src_ip'] = pkt[ARP].psrc
-                    packet_info['dst_ip'] = pkt[ARP].pdst
-
-                _process_packet(packet_info, app)
-
-            except Exception as e:
-                print(f"[Sniffer] Pachet TZSP malformat, ignorat: {e}")
+                print(f"[Sniffer] Nu pot lega socket-ul TZSP la {listen_addr}:{listen_port}: {e}. "
+                      f"Reîncerc în {retry_delay}s...")
+                sock.close()
+                sock = None
+                for _ in range(retry_delay):
+                    if not _running:
+                        return
+                    time.sleep(1)
+                retry_delay = min(retry_delay * 2, max_retry_delay)
                 continue
-    finally:
-        sock.close()
+
+            print(f"[Sniffer] Modul TZSP activat. Ascult pachete MikroTik pe {listen_addr}:{listen_port}")
+            retry_delay = 1  # resetăm delay-ul după o legătură reușită
+
+            while _running:
+                try:
+                    data, addr = sock.recvfrom(65535)
+                except socket.timeout:
+                    continue
+                except OSError as e:
+                    if _running:
+                        print(f"[Sniffer] Eroare socket TZSP: {e}. Reîncerc reconectarea...")
+                    break
+
+                packets_received += 1
+                if packets_received == 1:
+                    print(f"[Sniffer] Primul pachet TZSP primit de la {addr[0]}:{addr[1]}")
+
+                try:
+                    # Antet TZSP: Version (1) + Type (1) + Encapsulated Protocol (2)
+                    if len(data) < 4:
+                        print(f"[Sniffer] Pachet TZSP prea scurt ({len(data)} octeți), ignorat.")
+                        continue
+
+                    version = data[0]
+                    pkt_type = data[1]
+                    encap_proto = (data[2] << 8) | data[3]
+
+                    if version != 1 or pkt_type != 0:
+                        # Ignorăm pachetele care nu sunt tip 0 (packet for capture)
+                        continue
+
+                    if encap_proto != TZSP_ENCAP_ETHERNET:
+                        # Suportăm doar Ethernet encapsulat
+                        continue
+
+                    # Parcurgem câmpurile tagged până la TAG_END (0x01)
+                    offset = 4
+                    while offset < len(data):
+                        tag = data[offset]
+                        offset += 1
+                        if tag == TZSP_TAG_END:
+                            # S-a găsit TAG_END; restul este frame-ul original
+                            break
+                        if tag == 0x00:
+                            # TAG_PADDING - fără date
+                            continue
+                        # Celelalte tag-uri au un byte lungime urmat de date
+                        if offset >= len(data):
+                            break
+                        tag_len = data[offset]
+                        offset += 1 + tag_len  # sărim peste date
+                    else:
+                        # Nu s-a găsit TAG_END valid
+                        continue
+
+                    raw_frame = data[offset:]
+                    if not raw_frame:
+                        continue
+
+                    pkt = Ether(raw_frame)
+
+                    packet_info = {
+                        'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+                        'src_ip': '',
+                        'dst_ip': '',
+                        'protocol': 'Unknown',
+                        'src_port': None,
+                        'dst_port': None,
+                        'size': len(raw_frame),
+                        'src_mac': pkt.src if pkt.haslayer(Ether) else None,
+                        'vlan_id': pkt[Dot1Q].vlan if pkt.haslayer(Dot1Q) else None,
+                    }
+
+                    if pkt.haslayer(IP):
+                        packet_info['src_ip'] = pkt[IP].src
+                        packet_info['dst_ip'] = pkt[IP].dst
+
+                        if pkt.haslayer(TCP):
+                            packet_info['protocol'] = 'TCP'
+                            packet_info['src_port'] = pkt[TCP].sport
+                            packet_info['dst_port'] = pkt[TCP].dport
+                            if pkt[TCP].dport in (80, 8080) or pkt[TCP].sport in (80, 8080):
+                                packet_info['protocol'] = 'HTTP'
+                            elif pkt[TCP].dport == 443 or pkt[TCP].sport == 443:
+                                packet_info['protocol'] = 'HTTPS'
+
+                        elif pkt.haslayer(ScapyUDP):
+                            packet_info['protocol'] = 'UDP'
+                            packet_info['src_port'] = pkt[ScapyUDP].sport
+                            packet_info['dst_port'] = pkt[ScapyUDP].dport
+                            if pkt[ScapyUDP].dport == 53 or pkt[ScapyUDP].sport == 53:
+                                packet_info['protocol'] = 'DNS'
+                                # Extrage hostname din query DNS
+                                try:
+                                    if pkt.haslayer(DNS) and pkt[DNS].qr == 0 and pkt[DNS].qd:
+                                        qname = pkt[DNS].qd.qname
+                                        if isinstance(qname, bytes):
+                                            qname = qname.decode('utf-8', errors='ignore')
+                                        packet_info['dns_query'] = qname.rstrip('.')
+                                except Exception:
+                                    pass
+                            # Detectăm DHCP pe porturile 67/68
+                            elif pkt[ScapyUDP].dport in (67, 68) or pkt[ScapyUDP].sport in (67, 68):
+                                packet_info['protocol'] = 'DHCP'
+                                try:
+                                    if pkt.haslayer(BOOTP) and pkt.haslayer(DHCP):
+                                        # Extrage hostname din DHCP Option 12
+                                        for opt in pkt[DHCP].options:
+                                            if isinstance(opt, tuple) and opt[0] == 'hostname':
+                                                dhcp_hostname = opt[1]
+                                                if isinstance(dhcp_hostname, bytes):
+                                                    dhcp_hostname = dhcp_hostname.decode('utf-8', errors='ignore')
+                                                dhcp_hostname = dhcp_hostname.strip()
+                                                packet_info['dhcp_hostname'] = dhcp_hostname
+                                                # Mapăm IP-ul clientului la hostname în cache
+                                                # yiaddr = IP alocat de server; ciaddr = IP curent al clientului
+                                                client_ip = pkt[BOOTP].yiaddr
+                                                if not client_ip or client_ip == '0.0.0.0':
+                                                    client_ip = pkt[BOOTP].ciaddr
+                                                if not client_ip or client_ip == '0.0.0.0':
+                                                    client_ip = pkt[IP].src if pkt.haslayer(IP) else None
+                                                if client_ip and client_ip != '0.0.0.0':
+                                                    with _device_hostname_cache_lock:
+                                                        _device_hostname_cache[client_ip] = dhcp_hostname
+                                                break
+                                except Exception:
+                                    pass
+
+                        elif pkt.haslayer(ICMP):
+                            packet_info['protocol'] = 'ICMP'
+
+                    elif pkt.haslayer(ARP):
+                        packet_info['protocol'] = 'ARP'
+                        packet_info['src_ip'] = pkt[ARP].psrc
+                        packet_info['dst_ip'] = pkt[ARP].pdst
+
+                    _process_packet(packet_info, app)
+
+                except Exception as e:
+                    print(f"[Sniffer] Pachet TZSP malformat, ignorat: {e}")
+                    continue
+
+        except Exception as e:
+            if _running:
+                print(f"[Sniffer] Eroare neașteptată în TZSP sniffer: {e}. Reîncerc în {retry_delay}s...")
+        finally:
+            if sock is not None:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+                sock = None
+
+        if _running:
+            for _ in range(retry_delay):
+                if not _running:
+                    break
+                time.sleep(1)
+            retry_delay = min(retry_delay * 2, max_retry_delay)
+
+    print("[Sniffer] Modul TZSP oprit.")
 
 
 def _fix_device_types(app):
