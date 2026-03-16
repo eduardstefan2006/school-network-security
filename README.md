@@ -81,13 +81,17 @@ source venv/bin/activate
 # 3. Instalează dependențele
 pip install -r requirements.txt
 
-# 4. Inițializează baza de date
+# 4. Configurează variabilele de mediu
+cp .env.example .env
+# Editați .env și completați valorile necesare (SECRET_KEY, MikroTik etc.)
+
+# 5. Inițializează baza de date
 python init_db.py
 
-# 4b. (Opțional) Dacă ai o bază de date existentă, rulează migrarea pentru a adăuga coloane noi
+# 5b. (Opțional) Dacă ai o bază de date existentă, rulează migrarea pentru a adăuga coloane noi
 python scripts/migrate_db.py
 
-# 5. Pornește aplicația
+# 6. Pornește aplicația
 python run.py
 ```
 
@@ -133,6 +137,7 @@ python run.py
 |-----------|----------|-----------|
 | `FLASK_ENV` | `default` | Mediul de execuție (`development`, `production`) |
 | `SECRET_KEY` | (valoare implicită) | Cheia secretă pentru sesiuni Flask |
+| `DATABASE_URL` | `sqlite:///security.db` | URI baza de date (SQLite sau PostgreSQL) |
 | `SIMULATION_MODE` | `true` | Modul simulat (fără Scapy) - deprecat, folosiți `SNIFFER_MODE` |
 | `SNIFFER_MODE` | `simulated` | Modul sniffer: `simulated`, `interface`, sau `tzsp` |
 | `NETWORK_INTERFACE` | auto | Interfața de rețea pentru captură (modul `interface`) |
@@ -141,6 +146,11 @@ python run.py
 | `PORT` | `5000` | Portul serverului web |
 | `SSL_CERT` | `` | Calea spre fișierul certificat SSL/TLS (ex: `cert.pem`) |
 | `SSL_KEY` | `` | Calea spre fișierul cheie privată SSL/TLS (ex: `key.pem`) |
+| `MIKROTIK_ENABLED` | `false` | Activează integrarea cu MikroTik RouterOS API |
+| `MIKROTIK_HOST` | `` | Adresa IP a router-ului MikroTik (ex: `192.168.88.1`) |
+| `MIKROTIK_PORT` | `8728` | Portul API MikroTik (`8728` plaintext, `8729` SSL) |
+| `MIKROTIK_USERNAME` | `` | Utilizatorul API MikroTik |
+| `MIKROTIK_PASSWORD` | `` | Parola API MikroTik |
 
 ---
 
