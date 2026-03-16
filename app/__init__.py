@@ -183,6 +183,7 @@ def create_app(config_name=None):
     from app.routes.network import network_bp
     from app.routes.mikrotik import mikrotik_bp
     from app.routes.external import external_bp
+    from app.routes.setup import setup_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -195,6 +196,7 @@ def create_app(config_name=None):
     app.register_blueprint(network_bp)
     app.register_blueprint(mikrotik_bp)
     app.register_blueprint(external_bp)
+    app.register_blueprint(setup_bp)
 
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():
@@ -218,6 +220,27 @@ def create_app(config_name=None):
     def inject_now():
         """Injectează data curentă (ora României) în toate template-urile Jinja2."""
         return {'now': datetime.now(timezone.utc).astimezone(_LOCAL_TZ)}
+
+    @app.before_request
+    def check_first_run():
+        """Redirecționează la Setup Wizard dacă setup-ul inițial nu a fost finalizat.
+
+        Excepții: rutele setup.*, auth.*, static și request-urile API ale setup-ului.
+        """
+        from flask import redirect, url_for
+        # Permitem accesul liber la rute de setup, auth și fișiere statice
+        if flask_request.endpoint is None:
+            return
+        if flask_request.endpoint.startswith(('setup.', 'auth.', 'static')):
+            return
+        try:
+            from app.models import NetworkConfig
+            cfg = NetworkConfig.query.filter_by(key='setup_complete').first()
+            if cfg is None or cfg.value != 'true':
+                return redirect(url_for('setup.index'))
+        except Exception:
+            # Dacă BD nu e disponibilă, permitem accesul (nu blocăm la pornire)
+            pass
 
     @app.after_request
     def add_security_headers(response):
