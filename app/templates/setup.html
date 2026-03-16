@@ -4,56 +4,76 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setup Wizard - SchoolSec</title>
-    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         :root {
             --color-bg: #0d1117;
             --color-card: #161b22;
             --color-border: #30363d;
+            --color-accent: #238636;
+            --color-info: #388bfd;
         }
         body {
             background-color: var(--color-bg);
             color: #e6edf3;
             min-height: 100vh;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
+            padding: 2rem 1rem;
         }
         .setup-card {
             background-color: var(--color-card);
             border: 1px solid var(--color-border);
             border-radius: 12px;
-            max-width: 600px;
+            max-width: 680px;
             width: 100%;
         }
-        .step-indicator {
+        .wizard-progress {
             display: flex;
+            align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 0;
             margin-bottom: 2rem;
         }
-        .step-dot {
-            width: 12px;
-            height: 12px;
+        .step-circle {
+            width: 32px;
+            height: 32px;
             border-radius: 50%;
+            border: 2px solid var(--color-border);
+            background-color: var(--color-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #6e7681;
+            transition: all 0.3s;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 1;
+        }
+        .step-circle.active {
+            border-color: var(--color-accent);
+            color: #fff;
+            background-color: var(--color-accent);
+        }
+        .step-circle.completed {
+            border-color: var(--color-info);
+            color: #fff;
+            background-color: var(--color-info);
+        }
+        .step-connector {
+            flex: 1;
+            height: 2px;
             background-color: var(--color-border);
             transition: background-color 0.3s;
+            max-width: 60px;
         }
-        .step-dot.active {
-            background-color: #238636;
-        }
-        .step-dot.completed {
-            background-color: #388bfd;
-        }
-        .step-panel {
-            display: none;
-        }
-        .step-panel.active {
-            display: block;
-        }
+        .step-connector.completed { background-color: var(--color-info); }
+        .step-panel { display: none; }
+        .step-panel.active { display: block; }
         .form-control, .form-select {
             background-color: #0d1117;
             border-color: var(--color-border);
@@ -61,12 +81,19 @@
         }
         .form-control:focus, .form-select:focus {
             background-color: #0d1117;
-            border-color: #388bfd;
+            border-color: var(--color-info);
             color: #e6edf3;
-            box-shadow: 0 0 0 0.2rem rgba(56, 139, 253, 0.25);
+            box-shadow: 0 0 0 0.2rem rgba(56,139,253,0.25);
         }
-        .form-control::placeholder {
-            color: #6e7681;
+        .form-control::placeholder { color: #6e7681; }
+        .form-check-input:checked { background-color: var(--color-accent); border-color: var(--color-accent); }
+        .form-text { color: #6e7681 !important; }
+        .section-card {
+            background-color: #0d1117;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
         }
         .log-area {
             background-color: #0d1117;
@@ -74,364 +101,789 @@
             border-radius: 6px;
             padding: 12px;
             font-family: monospace;
-            font-size: 0.85rem;
-            max-height: 200px;
+            font-size: 0.82rem;
+            max-height: 180px;
             overflow-y: auto;
             color: #7ee787;
         }
-        .log-area .log-info { color: #79c0ff; }
+        .log-area .log-info    { color: #79c0ff; }
         .log-area .log-success { color: #7ee787; }
-        .log-area .log-error { color: #f85149; }
-        .log-area .log-warn { color: #d29922; }
+        .log-area .log-error   { color: #f85149; }
+        .log-area .log-warn    { color: #d29922; }
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.35rem 0;
+            border-bottom: 1px solid var(--color-border);
+            font-size: 0.9rem;
+        }
+        .summary-row:last-child { border-bottom: none; }
+        .summary-key { color: #8b949e; }
+        .summary-val { color: #e6edf3; font-weight: 500; word-break: break-all; max-width: 60%; text-align: right; }
+        .strength-bar { height: 4px; border-radius: 2px; transition: width 0.3s, background-color 0.3s; }
     </style>
 </head>
 <body>
-<div class="p-3 w-100 d-flex justify-content-center">
-<div class="setup-card p-4 shadow-lg">
+<div class="setup-card p-4 shadow-lg my-3">
 
     <!-- Header -->
-    <div class="text-center mb-4">
-        <i class="bi bi-shield-lock-fill text-success" style="font-size:3rem;"></i>
+    <div class="text-center mb-3">
+        <i class="bi bi-shield-lock-fill text-success" style="font-size:2.8rem;"></i>
         <h2 class="mt-2 fw-bold">SchoolSec Setup</h2>
-        <p class="text-muted">Configurare inițială a sistemului de securitate</p>
+        <p class="text-muted small mb-0">Configurare inițială a sistemului de securitate</p>
     </div>
 
-    <!-- Step indicators -->
-    <div class="step-indicator">
-        <div class="step-dot active" id="dot-1"></div>
-        <div class="step-dot" id="dot-2"></div>
-        <div class="step-dot" id="dot-3"></div>
+    <!-- Progress indicator -->
+    <div class="wizard-progress mb-4" id="wizardProgress">
+        <div class="step-circle active" id="sc-1" title="Configurare de bază">1</div>
+        <div class="step-connector" id="conn-1"></div>
+        <div class="step-circle" id="sc-2" title="Rețea">2</div>
+        <div class="step-connector" id="conn-2"></div>
+        <div class="step-circle" id="sc-3" title="MikroTik">3</div>
+        <div class="step-connector" id="conn-3"></div>
+        <div class="step-circle" id="sc-4" title="Securitate">4</div>
+        <div class="step-connector" id="conn-4"></div>
+        <div class="step-circle" id="sc-5" title="Telegram">5</div>
+        <div class="step-connector" id="conn-5"></div>
+        <div class="step-circle" id="sc-6" title="Sumar">6</div>
     </div>
 
-    <!-- Step 1: MikroTik Credentials -->
+    <!-- STEP 1: Basic Configuration -->
     <div class="step-panel active" id="step-1">
-        <h5 class="mb-3"><i class="bi bi-router me-2 text-info"></i>Configurare Router MikroTik</h5>
-        <p class="text-muted small mb-3">
-            Introduceți datele de acces la routerul MikroTik. Sistemul va conecta la RouterOS API
-            pentru a descoperi automat topologia rețelei.
-        </p>
+        <h5 class="mb-3"><i class="bi bi-gear me-2 text-info"></i>Configurare de baz&#x103;</h5>
+
         <div class="mb-3">
-            <label class="form-label">Adresa IP Router <span class="text-danger">*</span></label>
-            <input type="text" class="form-control" id="routerHost" placeholder="192.168.1.1">
-        </div>
-        <div class="mb-3">
-            <label class="form-label">Port API RouterOS</label>
-            <input type="number" class="form-control" id="routerPort" value="8728" min="1" max="65535">
-            <div class="form-text text-muted">Default: 8728 (API nesecurizat) sau 8729 (API SSL)</div>
-        </div>
-        <div class="mb-3">
-            <label class="form-label">Utilizator</label>
-            <input type="text" class="form-control" id="routerUsername" placeholder="admin">
-        </div>
-        <div class="mb-3">
-            <label class="form-label">Parolă</label>
-            <input type="password" class="form-control" id="routerPassword" placeholder="Parola RouterOS">
+            <label class="form-label">Numele aplica&#x21b;iei</label>
+            <input type="text" class="form-control" id="appName" value="SchoolSec" placeholder="SchoolSec">
         </div>
 
-        <div id="testResult" class="alert d-none mb-3"></div>
+        <hr class="border-secondary my-3">
+        <h6 class="text-muted mb-3"><i class="bi bi-person-lock me-1"></i>Cont Administrator</h6>
 
-        <div class="d-flex justify-content-between">
-            <button type="button" class="btn btn-outline-secondary" onclick="skipSetup()">
-                <i class="bi bi-skip-forward me-1"></i>Sari peste (mod demo)
-            </button>
-            <div class="d-flex gap-2">
-                <button type="button" class="btn btn-outline-info" id="btnTestConn" onclick="testConnection()">
-                    <i class="bi bi-plug me-1"></i>Testează Conexiunea
+        <div class="mb-3">
+            <label class="form-label">Nume utilizator admin <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="adminUsername" value="admin" placeholder="admin">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Parol&#x103; admin <span class="text-danger">*</span></label>
+            <div class="input-group">
+                <input type="password" class="form-control" id="adminPassword" placeholder="Minim 8 caractere"
+                       oninput="checkPasswordStrength(this.value)">
+                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('adminPassword')">
+                    <i class="bi bi-eye" id="eye-adminPassword"></i>
                 </button>
-                <button type="button" class="btn btn-success d-none" id="btnNext1" onclick="goToStep2()">
-                    Următorul <i class="bi bi-arrow-right ms-1"></i>
+            </div>
+            <div class="mt-1" style="height:4px; background:#30363d; border-radius:2px;">
+                <div class="strength-bar" id="strengthBar" style="width:0%;"></div>
+            </div>
+            <div class="form-text" id="strengthText"></div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Confirmare parol&#x103; <span class="text-danger">*</span></label>
+            <div class="input-group">
+                <input type="password" class="form-control" id="adminPasswordConfirm" placeholder="Repeta&#x21b;i parola">
+                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('adminPasswordConfirm')">
+                    <i class="bi bi-eye" id="eye-adminPasswordConfirm"></i>
                 </button>
             </div>
         </div>
+
+        <hr class="border-secondary my-3">
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Port web</label>
+                <input type="number" class="form-control" id="appPort" value="5000" min="1" max="65535">
+                <div class="form-text">Port implicit: 5000 (HTTP) sau 443 (HTTPS)</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Limb&#x103; interfa&#x21b;&#x103;</label>
+                <select class="form-select" id="appLanguage">
+                    <option value="ro" selected>Rom&#x00e2;n&#x103;</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="step1Error" class="alert alert-danger d-none"></div>
+
+        <div class="d-flex justify-content-between">
+            <button class="btn btn-outline-secondary btn-sm" onclick="skipSetup()">
+                <i class="bi bi-skip-forward me-1"></i>Sari peste (demo)
+            </button>
+            <button class="btn btn-success" onclick="validateStep1()">
+                Urm&#x103;tor <i class="bi bi-arrow-right ms-1"></i>
+            </button>
+        </div>
     </div>
 
-    <!-- Step 2: Auto-Discovery -->
+    <!-- STEP 2: Network Configuration -->
     <div class="step-panel" id="step-2">
-        <h5 class="mb-3"><i class="bi bi-radar me-2 text-warning"></i>Auto-Descoperire Rețea</h5>
-        <p class="text-muted small mb-3">
-            Sistemul va scanea automat rețeaua pentru a descoperi VLAN-urile,
-            dispozitivele conectate și topologia completă.
-        </p>
+        <h5 class="mb-3"><i class="bi bi-hdd-network me-2 text-warning"></i>Configurare re&#x21b;ea</h5>
 
         <div class="mb-3">
-            <div class="d-flex justify-content-between mb-1">
-                <span class="small text-muted" id="discoveryStep">Pregătit pentru pornire...</span>
-                <span class="small text-muted" id="discoveryPercent">0%</span>
-            </div>
-            <div class="progress" style="height: 8px;">
-                <div class="progress-bar progress-bar-striped bg-success" id="discoveryProgress"
-                     role="progressbar" style="width: 0%"></div>
+            <label class="form-label">Mod captur&#x103; pachete <span class="text-danger">*</span></label>
+            <select class="form-select" id="snifferMode" onchange="onSnifferModeChange()">
+                <option value="simulated" selected>Simulat (f&#x103;r&#x103; root, recomandat pentru testare)</option>
+                <option value="interface">Interfa&#x21b;&#x103; real&#x103; (necesit&#x103; root/admin)</option>
+                <option value="tzsp">TZSP - streaming MikroTik (f&#x103;r&#x103; root)</option>
+            </select>
+            <div class="form-text">Modul simulat genereaz&#x103; trafic fictiv pentru demonstra&#x21b;ie.</div>
+        </div>
+
+        <div id="interfaceSection" style="display:none;">
+            <div class="mb-3">
+                <label class="form-label">Interfa&#x21b;&#x103; de re&#x21b;ea</label>
+                <div class="input-group">
+                    <select class="form-select" id="networkInterface">
+                        <option value="">-- selecta&#x21b;i sau detecta&#x21b;i --</option>
+                    </select>
+                    <button class="btn btn-outline-info" type="button" onclick="detectInterfaces()">
+                        <i class="bi bi-search me-1"></i>Auto-detectare
+                    </button>
+                </div>
+                <div class="form-text">Interfa&#x21b;a de la care se captureaz&#x103; traficul.</div>
             </div>
         </div>
 
-        <div class="log-area mb-3" id="discoveryLog">
-            <span class="log-info">Pregătit. Apasă "Start Auto-Discovery" pentru a începe.</span>
+        <div id="tzspSection" style="display:none;">
+            <div class="section-card">
+                <h6 class="text-info mb-2"><i class="bi bi-info-circle me-1"></i>Mod TZSP</h6>
+                <p class="text-muted small mb-2">
+                    TZSP prime&#x219;te traficul trimis de routerul MikroTik prin streaming UDP.
+                    Configura&#x21b;i routerul s&#x103; trimit&#x103; pachete la adresa IP a acestui server pe portul 37008.
+                </p>
+                <div class="row g-2">
+                    <div class="col-md-8">
+                        <label class="form-label small">Adres&#x103; ascultare TZSP</label>
+                        <input type="text" class="form-control form-control-sm" id="tzspAddress" value="0.0.0.0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">Port TZSP</label>
+                        <input type="number" class="form-control form-control-sm" id="tzspPort" value="37008">
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="row g-2 mb-3" id="discoveryStats" style="display:none;">
-            <div class="col-6">
-                <div class="text-center p-2 rounded" style="background:#0d1117;">
-                    <div class="h4 mb-0 text-success" id="statsVlans">0</div>
-                    <div class="small text-muted">VLAN-uri descoperite</div>
-                </div>
-            </div>
-            <div class="col-6">
-                <div class="text-center p-2 rounded" style="background:#0d1117;">
-                    <div class="h4 mb-0 text-info" id="statsDevices">0</div>
-                    <div class="small text-muted">Dispozitive descoperite</div>
-                </div>
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="autoClassify" checked>
+                <label class="form-check-label" for="autoClassify">
+                    Activ&#x103; clasificarea automat&#x103; a dispozitivelor (OUI lookup)
+                </label>
             </div>
         </div>
+
+        <div id="step2Error" class="alert alert-danger d-none"></div>
 
         <div class="d-flex justify-content-between">
-            <button type="button" class="btn btn-outline-secondary" onclick="goToStep1()">
-                <i class="bi bi-arrow-left me-1"></i>Înapoi
+            <button class="btn btn-outline-secondary" onclick="goToStep(1)">
+                <i class="bi bi-arrow-left me-1"></i>&#xce;napoi
             </button>
-            <div class="d-flex gap-2">
-                <button type="button" class="btn btn-warning" id="btnStartDiscovery" onclick="startDiscovery()">
-                    <i class="bi bi-play-circle me-1"></i>Start Auto-Discovery
-                </button>
-                <button type="button" class="btn btn-success d-none" id="btnNext2" onclick="goToStep3()">
-                    Finalizare <i class="bi bi-arrow-right ms-1"></i>
-                </button>
-            </div>
+            <button class="btn btn-success" onclick="goToStep(3)">
+                Urm&#x103;tor <i class="bi bi-arrow-right ms-1"></i>
+            </button>
         </div>
     </div>
 
-    <!-- Step 3: Complete -->
+    <!-- STEP 3: MikroTik (optional) -->
     <div class="step-panel" id="step-3">
-        <div class="text-center py-3">
-            <i class="bi bi-check-circle-fill text-success" style="font-size:4rem;"></i>
-            <h4 class="mt-3 fw-bold">Configurare Finalizată!</h4>
-            <p class="text-muted mb-4">
-                Sistemul a descoperit topologia rețelei și a configurat automat IDS-ul.<br>
-                Rețeaua este acum monitorizată și protejată.
-            </p>
+        <h5 class="mb-3">
+            <i class="bi bi-router me-2 text-info"></i>Integrare MikroTik
+            <span class="badge bg-secondary ms-2" style="font-size:0.7rem;">Op&#x21b;ional</span>
+        </h5>
 
-            <div class="row g-3 mb-4 text-start">
-                <div class="col-12">
-                    <div class="p-3 rounded" style="background:#0d1117; border:1px solid #238636;">
-                        <div class="d-flex align-items-center gap-2 mb-1">
-                            <i class="bi bi-check-circle-fill text-success"></i>
-                            <strong>Router MikroTik conectat</strong>
-                        </div>
-                        <div class="d-flex align-items-center gap-2 mb-1">
-                            <i class="bi bi-check-circle-fill text-success"></i>
-                            <strong>VLAN-uri descoperite automat</strong>
-                        </div>
-                        <div class="d-flex align-items-center gap-2 mb-1">
-                            <i class="bi bi-check-circle-fill text-success"></i>
-                            <strong>Dispozitive clasificate</strong>
-                        </div>
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-check-circle-fill text-success"></i>
-                            <strong>IDS activat și configurat</strong>
-                        </div>
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="mikrotikEnabled" onchange="onMikrotikToggle()">
+                <label class="form-check-label" for="mikrotikEnabled">
+                    <strong>Activ&#x103; integrarea MikroTik RouterOS</strong>
+                </label>
+            </div>
+            <div class="form-text">
+                Permite auto-descoperirea VLAN-urilor, dispozitivelor &#x219;i streaming TZSP.
+            </div>
+        </div>
+
+        <div id="mikrotikFields" style="display:none;">
+            <div class="row g-3 mb-3">
+                <div class="col-md-8">
+                    <label class="form-label">Adresa IP Router <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="mikrotikHost" placeholder="192.168.1.1">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Port API</label>
+                    <input type="number" class="form-control" id="mikrotikPort" value="8728" min="1" max="65535">
+                    <div class="form-text">8728 = plaintext, 8729 = SSL</div>
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">Utilizator RouterOS</label>
+                    <input type="text" class="form-control" id="mikrotikUsername" value="admin">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Parol&#x103; RouterOS</label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="mikrotikPassword" placeholder="Parola routerului">
+                        <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('mikrotikPassword')">
+                            <i class="bi bi-eye" id="eye-mikrotikPassword"></i>
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <a href="{{ url_for('dashboard.index') }}" class="btn btn-success btn-lg">
-                <i class="bi bi-speedometer2 me-2"></i>Mergi la Dashboard
+            <div id="mikrotikTestResult" class="alert d-none mb-3"></div>
+
+            <button type="button" class="btn btn-outline-info btn-sm mb-3" id="btnTestMikrotik"
+                    onclick="testMikrotikConnection()">
+                <i class="bi bi-plug me-1"></i>Testeaz&#x103; conexiunea MikroTik
+            </button>
+
+            <div class="mb-3">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="mikrotikVlanDiscovery" checked>
+                    <label class="form-check-label" for="mikrotikVlanDiscovery">
+                        Auto-descoperire VLAN-uri la pornire
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div id="step3Error" class="alert alert-danger d-none"></div>
+
+        <div class="d-flex justify-content-between">
+            <button class="btn btn-outline-secondary" onclick="goToStep(2)">
+                <i class="bi bi-arrow-left me-1"></i>&#xce;napoi
+            </button>
+            <button class="btn btn-success" onclick="goToStep(4)">
+                Urm&#x103;tor <i class="bi bi-arrow-right ms-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- STEP 4: Security Settings -->
+    <div class="step-panel" id="step-4">
+        <h5 class="mb-3"><i class="bi bi-key-fill me-2 text-warning"></i>Set&#x103;ri de securitate</h5>
+
+        <div class="mb-3">
+            <label class="form-label">Cheie secret&#x103; aplica&#x21b;ie (SECRET_KEY)</label>
+            <div class="input-group mb-1">
+                <input type="text" class="form-control font-monospace" id="secretKey" readonly
+                       style="font-size:0.78rem;">
+                <button class="btn btn-outline-warning" type="button" onclick="generateSecretKey()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Regenereaz&#x103;
+                </button>
+            </div>
+            <div class="form-text">
+                Cheia este auto-generat&#x103;. Folosit&#x103; pentru semnarea sesiunilor Flask.
+                Va fi salvat&#x103; &#xee;n fi&#x219;ierul .env.
+            </div>
+        </div>
+
+        <hr class="border-secondary my-3">
+
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="sslEnabled" onchange="onSslToggle()">
+                <label class="form-check-label" for="sslEnabled">
+                    <strong>Activ&#x103; HTTPS (SSL/TLS)</strong>
+                </label>
+            </div>
+            <div class="form-text">
+                Genereaz&#x103; un certificat auto-semnat pentru HTTPS local.
+            </div>
+        </div>
+
+        <div id="sslFields" style="display:none;">
+            <div class="section-card">
+                <div class="mb-3">
+                    <label class="form-label">Domeniu / Hostname</label>
+                    <input type="text" class="form-control" id="sslDomain" value="localhost"
+                           placeholder="exemplu.local">
+                    <div class="form-text">
+                        Numele domeniului inclus &#xee;n certificat.
+                        Folosi&#x21b;i <code>localhost</code> pentru acces local.
+                    </div>
+                </div>
+                <div class="section-card" style="border-color:#d29922;">
+                    <i class="bi bi-exclamation-triangle text-warning me-1"></i>
+                    <span class="text-warning small">
+                        Certificatul auto-semnat va genera un avertisment de securitate &#xee;n browser.
+                        Ap&#x103;sa&#x21b;i &ldquo;Avansat&rdquo; &rarr; &ldquo;Continu&#x103;&rdquo; pentru a accepta.
+                        Pentru produc&#x21b;ie, utiliza&#x21b;i un certificat Let's Encrypt sau comercial.
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div id="step4Error" class="alert alert-danger d-none"></div>
+
+        <div class="d-flex justify-content-between">
+            <button class="btn btn-outline-secondary" onclick="goToStep(3)">
+                <i class="bi bi-arrow-left me-1"></i>&#xce;napoi
+            </button>
+            <button class="btn btn-success" onclick="goToStep(5)">
+                Urm&#x103;tor <i class="bi bi-arrow-right ms-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- STEP 5: Telegram (optional) -->
+    <div class="step-panel" id="step-5">
+        <h5 class="mb-3">
+            <i class="bi bi-telegram me-2 text-info"></i>Notific&#x103;ri Telegram
+            <span class="badge bg-secondary ms-2" style="font-size:0.7rem;">Op&#x21b;ional</span>
+        </h5>
+
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="telegramEnabled"
+                       onchange="onTelegramToggle()">
+                <label class="form-check-label" for="telegramEnabled">
+                    <strong>Activ&#x103; notific&#x103;rile Telegram</strong>
+                </label>
+            </div>
+            <div class="form-text">Prime&#x219;te alerte de securitate direct &#xee;n Telegram.</div>
+        </div>
+
+        <div id="telegramFields" style="display:none;">
+            <div class="mb-3">
+                <label class="form-label">Token Bot Telegram <span class="text-danger">*</span></label>
+                <input type="text" class="form-control font-monospace" id="telegramBotToken"
+                       placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ">
+                <div class="form-text">
+                    Ob&#x21b;ine&#x21b;i token-ul de la
+                    <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer"
+                       class="text-info">@BotFather</a> pe Telegram.
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Chat ID <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="telegramChatId"
+                       placeholder="-100123456789 sau 123456789">
+                <div class="form-text">
+                    ID-ul conversa&#x21b;iei unde se trimit alertele.
+                    Poate fi un chat personal, grup sau canal.
+                </div>
+            </div>
+
+            <div id="telegramTestResult" class="alert d-none mb-3"></div>
+
+            <button type="button" class="btn btn-outline-info btn-sm mb-2" id="btnTestTelegram"
+                    onclick="testTelegram()">
+                <i class="bi bi-send me-1"></i>Trimite mesaj de test
+            </button>
+
+            <div class="mb-3">
+                <label class="form-label small">Severitate minim&#x103; pentru notificare</label>
+                <select class="form-select form-select-sm" id="telegramMinSeverity">
+                    <option value="critical" selected>Critic&#x103;</option>
+                    <option value="high">&#xce;nalt&#x103;</option>
+                    <option value="medium">Medie</option>
+                    <option value="low">Sc&#x103;zut&#x103;</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="step5Error" class="alert alert-danger d-none"></div>
+
+        <div class="d-flex justify-content-between">
+            <button class="btn btn-outline-secondary" onclick="goToStep(4)">
+                <i class="bi bi-arrow-left me-1"></i>&#xce;napoi
+            </button>
+            <button class="btn btn-success" onclick="buildSummaryAndGoTo6()">
+                Urm&#x103;tor <i class="bi bi-arrow-right ms-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- STEP 6: Summary & Initialize -->
+    <div class="step-panel" id="step-6">
+        <h5 class="mb-3"><i class="bi bi-check2-all me-2 text-success"></i>Sumar &amp; Ini&#x21b;ializare</h5>
+        <p class="text-muted small mb-3">
+            Verifica&#x21b;i configura&#x21b;ia &#xee;nainte de a porni sistemul.
+        </p>
+
+        <div id="summaryContainer" class="section-card mb-3"></div>
+
+        <div id="initLog" class="log-area mb-3" style="display:none;"></div>
+
+        <div id="initSuccess" class="alert alert-success d-none">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            <strong>Sistem ini&#x21b;ializat cu succes!</strong><br>
+            <span class="small">Autentifica&#x21b;i-v&#x103; cu crendenialele setate.</span>
+        </div>
+        <div id="initError" class="alert alert-danger d-none"></div>
+
+        <div class="d-flex justify-content-between" id="step6Buttons">
+            <button class="btn btn-outline-secondary" onclick="goToStep(5)" id="btnBack6">
+                <i class="bi bi-arrow-left me-1"></i>&#xce;napoi
+            </button>
+            <button class="btn btn-success btn-lg" id="btnInitialize" onclick="initializeSystem()">
+                <i class="bi bi-rocket-takeoff me-2"></i>Ini&#x21b;ializeaz&#x103; sistemul
+            </button>
+        </div>
+
+        <div class="text-center d-none mt-3" id="step6LoginBtn">
+            <a href="{{ url_for('auth.login') }}" class="btn btn-success btn-lg">
+                <i class="bi bi-box-arrow-in-right me-2"></i>Autentificare
             </a>
         </div>
     </div>
 
-</div>
-</div>
+</div><!-- /.setup-card -->
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-let _discoveryInterval = null;
-let _connectionData = null;
+const _state = { currentStep: 1, totalSteps: 6 };
 
-function goToStep1() {
-    setStep(1);
-}
-function goToStep2() {
-    setStep(2);
-}
-function goToStep3() {
-    clearInterval(_discoveryInterval);
-    setStep(3);
-}
-
-function setStep(n) {
-    for (let i = 1; i <= 3; i++) {
-        document.getElementById('step-' + i).classList.remove('active');
-        const dot = document.getElementById('dot-' + i);
-        dot.classList.remove('active', 'completed');
-        if (i < n) dot.classList.add('completed');
-        else if (i === n) dot.classList.add('active');
-    }
+// ── Navigation ────────────────────────────────────────────────────────────────
+function goToStep(n) {
+    if (n < 1 || n > _state.totalSteps) return;
+    document.getElementById('step-' + _state.currentStep).classList.remove('active');
+    _state.currentStep = n;
     document.getElementById('step-' + n).classList.add('active');
+    _updateProgress();
+    window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
-function testConnection() {
-    const host = document.getElementById('routerHost').value.trim();
-    const port = parseInt(document.getElementById('routerPort').value) || 8728;
-    const username = document.getElementById('routerUsername').value.trim() || 'admin';
-    const password = document.getElementById('routerPassword').value;
+function _updateProgress() {
+    for (let i = 1; i <= _state.totalSteps; i++) {
+        const c = document.getElementById('sc-' + i);
+        c.classList.remove('active', 'completed');
+        if (i < _state.currentStep) c.classList.add('completed');
+        else if (i === _state.currentStep) c.classList.add('active');
+    }
+    for (let i = 1; i < _state.totalSteps; i++) {
+        document.getElementById('conn-' + i).classList.toggle('completed', i < _state.currentStep);
+    }
+}
 
-    const btn = document.getElementById('btnTestConn');
-    const resultDiv = document.getElementById('testResult');
-    const nextBtn = document.getElementById('btnNext1');
+// ── Step 1 ────────────────────────────────────────────────────────────────────
+function validateStep1() {
+    const username = document.getElementById('adminUsername').value.trim();
+    const password = document.getElementById('adminPassword').value;
+    const confirm  = document.getElementById('adminPasswordConfirm').value;
+    const errDiv   = document.getElementById('step1Error');
+    if (!username)               { showError(errDiv, 'Numele de utilizator este obligatoriu.'); return; }
+    if (password.length < 8)     { showError(errDiv, 'Parola trebuie sa aiba cel putin 8 caractere.'); return; }
+    if (password !== confirm)    { showError(errDiv, 'Parolele nu coincid.'); return; }
+    errDiv.classList.add('d-none');
+    if (!document.getElementById('secretKey').value) generateSecretKey();
+    goToStep(2);
+}
 
+function checkPasswordStrength(pw) {
+    const bar  = document.getElementById('strengthBar');
+    const text = document.getElementById('strengthText');
+    let score = 0;
+    if (pw.length >= 8)  score++;
+    if (pw.length >= 12) score++;
+    if (/[A-Z]/.test(pw)) score++;
+    if (/[0-9]/.test(pw)) score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+    const levels = [
+        {w:'0%',   c:'#30363d', l:''},
+        {w:'25%',  c:'#f85149', l:'Foarte slaba'},
+        {w:'50%',  c:'#d29922', l:'Slaba'},
+        {w:'75%',  c:'#388bfd', l:'Buna'},
+        {w:'100%', c:'#238636', l:'Foarte puternica'},
+    ];
+    const lvl = Math.min(score, 4);
+    bar.style.width = levels[lvl].w;
+    bar.style.backgroundColor = levels[lvl].c;
+    text.textContent = levels[lvl].l;
+    text.style.color = levels[lvl].c;
+}
+
+function togglePassword(id) {
+    const inp  = document.getElementById(id);
+    const icon = document.getElementById('eye-' + id);
+    if (inp.type === 'password') {
+        inp.type = 'text';
+        icon.classList.replace('bi-eye', 'bi-eye-slash');
+    } else {
+        inp.type = 'password';
+        icon.classList.replace('bi-eye-slash', 'bi-eye');
+    }
+}
+
+// ── Step 2 ────────────────────────────────────────────────────────────────────
+function onSnifferModeChange() {
+    const mode = document.getElementById('snifferMode').value;
+    document.getElementById('interfaceSection').style.display = (mode === 'interface') ? 'block' : 'none';
+    document.getElementById('tzspSection').style.display      = (mode === 'tzsp')      ? 'block' : 'none';
+}
+
+function detectInterfaces() {
+    fetch('/api/setup/detect-interfaces')
+    .then(r => r.json())
+    .then(data => {
+        const sel = document.getElementById('networkInterface');
+        while (sel.options.length > 1) sel.remove(1);
+        (data.interfaces || []).forEach(iface => {
+            const opt = document.createElement('option');
+            opt.value = iface.name;
+            opt.textContent = iface.ip ? (iface.name + ' (' + iface.ip + ')') : iface.name;
+            sel.appendChild(opt);
+        });
+        if (sel.options.length > 1) sel.selectedIndex = 1;
+    })
+    .catch(err => console.warn('Detectare interfete esuat:', err));
+}
+
+// ── Step 3 ────────────────────────────────────────────────────────────────────
+function onMikrotikToggle() {
+    document.getElementById('mikrotikFields').style.display =
+        document.getElementById('mikrotikEnabled').checked ? 'block' : 'none';
+}
+
+function testMikrotikConnection() {
+    const host     = document.getElementById('mikrotikHost').value.trim();
+    const port     = parseInt(document.getElementById('mikrotikPort').value) || 8728;
+    const username = document.getElementById('mikrotikUsername').value.trim() || 'admin';
+    const password = document.getElementById('mikrotikPassword').value;
+    const resultDiv = document.getElementById('mikrotikTestResult');
+    const btn = document.getElementById('btnTestMikrotik');
+    if (!host) { showError(document.getElementById('step3Error'), 'Introduceti adresa IP a routerului.'); return; }
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testare...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se testeaza...';
     resultDiv.className = 'alert d-none mb-3';
-    nextBtn.classList.add('d-none');
-
     fetch('/api/setup/test-connection', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({host, port, username, password})
+        body: JSON.stringify({host, port, username, password}),
     })
     .then(r => r.json())
     .then(data => {
         if (data.success) {
             resultDiv.className = 'alert alert-success mb-3';
             let msg = '<i class="bi bi-check-circle-fill me-1"></i>' + data.message;
-            if (data.router_identity) {
-                msg += ` <strong>(${data.router_identity})</strong>`;
-            }
+            if (data.router_identity) msg += ' <strong>(' + data.router_identity + ')</strong>';
             resultDiv.innerHTML = msg;
-            nextBtn.classList.remove('d-none');
-            _connectionData = {host, port, username, password};
         } else {
             resultDiv.className = 'alert alert-danger mb-3';
-            resultDiv.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>' + (data.error || 'Conexiune eșuată.');
+            resultDiv.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>' + (data.error || 'Conexiune esuat.');
         }
     })
     .catch(err => {
         resultDiv.className = 'alert alert-danger mb-3';
-        resultDiv.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>Eroare de rețea: ' + err;
+        resultDiv.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>Eroare retea: ' + err;
     })
     .finally(() => {
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-plug me-1"></i>Testează Conexiunea';
+        btn.innerHTML = '<i class="bi bi-plug me-1"></i>Testeaza conexiunea MikroTik';
     });
 }
 
-function startDiscovery() {
-    const btn = document.getElementById('btnStartDiscovery');
-    const log = document.getElementById('discoveryLog');
-    const stats = document.getElementById('discoveryStats');
+// ── Step 4 ────────────────────────────────────────────────────────────────────
+function generateSecretKey() {
+    const arr = new Uint8Array(32);
+    crypto.getRandomValues(arr);
+    document.getElementById('secretKey').value =
+        Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+}
 
-    // Salvăm mai întâi configurația
-    if (!_connectionData) {
-        log.innerHTML = '<span class="log-error">Eroare: Nu există date de conexiune. Reveniți la pasul 1.</span>';
-        return;
-    }
+function onSslToggle() {
+    const enabled = document.getElementById('sslEnabled').checked;
+    document.getElementById('sslFields').style.display = enabled ? 'block' : 'none';
+    if (enabled && document.getElementById('appPort').value === '5000')
+        document.getElementById('appPort').value = '443';
+    else if (!enabled && document.getElementById('appPort').value === '443')
+        document.getElementById('appPort').value = '5000';
+}
 
+// ── Step 5 ────────────────────────────────────────────────────────────────────
+function onTelegramToggle() {
+    document.getElementById('telegramFields').style.display =
+        document.getElementById('telegramEnabled').checked ? 'block' : 'none';
+}
+
+function testTelegram() {
+    const token  = document.getElementById('telegramBotToken').value.trim();
+    const chatId = document.getElementById('telegramChatId').value.trim();
+    const resultDiv = document.getElementById('telegramTestResult');
+    const btn = document.getElementById('btnTestTelegram');
+    const errDiv = document.getElementById('step5Error');
+    if (!token)  { showError(errDiv, 'Introduceti token-ul bot-ului.'); return; }
+    if (!chatId) { showError(errDiv, 'Introduceti Chat ID-ul.'); return; }
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se salvează config...';
-    log.innerHTML = '<span class="log-info">Salvare configurație MikroTik...</span>\n';
-
-    fetch('/api/setup/save-config', {
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se trimite...';
+    resultDiv.className = 'alert d-none mb-3';
+    fetch('/api/setup/test-telegram', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(_connectionData)
+        body: JSON.stringify({bot_token: token, chat_id: chatId}),
     })
     .then(r => r.json())
     .then(data => {
-        if (!data.success) {
-            log.innerHTML += `<span class="log-error">Eroare: ${data.error}</span>\n`;
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-play-circle me-1"></i>Start Auto-Discovery';
-            return;
+        if (data.success) {
+            resultDiv.className = 'alert alert-success mb-3';
+            resultDiv.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + data.message;
+            errDiv.classList.add('d-none');
+        } else {
+            resultDiv.className = 'alert alert-danger mb-3';
+            resultDiv.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>' + (data.error || 'Eroare trimitere.');
         }
-        log.innerHTML += '<span class="log-success">✓ Configurație salvată.</span>\n';
-        log.innerHTML += '<span class="log-info">Pornire auto-discovery...</span>\n';
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se rulează...';
-
-        return fetch('/api/setup/start-discovery', {method: 'POST'});
-    })
-    .then(r => r && r.json())
-    .then(data => {
-        if (!data) return;
-        if (data.error) {
-            log.innerHTML += `<span class="log-error">Eroare: ${data.error}</span>\n`;
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-play-circle me-1"></i>Start Auto-Discovery';
-            return;
-        }
-        stats.style.display = 'flex';
-        _startPolling();
     })
     .catch(err => {
-        log.innerHTML += `<span class="log-error">Eroare: ${err}</span>\n`;
+        resultDiv.className = 'alert alert-danger mb-3';
+        resultDiv.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>Eroare retea: ' + err;
+    })
+    .finally(() => {
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-play-circle me-1"></i>Start Auto-Discovery';
+        btn.innerHTML = '<i class="bi bi-send me-1"></i>Trimite mesaj de test';
     });
 }
 
-function _startPolling() {
-    clearInterval(_discoveryInterval);
-    _discoveryInterval = setInterval(_pollDiscoveryStatus, 1500);
+// ── Step 6 ────────────────────────────────────────────────────────────────────
+function buildSummaryAndGoTo6() {
+    const telegramEnabled = document.getElementById('telegramEnabled').checked;
+    if (telegramEnabled) {
+        const errDiv = document.getElementById('step5Error');
+        if (!document.getElementById('telegramBotToken').value.trim())
+            { showError(errDiv, 'Introduceti token-ul bot-ului Telegram.'); return; }
+        if (!document.getElementById('telegramChatId').value.trim())
+            { showError(errDiv, 'Introduceti Chat ID-ul Telegram.'); return; }
+    }
+    document.getElementById('step5Error').classList.add('d-none');
+
+    const snifferSel = document.getElementById('snifferMode');
+    const rows = [
+        ['Nume aplicatie', document.getElementById('appName').value || 'SchoolSec'],
+        ['Administrator',  document.getElementById('adminUsername').value || 'admin'],
+        ['Port web',       document.getElementById('appPort').value || '5000'],
+        ['Mod captura',    snifferSel.options[snifferSel.selectedIndex].text],
+        ['MikroTik', document.getElementById('mikrotikEnabled').checked
+            ? (document.getElementById('mikrotikHost').value || '-') + ':' + document.getElementById('mikrotikPort').value
+            : 'Dezactivat'],
+        ['SECRET_KEY', (document.getElementById('secretKey').value || '-').substring(0, 12) + '...'],
+        ['HTTPS/SSL', document.getElementById('sslEnabled').checked
+            ? 'Activat (' + (document.getElementById('sslDomain').value || 'localhost') + ')'
+            : 'Dezactivat'],
+        ['Telegram', document.getElementById('telegramEnabled').checked ? 'Activat' : 'Dezactivat'],
+    ];
+
+    document.getElementById('summaryContainer').innerHTML = rows.map(function(r) {
+        return '<div class="summary-row"><span class="summary-key">' + _esc(r[0]) +
+               '</span><span class="summary-val">' + _esc(r[1]) + '</span></div>';
+    }).join('');
+
+    goToStep(6);
 }
 
-function _pollDiscoveryStatus() {
-    fetch('/api/setup/discovery-status')
-    .then(r => r.json())
-    .then(state => {
-        const pct = state.progress || 0;
-        const bar = document.getElementById('discoveryProgress');
-        const stepEl = document.getElementById('discoveryStep');
-        const pctEl = document.getElementById('discoveryPercent');
-        const log = document.getElementById('discoveryLog');
+function initializeSystem() {
+    const btn    = document.getElementById('btnInitialize');
+    const logDiv = document.getElementById('initLog');
+    const errDiv = document.getElementById('initError');
+    const okDiv  = document.getElementById('initSuccess');
 
-        bar.style.width = pct + '%';
-        pctEl.textContent = pct + '%';
-        if (state.step) {
-            stepEl.textContent = state.step;
-            const lineClass = state.error ? 'log-error' : (pct === 100 ? 'log-success' : 'log-info');
-            const lastLine = log.lastElementChild;
-            if (!lastLine || lastLine.textContent !== state.step) {
-                log.innerHTML += `<span class="${lineClass}">${state.step}</span>\n`;
-                log.scrollTop = log.scrollHeight;
-            }
-        }
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Se initialieaza...';
+    logDiv.style.display = 'block';
+    logDiv.innerHTML = '';
+    errDiv.classList.add('d-none');
+    okDiv.classList.add('d-none');
+    document.getElementById('btnBack6').disabled = true;
 
-        if (state.vlans_found > 0) {
-            document.getElementById('statsVlans').textContent = state.vlans_found;
-        }
-        if (state.devices_found > 0) {
-            document.getElementById('statsDevices').textContent = state.devices_found;
-        }
+    function log(msg, cls) {
+        logDiv.innerHTML += '<span class="' + (cls || 'log-info') + '">' + _esc(msg) + '</span>\n';
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
 
-        if (state.error) {
-            clearInterval(_discoveryInterval);
-            log.innerHTML += `<span class="log-error">Eroare: ${state.error}</span>\n`;
-            document.getElementById('btnStartDiscovery').disabled = false;
-            document.getElementById('btnStartDiscovery').innerHTML = '<i class="bi bi-play-circle me-1"></i>Reîncearcă';
-        } else if (state.completed && !state.running) {
-            clearInterval(_discoveryInterval);
-            bar.classList.remove('progress-bar-striped', 'progress-bar-animated');
-            document.getElementById('btnNext2').classList.remove('d-none');
-            document.getElementById('btnStartDiscovery').classList.add('d-none');
+    log('Colectare date configuratie...');
+
+    const payload = {
+        app_name:          document.getElementById('appName').value.trim() || 'SchoolSec',
+        admin_username:    document.getElementById('adminUsername').value.trim() || 'admin',
+        admin_password:    document.getElementById('adminPassword').value,
+        app_port:          parseInt(document.getElementById('appPort').value) || 5000,
+        app_language:      document.getElementById('appLanguage').value,
+        sniffer_mode:      document.getElementById('snifferMode').value,
+        network_interface: document.getElementById('networkInterface').value || '',
+        auto_classify:     document.getElementById('autoClassify').checked,
+        mikrotik_enabled:  document.getElementById('mikrotikEnabled').checked,
+        mikrotik_host:     document.getElementById('mikrotikHost').value.trim(),
+        mikrotik_port:     parseInt(document.getElementById('mikrotikPort').value) || 8728,
+        mikrotik_username: document.getElementById('mikrotikUsername').value.trim() || 'admin',
+        mikrotik_password: document.getElementById('mikrotikPassword').value,
+        secret_key:        document.getElementById('secretKey').value.trim(),
+        ssl_enabled:       document.getElementById('sslEnabled').checked,
+        ssl_domain:        document.getElementById('sslDomain').value.trim() || 'localhost',
+        telegram_enabled:  document.getElementById('telegramEnabled').checked,
+        telegram_bot_token: document.getElementById('telegramBotToken').value.trim(),
+        telegram_chat_id:   document.getElementById('telegramChatId').value.trim(),
+        telegram_min_severity: document.getElementById('telegramMinSeverity').value,
+    };
+
+    log('Trimitere date la server...');
+
+    fetch('/api/setup/initialize', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            log('Utilizator administrator creat.', 'log-success');
+            log('Cheie secreta salvata in .env.', 'log-success');
+            log('Configuratie retea salvata.', 'log-success');
+            log('Setup marcat ca finalizat.', 'log-success');
+            log('Sistem initializat! Redirectionare...', 'log-success');
+            okDiv.classList.remove('d-none');
+            document.getElementById('step6Buttons').style.display = 'none';
+            document.getElementById('step6LoginBtn').classList.remove('d-none');
+            _updateProgress();
+        } else {
+            log('Eroare: ' + (data.error || 'Eroare necunoscuta.'), 'log-error');
+            errDiv.textContent = data.error || 'Eroare la initializare.';
+            errDiv.classList.remove('d-none');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-rocket-takeoff me-2"></i>Incearca din nou';
+            document.getElementById('btnBack6').disabled = false;
         }
     })
-    .catch(err => {
-        console.warn('Polling error:', err);
+    .catch(function(err) {
+        log('Eroare retea: ' + err, 'log-error');
+        errDiv.textContent = 'Eroare de retea: ' + err;
+        errDiv.classList.remove('d-none');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-rocket-takeoff me-2"></i>Incearca din nou';
+        document.getElementById('btnBack6').disabled = false;
     });
 }
 
 function skipSetup() {
-    if (!confirm('Sari peste configurarea MikroTik?\nSistemul va porni în modul demo fără auto-discovery.')) return;
+    if (!confirm('Sari peste configurare?\nSistemul va porni in modul demo cu credentialele implicite (admin/admin123).'))
+        return;
     fetch('/api/setup/skip', {method: 'POST'})
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            window.location.href = data.redirect || '/';
-        }
-    });
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) window.location.href = data.redirect || '/';
+    })
+    .catch(function(err) { console.error('Skip esuat:', err); });
 }
 
-// Pornire animație progress bar
-document.getElementById('discoveryProgress').classList.add('progress-bar-animated');
-</script>
+function showError(el, msg) {
+    el.textContent = msg;
+    el.classList.remove('d-none');
+    el.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
 
-<!-- Bootstrap JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+function _esc(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+generateSecretKey();
+_updateProgress();
+</script>
 </body>
 </html>
