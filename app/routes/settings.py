@@ -6,6 +6,8 @@ import json
 import sys
 import logging
 import ipaddress
+import hashlib
+import base64
 import platform
 from datetime import datetime, timezone
 
@@ -141,6 +143,55 @@ def _save_custom_whitelist(entries):
         pass
 
 
+# =============================================================================
+# Utilitare criptare Fernet pentru parola MikroTik
+# =============================================================================
+
+def _get_fernet():
+    """Returnează o instanță Fernet cu cheia derivată din SECRET_KEY."""
+    from cryptography.fernet import Fernet
+    secret = current_app.config['SECRET_KEY'].encode()
+    key_bytes = hashlib.sha256(secret).digest()
+    fernet_key = base64.urlsafe_b64encode(key_bytes)
+    return Fernet(fernet_key)
+
+
+def _encrypt_password(password: str) -> str:
+    """Criptează parola și returnează string-ul criptat."""
+    return _get_fernet().encrypt(password.encode()).decode()
+
+
+def _decrypt_password(encrypted: str) -> str:
+    """Decriptează parola criptată."""
+    return _get_fernet().decrypt(encrypted.encode()).decode()
+
+
+def _get_mikrotik_config():
+    """Returnează configurația MikroTik din baza de date.
+
+    Returnează un dict cu cheile: host, port, username, password, enabled,
+    updated_by, updated_at. Dacă nu există înregistrare în BD, returnează None.
+    """
+    from app.models import MikroTikConfig
+    cfg = db.session.get(MikroTikConfig, 1)
+    if cfg is None:
+        return None
+    password = ''
+    if cfg.password_encrypted:
+        try:
+            password = _decrypt_password(cfg.password_encrypted)
+        except Exception:
+            logger.warning('[MikroTik Settings] Eroare la decriptarea parolei.')
+    return {
+        'host': cfg.host,
+        'port': cfg.port,
+        'username': cfg.username,
+        'password': password,
+        'enabled': cfg.enabled,
+        'updated_by': cfg.updated_by,
+        'updated_at': cfg.updated_at.strftime('%Y-%m-%d %H:%M:%S') if cfg.updated_at else None,
+    }
+
 @settings_bp.route('/settings')
 @login_required
 def index():
@@ -191,12 +242,36 @@ def index():
         'sniffer_mode': sniffer_mode,
     }
 
+    # Configurare MikroTik din BD (sau valori din env ca fallback)
+    mikrotik_db_cfg = _get_mikrotik_config()
+    if mikrotik_db_cfg is not None:
+        mikrotik_config = {
+            'host': mikrotik_db_cfg['host'],
+            'port': mikrotik_db_cfg['port'],
+            'username': mikrotik_db_cfg['username'],
+            'enabled': mikrotik_db_cfg['enabled'],
+            'updated_by': mikrotik_db_cfg['updated_by'],
+            'updated_at': mikrotik_db_cfg['updated_at'],
+            'source': 'database',
+        }
+    else:
+        mikrotik_config = {
+            'host': current_app.config.get('MIKROTIK_HOST', ''),
+            'port': current_app.config.get('MIKROTIK_PORT', 8728),
+            'username': current_app.config.get('MIKROTIK_USERNAME', 'admin'),
+            'enabled': current_app.config.get('MIKROTIK_ENABLED', False),
+            'updated_by': None,
+            'updated_at': None,
+            'source': 'env',
+        }
+
     return render_template(
         'settings.html',
         telegram_enabled=telegram_enabled,
         chat_id_masked=chat_id_masked,
         whitelist_entries=whitelist_entries,
         system_info=system_info,
+        mikrotik_config=mikrotik_config,
     )
 
 
@@ -288,3 +363,168 @@ def remove_whitelist_ip():
 
     _save_custom_whitelist(new_entries)
     return jsonify({'success': True, 'message': f'IP-ul {ip} a fost eliminat din lista albă.'})
+
+
+# =============================================================================
+# API MikroTik Settings
+# =============================================================================
+
+@settings_bp.route('/api/settings/mikrotik', methods=['GET'])
+@login_required
+def get_mikrotik_config_api():
+    """Returnează configurația MikroTik curentă (parola mascată)."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    from app.models import MikroTikConfig
+    cfg = db.session.get(MikroTikConfig, 1)
+    if cfg is None:
+        # Fallback la variabilele de mediu
+        return jsonify({
+            'host': current_app.config.get('MIKROTIK_HOST', ''),
+            'port': current_app.config.get('MIKROTIK_PORT', 8728),
+            'username': current_app.config.get('MIKROTIK_USERNAME', 'admin'),
+            'enabled': current_app.config.get('MIKROTIK_ENABLED', False),
+            'updated_by': None,
+            'updated_at': None,
+            'source': 'env',
+        })
+
+    return jsonify({
+        'host': cfg.host,
+        'port': cfg.port,
+        'username': cfg.username,
+        'enabled': cfg.enabled,
+        'updated_by': cfg.updated_by,
+        'updated_at': cfg.updated_at.strftime('%Y-%m-%d %H:%M:%S') if cfg.updated_at else None,
+        'source': 'database',
+    })
+
+
+@settings_bp.route('/api/settings/mikrotik', methods=['POST'])
+@login_required
+def save_mikrotik_config_api():
+    """Salvează configurația MikroTik în baza de date (parola criptată)."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    host = data.get('host', '').strip()
+    port_raw = data.get('port', 8728)
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    enabled = bool(data.get('enabled', False))
+
+    # Validare
+    if enabled and not host:
+        return jsonify({'error': 'Host-ul este obligatoriu când integrarea MikroTik este activată.'}), 400
+    try:
+        port = int(port_raw)
+        if not (1 <= port <= 65535):
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Portul trebuie să fie un număr între 1 și 65535.'}), 400
+
+    from app.models import MikroTikConfig
+    cfg = db.session.get(MikroTikConfig, 1)
+    if cfg is None:
+        cfg = MikroTikConfig(id=1)
+        db.session.add(cfg)
+
+    cfg.host = host
+    cfg.port = port
+    cfg.username = username or 'admin'
+    cfg.enabled = enabled
+    cfg.updated_by = current_user.username
+    cfg.updated_at = datetime.now(timezone.utc)
+
+    # Dacă o nouă parolă a fost trimisă, o criptăm; altfel păstrăm parola existentă
+    if password:
+        cfg.password_encrypted = _encrypt_password(password)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error('[MikroTik Settings] Eroare la salvarea configurației: %s', e)
+        return jsonify({'error': 'Eroare la salvarea configurației în baza de date.'}), 500
+
+    logger.info('[MikroTik Settings] Configurație salvată de %s (host=%s, enabled=%s).',
+                current_user.username, host, enabled)
+
+    # Reîncarcăm clientul MikroTik la runtime
+    try:
+        from app import reload_mikrotik_client
+        reload_mikrotik_client(current_app._get_current_object())
+    except Exception as e:
+        logger.warning('[MikroTik Settings] Reîncărcare client eșuată: %s', e)
+
+    return jsonify({
+        'success': True,
+        'message': 'Configurația MikroTik a fost salvată.',
+        'enabled': enabled,
+    })
+
+
+@settings_bp.route('/api/settings/mikrotik/test', methods=['POST'])
+@login_required
+def test_mikrotik_connection():
+    """Testează conexiunea MikroTik cu parametrii furnizați (sau cei salvați)."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    # Prioritate: parametri din request → config din BD → env
+    host = data.get('host', '').strip()
+    port_raw = data.get('port', '')
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+
+    if not host:
+        cfg = _get_mikrotik_config()
+        if cfg:
+            host = cfg['host']
+            if not port_raw:
+                port_raw = cfg['port']
+            if not username:
+                username = cfg['username']
+            if not password:
+                password = cfg['password']
+        else:
+            host = current_app.config.get('MIKROTIK_HOST', '')
+            if not port_raw:
+                port_raw = current_app.config.get('MIKROTIK_PORT', 8728)
+            if not username:
+                username = current_app.config.get('MIKROTIK_USERNAME', 'admin')
+            if not password:
+                password = current_app.config.get('MIKROTIK_PASSWORD', '')
+
+    if not host:
+        return jsonify({'error': 'Host-ul MikroTik nu este configurat.'}), 400
+
+    try:
+        port = int(port_raw) if port_raw else 8728
+    except (TypeError, ValueError):
+        port = 8728
+
+    try:
+        from app.ids.mikrotik_client import MikrotikClient
+        test_client = MikrotikClient(
+            host=host,
+            port=port,
+            username=username or 'admin',
+            password=password,
+        )
+        connected = test_client.connect()
+        if connected:
+            test_client.disconnect()
+            return jsonify({
+                'success': True,
+                'message': f'Conexiune reușită la {host}:{port}.',
+            })
+        return jsonify({'error': f'Nu s-a putut conecta la {host}:{port}. Verificați datele de acces.'}), 400
+    except Exception as e:
+        logger.warning('[MikroTik Settings] Test conexiune eșuat: %s', e)
+        return jsonify({'error': f'Eroare la testarea conexiunii: {e}'}), 500
