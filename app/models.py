@@ -327,6 +327,66 @@ class MikroTikConfig(db.Model):
 
 
 # =============================================================================
+# Model Configurație Rețea (stare setup + setări generale)
+# =============================================================================
+class NetworkConfig(db.Model):
+    """Tabel cheie-valoare pentru configurația globală a sistemului.
+
+    Folosit pentru a stoca starea setup-ului (setup_complete=true/false)
+    și alte setări persistente independente de MikroTik.
+    """
+    __tablename__ = 'network_config'
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    value = db.Column(db.Text, nullable=True)
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self):
+        return f'<NetworkConfig {self.key}={self.value}>'
+
+
+# =============================================================================
+# Model VLAN Descoperit
+# =============================================================================
+class DiscoveredVLAN(db.Model):
+    """VLAN-uri descoperite automat prin auto-discovery (din RouterOS).
+
+    Înlocuiește maparea statică hardcodată din sniffer.py cu date din baza de date,
+    permițând funcționarea pe orice rețea fără configurare manuală.
+    """
+    __tablename__ = 'discovered_vlans'
+
+    id = db.Column(db.Integer, primary_key=True)
+    vlan_id = db.Column(db.Integer, nullable=False)
+    subnet = db.Column(db.String(50), nullable=True)    # ex: '192.168.221.0/28'
+    name = db.Column(db.String(100), nullable=True)     # ex: 'Sala1Parter'
+    interface = db.Column(db.String(100), nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    discovered_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'vlan_id': self.vlan_id,
+            'subnet': self.subnet,
+            'name': self.name,
+            'interface': self.interface,
+            'is_active': self.is_active,
+        }
+
+    def __repr__(self):
+        return f'<DiscoveredVLAN vlan_id={self.vlan_id} subnet={self.subnet}>'
+
+
+# =============================================================================
 # Model Statistici Pachete
 # =============================================================================
 class PacketStat(db.Model):
