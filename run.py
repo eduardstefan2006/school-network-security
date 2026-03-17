@@ -3,8 +3,48 @@ Punctul de intrare al aplicației de securitate pentru rețeaua școlii.
 Rulați cu: python run.py
 """
 import os
+import signal
+import subprocess
+import sys
 from app import create_app
 from app.ids.sniffer import start_sniffer
+
+# ---------------------------------------------------------------------------
+# SIGTERM handler – graceful shutdown + start systemd service if requested
+# ---------------------------------------------------------------------------
+_SERVICE_FLAG = '/tmp/.schoolsec_start_service'
+_SERVICE_NAME = 'schoolsec'
+
+
+def _handle_sigterm(signum, frame):
+    """Graceful shutdown la SIGTERM.
+
+    Dacă există flag-ul /tmp/.schoolsec_start_service (creat de endpoint-ul
+    stop-and-install), pornește serviciul systemd *după* ce procesul Flask s-a
+    oprit (Popen detached).
+    """
+    print('[SchoolSec] SIGTERM primit – oprire graceful Flask...')
+    if os.path.exists(_SERVICE_FLAG):
+        try:
+            os.remove(_SERVICE_FLAG)
+        except OSError:
+            pass
+        # Launch `systemctl start` as a detached background process so that
+        # it runs *after* this process exits and the port is freed.
+        try:
+            subprocess.Popen(
+                ['bash', '-c', f'sleep 2 && sudo systemctl start {_SERVICE_NAME}'],
+                close_fds=True,
+                start_new_session=True,
+            )
+            print(f'[SchoolSec] Serviciul {_SERVICE_NAME} va fi pornit de systemd în 2s.')
+        except Exception as exc:
+            print(f'[SchoolSec] Avertisment: nu s-a putut planifica pornirea serviciului: {exc}')
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, _handle_sigterm)
+
 
 def _load_dotenv(dotenv_path='.env'):
     """Încarcă variabilele din fișierul .env fără dependințe externe."""

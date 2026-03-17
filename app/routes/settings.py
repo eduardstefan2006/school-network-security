@@ -4,6 +4,8 @@ Rute pentru pagina de setări a aplicației (doar admin).
 import os
 import json
 import sys
+import signal
+import threading
 import logging
 import ipaddress
 import hashlib
@@ -534,6 +536,10 @@ def test_mikrotik_connection():
 # API Service & System Management
 # =============================================================================
 
+# Lock and flag to prevent concurrent stop-and-install operations
+_install_lock = threading.Lock()
+_install_in_progress = False
+
 def _log_service_action(event_type: str, message: str, ip: str):
     """Înregistrează o acțiune de serviciu/sistem în SecurityLog."""
     try:
@@ -565,6 +571,96 @@ def service_install():
     if success:
         return jsonify({'success': True, 'message': message})
     return jsonify({'error': message}), 500
+
+
+@settings_bp.route('/api/service/stop-and-install', methods=['POST'])
+@login_required
+def service_stop_and_install():
+    """Oprește Flask graceful, instalează și pornește serviciul systemd.
+
+    Flow:
+    1. Validare admin + mutex (previne instalări concurente)
+    2. Log service_install_started în SecurityLog
+    3. Thread de fundal: creare fișier serviciu, daemon-reload, enable
+    4. Setează flag-file /tmp/.schoolsec_start_service
+    5. Trimite SIGTERM procesului curent → SIGTERM handler pornește serviciul
+    """
+    global _install_in_progress
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    with _install_lock:
+        if _install_in_progress:
+            return jsonify({'error': 'Instalarea este deja în curs.'}), 409
+        _install_in_progress = True
+
+    ip = request.remote_addr or 'unknown'
+    username = current_user.username
+    app = current_app._get_current_object()
+
+    _log_service_action(
+        'service_install_started',
+        f'[{username}] Instalare serviciu inițiată – aplicația se va opri graceful.',
+        ip,
+    )
+
+    def _do_install():
+        global _install_in_progress
+        import time
+        time.sleep(1.0)  # Allow HTTP response to be sent first
+
+        try:
+            from app.utils import create_systemd_service
+            success, message = create_systemd_service()
+
+            if not success:
+                logger.error('[Service] Instalare eșuată: %s', message)
+                with app.app_context():
+                    _log_service_action(
+                        'service_install_failed',
+                        f'[{username}] {message}',
+                        ip,
+                    )
+                return
+
+            logger.info('[Service] Fișier serviciu creat, se pregătește oprirea Flask.')
+            with app.app_context():
+                _log_service_action(
+                    'service_install_completed',
+                    f'[{username}] Fișier serviciu instalat. Se oprește Flask pentru preluare systemd.',
+                    ip,
+                )
+
+            # Create flag file (mode 0o600) so the SIGTERM handler knows to start the service
+            flag_path = '/tmp/.schoolsec_start_service'
+            try:
+                fd = os.open(flag_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, 'w') as fh:
+                    fh.write('start')
+            except OSError as exc:
+                logger.warning('[Service] Nu s-a putut crea flag-ul de pornire: %s', exc)
+
+            logger.warning('[Service] Trimit SIGTERM procesului Flask (PID %s).', os.getpid())
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        except Exception as exc:
+            logger.error('[Service] Eroare neașteptată în _do_install: %s', exc)
+            with app.app_context():
+                _log_service_action(
+                    'service_install_failed',
+                    f'[{username}] Eroare neașteptată: {exc}',
+                    ip,
+                )
+        finally:
+            _install_in_progress = False
+
+    t = threading.Thread(target=_do_install, daemon=True, name='service-installer')
+    t.start()
+
+    return jsonify({
+        'success': True,
+        'message': 'Instalarea serviciului a fost inițiată. Aplicația se va opri pentru a permite systemd să preia controlul.',
+    })
 
 
 @settings_bp.route('/api/service/restart', methods=['POST'])

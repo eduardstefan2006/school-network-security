@@ -320,8 +320,9 @@
         <!-- Acțiuni serviciu -->
         <h6 class="text-muted mb-2"><i class="bi bi-gear me-1"></i>Acțiuni Serviciu</h6>
         <div class="d-flex flex-wrap gap-2 mb-3">
-            <button type="button" class="btn btn-sm btn-outline-primary" id="btnInstallService">
-                <i class="bi bi-download me-1"></i>Instalează ca Serviciu Systemd
+            <button type="button" class="btn btn-sm btn-primary" id="btnStopAndInstallService"
+                    data-bs-toggle="modal" data-bs-target="#modalInstallServiceConfirm">
+                <i class="bi bi-power me-1"></i>Stop &amp; Instalează ca Serviciu Systemd
             </button>
             <button type="button" class="btn btn-sm btn-outline-warning" id="btnRestartService">
                 <i class="bi bi-arrow-repeat me-1"></i>Restart Serviciu
@@ -385,6 +386,64 @@
                 <button type="button" class="btn btn-danger" id="btnConfirmReboot">
                     <i class="bi bi-bootstrap-reboot me-1"></i>Da, Repornește Sistemul
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal confirmare Stop & Instalează Serviciu -->
+<div class="modal fade" id="modalInstallServiceConfirm" tabindex="-1" aria-labelledby="modalInstallServiceConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-light border-warning">
+            <div class="modal-header border-warning">
+                <h5 class="modal-title text-warning" id="modalInstallServiceConfirmLabel">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>Atenție! Aplicația se va opri
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Aplicația Flask se va opri pentru a permite instalarea serviciului systemd.</p>
+                <p class="text-danger"><i class="bi bi-people-fill me-1"></i><strong>Toți utilizatorii conectați vor fi deconectați.</strong></p>
+                <p class="text-info mb-0"><i class="bi bi-info-circle me-1"></i>După instalare, serviciul va porni automat și pagina se va reîncărca.</p>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                <button type="button" class="btn btn-warning text-dark fw-semibold" id="btnConfirmInstallService">
+                    <i class="bi bi-power me-1"></i>Continuă
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal progres instalare serviciu -->
+<div class="modal fade" id="modalInstallServiceProgress" tabindex="-1" aria-labelledby="modalInstallServiceProgressLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-light border-info">
+            <div class="modal-header border-info">
+                <h5 class="modal-title text-info" id="modalInstallServiceProgressLabel">
+                    <i class="bi bi-gear-wide-connected me-2"></i>Instalare Serviciu Systemd
+                </h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div id="installProgressBody">
+                    <div class="spinner-border text-info mb-3" role="status">
+                        <span class="visually-hidden">Se instalează...</span>
+                    </div>
+                    <p class="mb-1 fs-5">Se instalează serviciul... ⏳</p>
+                    <p class="text-muted small">Aplicația se va reporni automat prin systemd.</p>
+                </div>
+                <div id="installSuccessBody" style="display:none;">
+                    <div class="text-success fs-1 mb-3">✅</div>
+                    <p class="mb-1 fs-5 text-success fw-semibold">Serviciu instalat cu succes!</p>
+                    <p class="text-muted small" id="installReloadCountdown">Pagina se va reîncărca în 5 secunde...</p>
+                </div>
+                <div id="installErrorBody" style="display:none;">
+                    <div class="text-danger fs-1 mb-3">❌</div>
+                    <p class="mb-1 fs-5 text-danger fw-semibold">Instalare eșuată</p>
+                    <p class="text-muted small" id="installErrorMsg"></p>
+                    <button type="button" class="btn btn-sm btn-secondary mt-2" data-bs-dismiss="modal">Închide</button>
+                </div>
             </div>
         </div>
     </div>
@@ -805,24 +864,111 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Install service
-    const btnInstallService = document.getElementById('btnInstallService');
-    if (btnInstallService) {
-        btnInstallService.addEventListener('click', function () {
-            btnInstallService.disabled = true;
-            btnInstallService.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se instalează...';
-            fetch('/api/service/install', { method: 'POST' })
+    // Stop & Install service – new auto-flow with graceful shutdown
+    const btnConfirmInstallService = document.getElementById('btnConfirmInstallService');
+    if (btnConfirmInstallService) {
+        btnConfirmInstallService.addEventListener('click', function () {
+            // Hide confirmation modal, show progress modal
+            const confirmModal = bootstrap.Modal.getInstance(document.getElementById('modalInstallServiceConfirm'));
+            if (confirmModal) confirmModal.hide();
+
+            const progressModal = new bootstrap.Modal(document.getElementById('modalInstallServiceProgress'), {
+                backdrop: 'static', keyboard: false
+            });
+            document.getElementById('installProgressBody').style.display = '';
+            document.getElementById('installSuccessBody').style.display = 'none';
+            document.getElementById('installErrorBody').style.display = 'none';
+            progressModal.show();
+
+            btnConfirmInstallService.disabled = true;
+
+            // Call stop-and-install endpoint
+            fetch('/api/service/stop-and-install', { method: 'POST' })
                 .then(r => r.json())
                 .then(d => {
-                    showServiceResult(d.success ? d.message : (d.error || 'Eroare necunoscută'), !!d.success);
-                    if (d.success) fetchServiceStatus();
+                    if (!d.success) {
+                        _showInstallError(d.error || 'Eroare necunoscută la inițierea instalării.');
+                        btnConfirmInstallService.disabled = false;
+                        return;
+                    }
+                    // Start polling for service status
+                    _pollServiceActive(progressModal);
                 })
-                .catch(() => showServiceResult('Eroare de rețea.', false))
-                .finally(() => {
-                    btnInstallService.disabled = false;
-                    btnInstallService.innerHTML = '<i class="bi bi-download me-1"></i>Instalează ca Serviciu Systemd';
+                .catch(err => {
+                    // If the request itself fails (app already shutting down), still poll
+                    _pollServiceActive(progressModal);
+                    btnConfirmInstallService.disabled = false;
                 });
         });
+    }
+
+    /**
+     * Poll /api/service/status every 2 seconds until the service is active.
+     * Handles connection errors gracefully (app may be temporarily offline).
+     */
+    function _pollServiceActive(progressModal) {
+        const MAX_WAIT_MS = 120000; // 2 minutes timeout
+        const POLL_INTERVAL_MS = 2000;
+        let elapsed = 0;
+        let consecutiveErrors = 0;
+
+        function _doPoll() {
+            fetch('/api/service/status')
+                .then(r => r.json())
+                .then(data => {
+                    consecutiveErrors = 0;
+                    if (data.active) {
+                        _showInstallSuccess(progressModal);
+                    } else {
+                        elapsed += POLL_INTERVAL_MS;
+                        if (elapsed >= MAX_WAIT_MS) {
+                            _showInstallError('Timeout: serviciul nu a devenit activ în 2 minute.');
+                        } else {
+                            setTimeout(_doPoll, POLL_INTERVAL_MS);
+                        }
+                    }
+                })
+                .catch(() => {
+                    // Connection refused / app is shutting down — retry with exponential backoff
+                    consecutiveErrors++;
+                    const backoff = Math.min(POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors - 1), 8000);
+                    elapsed += backoff;
+                    if (elapsed >= MAX_WAIT_MS) {
+                        _showInstallError('Timeout: nu s-a putut recontacta aplicația după oprire.');
+                    } else {
+                        setTimeout(_doPoll, backoff);
+                    }
+                });
+        }
+
+        setTimeout(_doPoll, POLL_INTERVAL_MS);
+    }
+
+    function _showInstallSuccess(progressModal) {
+        document.getElementById('installProgressBody').style.display = 'none';
+        document.getElementById('installErrorBody').style.display = 'none';
+        document.getElementById('installSuccessBody').style.display = '';
+
+        let seconds = 5;
+        const countdownEl = document.getElementById('installReloadCountdown');
+        function _tick() {
+            if (countdownEl) countdownEl.textContent = `Pagina se va reîncărca în ${seconds} secunde...`;
+            if (seconds <= 0) {
+                window.location.reload();
+            } else {
+                seconds--;
+                setTimeout(_tick, 1000);
+            }
+        }
+        _tick();
+    }
+
+    function _showInstallError(msg) {
+        document.getElementById('installProgressBody').style.display = 'none';
+        document.getElementById('installSuccessBody').style.display = 'none';
+        document.getElementById('installErrorBody').style.display = '';
+        const errEl = document.getElementById('installErrorMsg');
+        if (errEl) errEl.textContent = msg;
     }
 
     // Restart service
