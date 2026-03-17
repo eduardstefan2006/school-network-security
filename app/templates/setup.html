@@ -164,28 +164,10 @@
             <label class="form-label">Nume utilizator admin <span class="text-danger">*</span></label>
             <input type="text" class="form-control" id="adminUsername" value="admin" placeholder="admin">
         </div>
-        <div class="mb-3">
-            <label class="form-label">Parol&#x103; admin <span class="text-danger">*</span></label>
-            <div class="input-group">
-                <input type="password" class="form-control" id="adminPassword" placeholder="Minim 8 caractere"
-                       oninput="checkPasswordStrength(this.value)">
-                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('adminPassword')">
-                    <i class="bi bi-eye" id="eye-adminPassword"></i>
-                </button>
-            </div>
-            <div class="mt-1" style="height:4px; background:#30363d; border-radius:2px;">
-                <div class="strength-bar" id="strengthBar" style="width:0%;"></div>
-            </div>
-            <div class="form-text" id="strengthText"></div>
-        </div>
-        <div class="mb-3">
-            <label class="form-label">Confirmare parol&#x103; <span class="text-danger">*</span></label>
-            <div class="input-group">
-                <input type="password" class="form-control" id="adminPasswordConfirm" placeholder="Repeta&#x21b;i parola">
-                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('adminPasswordConfirm')">
-                    <i class="bi bi-eye" id="eye-adminPasswordConfirm"></i>
-                </button>
-            </div>
+        <div class="alert alert-info py-2 mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Contul administrator va folosi parola implicit&#x103; <strong>admin123</strong>.
+            Schimba&#x21b;i-o din <strong>Setari &rarr; Profil</strong> dup&#x103; prima autentificare.
         </div>
 
         <hr class="border-secondary my-3">
@@ -564,12 +546,8 @@ function _updateProgress() {
 // ── Step 1 ────────────────────────────────────────────────────────────────────
 function validateStep1() {
     const username = document.getElementById('adminUsername').value.trim();
-    const password = document.getElementById('adminPassword').value;
-    const confirm  = document.getElementById('adminPasswordConfirm').value;
     const errDiv   = document.getElementById('step1Error');
-    if (!username)               { showError(errDiv, 'Numele de utilizator este obligatoriu.'); return; }
-    if (password.length < 8)     { showError(errDiv, 'Parola trebuie sa aiba cel putin 8 caractere.'); return; }
-    if (password !== confirm)    { showError(errDiv, 'Parolele nu coincid.'); return; }
+    if (!username) { showError(errDiv, 'Numele de utilizator este obligatoriu.'); return; }
     errDiv.classList.add('d-none');
     if (!document.getElementById('secretKey').value) generateSecretKey();
     goToStep(2);
@@ -798,7 +776,6 @@ function initializeSystem() {
     const payload = {
         app_name:          document.getElementById('appName').value.trim() || 'SchoolSec',
         admin_username:    document.getElementById('adminUsername').value.trim() || 'admin',
-        admin_password:    document.getElementById('adminPassword').value,
         app_port:          parseInt(document.getElementById('appPort').value) || 5000,
         app_language:      document.getElementById('appLanguage').value,
         sniffer_mode:      document.getElementById('snifferMode').value,

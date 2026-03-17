@@ -155,6 +155,24 @@ def reload_mikrotik_client(app):
 
 
 
+def _ensure_admin_user():
+    """Creează utilizatorul admin implicit dacă nu există în baza de date.
+
+    La prima rulare, aplicația va crea automat utilizatorul 'admin' cu parola
+    'admin123'. Aceasta poate fi schimbată din pagina de Setări după autentificare.
+    """
+    try:
+        from app.models import User
+        if not User.query.filter_by(username='admin').first():
+            admin = User(username='admin', email='admin@schoolsec.local', role='admin')
+            admin.set_password('admin123')
+            db.session.add(admin)
+            db.session.commit()
+            print('[DB] Utilizator admin creat cu credențiale implicite.')
+    except Exception as e:
+        print(f'[DB] Eroare la crearea utilizatorului admin implicit: {e}')
+
+
 def create_app(config_name=None):
     """
     Factory function pentru crearea aplicației Flask.
@@ -210,6 +228,8 @@ def create_app(config_name=None):
         db.create_all()
         # Migrare automată: adaugă coloane noi în tabele existente
         _run_migrations(app)
+        # Creare automată utilizator admin implicit la prima rulare
+        _ensure_admin_user()
 
     # Pornire integrare MikroTik – prioritate: config din BD, fallback la .env
     _init_mikrotik(app)

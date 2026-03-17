@@ -772,6 +772,218 @@ Acest proiect demonstrează:
 
 ---
 
+## 🔑 Credențiale Implicite
+
+La prima pornire, aplicația creează automat un cont administrator cu credențialele implicite:
+
+| Utilizator | Parolă |
+|------------|--------|
+| `admin` | `admin123` |
+
+> **⚠️ Important:** Schimbați parola implicită imediat după prima autentificare!
+> Mergeți la **Setări → Profil → Schimbare parolă**.
+
+---
+
+## 🔧 Configurare MikroTik – Reguli Firewall
+
+Pentru ca SchoolSec să se poată conecta la API-ul RouterOS, portul **8728** (sau 8729 pentru SSL) trebuie să fie accesibil din rețeaua locală.
+
+### Verificare acces port 8728
+
+Dacă aplicația nu se poate conecta, adăugați o regulă de firewall pe MikroTik care permite accesul la API-ul RouterOS:
+
+```
+# Rulați în Winbox Terminal sau SSH pe MikroTik:
+/ip firewall filter add \
+    chain=input \
+    protocol=tcp \
+    dst-port=8728 \
+    src-address=192.168.0.0/16 \
+    action=accept \
+    comment="Allow SchoolSec API access" \
+    place-before=0
+```
+
+Înlocuiți `192.168.0.0/16` cu subnet-ul rețelei voastre locale (de exemplu `192.168.4.0/24`).
+
+### Verificare regulă existentă
+
+```
+/ip firewall filter print where dst-port=8728
+```
+
+### Activare serviciu API în RouterOS
+
+```
+/ip service enable api
+/ip service set api port=8728
+```
+
+### Configurare TZSP (streaming pachete)
+
+```
+/tool sniffer set streaming-enabled=yes streaming-server=<IP_SERVER_SCHOOLSEC> filter-ip-protocol=all
+/tool sniffer start
+```
+
+Înlocuiți `<IP_SERVER_SCHOOLSEC>` cu adresa IP a serverului unde rulează SchoolSec.
+
+---
+
+## 🔒 Generare Certificat SSL Auto-Semnat
+
+Pentru a activa HTTPS, generați un certificat SSL auto-semnat:
+
+```bash
+openssl req -x509 -newkey rsa:4096 -nodes \
+    -out cert.pem -keyout key.pem -days 365 \
+    -subj "/CN=schoolsec.local"
+```
+
+Apoi configurați în fișierul `.env`:
+
+```env
+SSL_CERT=cert.pem
+SSL_KEY=key.pem
+```
+
+Sau specificați calea completă dacă certificatele sunt în altă locație:
+
+```env
+SSL_CERT=/etc/ssl/schoolsec/cert.pem
+SSL_KEY=/etc/ssl/schoolsec/key.pem
+```
+
+Reporniți aplicația. Accesați: **https://localhost:5000** (sau portul configurat).
+
+---
+
+## ⚙️ Rulare ca Serviciu Systemd
+
+Pentru a rula SchoolSec automat la pornirea sistemului, creați un serviciu systemd:
+
+```bash
+sudo nano /etc/systemd/system/school-network-security.service
+```
+
+Conținut fișier serviciu:
+
+```ini
+[Unit]
+Description=SchoolSec - Sistem de Securitate pentru Rețeaua Școlii
+After=network.target
+
+[Service]
+Type=simple
+User=<your-username>
+WorkingDirectory=/home/<your-username>/school-network-security
+ExecStart=/home/<your-username>/school-network-security/venv/bin/python run.py
+Restart=on-failure
+RestartSec=5
+Environment=FLASK_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Activați și porniți serviciul:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable school-network-security
+sudo systemctl start school-network-security
+
+# Verificați starea:
+sudo systemctl status school-network-security
+
+# Vedeți logurile:
+journalctl -u school-network-security -f
+```
+
+---
+
+## 🛠️ Depanare (Troubleshooting)
+
+### ❌ Login eșuează cu credențiale corecte
+
+**Cauză:** Baza de date nu a fost inițializată corect sau utilizatorul admin nu există.
+
+**Soluție:**
+```bash
+cd ~/school-network-security
+# Resetează utilizatorul admin
+python3 -c "
+from app import create_app, db
+from app.models import User
+app = create_app()
+with app.app_context():
+    user = User.query.filter_by(username='admin').first()
+    if user:
+        user.set_password('admin123')
+        db.session.commit()
+        print('Parola resetata cu succes!')
+    else:
+        user = User(username='admin', email='admin@schoolsec.local', role='admin')
+        user.set_password('admin123')
+        db.session.add(user)
+        db.session.commit()
+        print('Utilizator admin creat!')
+"
+```
+
+### ❌ Nu se poate conecta la API-ul MikroTik (port 8728)
+
+**Verificări:**
+1. Portul 8728 este deschis pe MikroTik: `telnet 192.168.4.1 8728`
+2. Serviciul API este activat: `/ip service print` în terminal MikroTik
+3. Nu există o regulă de firewall care blochează conexiunea
+
+**Soluție rapidă pe MikroTik:**
+```
+/ip service enable api
+/ip firewall filter add chain=input protocol=tcp dst-port=8728 action=accept comment="SchoolSec API"
+```
+
+### ❌ TZSP: Nu se primesc pachete
+
+**Verificări:**
+1. Sniffer-ul MikroTik trimite la IP-ul corect: `/tool sniffer print`
+2. Portul 37008/UDP este deschis pe serverul SchoolSec
+3. Nu există un firewall local care blochează UDP 37008
+
+**Soluție pe Linux:**
+```bash
+sudo ufw allow 37008/udp
+# sau
+sudo iptables -A INPUT -p udp --dport 37008 -j ACCEPT
+```
+
+### ❌ Eroare „Address already in use"
+
+**Cauză:** Aplicația rulează deja sau portul este ocupat.
+
+**Soluție:**
+```bash
+# Găsește procesul care ocupă portul
+sudo lsof -i :5000
+# Oprește procesul
+kill -9 <PID>
+```
+
+### ❌ Eroare la pornire: „ModuleNotFoundError"
+
+**Cauză:** Dependențele nu sunt instalate sau virtualenv-ul nu este activat.
+
+**Soluție:**
+```bash
+source venv/bin/activate
+pip install -r requirements.txt
+python run.py
+```
+
+---
+
 ## 📄 Licență
 
 Proiect educațional - Uz liber în scop academic.

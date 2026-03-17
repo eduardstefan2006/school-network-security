@@ -286,14 +286,8 @@ def initialize():
 
     # ─── Step 1: Basic Config ──────────────────────────────────────────────────
     admin_username = data.get('admin_username', 'admin').strip() or 'admin'
-    admin_password = data.get('admin_password', '').strip()
     app_name = data.get('app_name', 'SchoolSec').strip() or 'SchoolSec'
     app_port = data.get('app_port', 5000)
-
-    if not admin_password:
-        return jsonify({'error': 'Parola administratorului este obligatorie.'}), 400
-    if len(admin_password) < 8:
-        return jsonify({'error': 'Parola trebuie să aibă cel puțin 8 caractere.'}), 400
 
     # ─── Step 2: Network Config ────────────────────────────────────────────────
     sniffer_mode = data.get('sniffer_mode', 'simulated')
@@ -324,11 +318,13 @@ def initialize():
         # 1. Creare / actualizare utilizator admin
         admin_user = User.query.filter_by(username=admin_username).first()
         if admin_user is None:
+            # Utilizatorul nu există – îl creăm cu parola implicită admin123
             admin_user = User(username=admin_username, email=f'{admin_username}@schoolsec.local', role='admin')
+            admin_user.set_password('admin123')
             db.session.add(admin_user)
         else:
             admin_user.role = 'admin'
-        admin_user.set_password(admin_password)
+            # Nu modificăm parola existentă – utilizatorul o poate schimba din Setări
 
         # 2. Salvare configurație rețea în NetworkConfig
         def _set_config(key, value):
