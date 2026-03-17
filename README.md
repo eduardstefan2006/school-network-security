@@ -14,6 +14,85 @@
 - **Sistem de autentificare** cu roluri (Admin și Monitor)
 - **Loguri de securitate** cu export CSV
 - **Modul simulat** pentru testare pe Windows fără privilegii root
+- **Integrare MikroTik RouterOS API** - control direct al router-ului, auto-descoperire VLAN-uri, blocare IP-uri
+
+---
+
+## 🏗️ Arhitectura de Implementare
+
+### Evoluția arhitecturii: de la Port Mirroring la TZSP + API
+
+> **⚠️ Port mirroring NU este obligatoriu!** Serverul SchoolSec poate fi instalat **oriunde pe rețea** și nu are nevoie de o conexiune fizică directă la routerul MikroTik.
+
+#### Abordarea veche (Port Mirroring / SPAN)
+
+În varianta inițială, serverul trebuia conectat fizic la un port special al routerului configurat cu SPAN (Switched Port ANalyzer), iar pachetele erau capturate direct de pe interfața de rețea:
+
+```
+[Internet] → [Router MikroTik]
+                    │
+              Port SPAN/Mirror
+                    │
+             [Server SchoolSec]  ← trebuia conectat fizic
+             (captură directă de pachete)
+```
+
+**Limitări:** serverul era legat de locația fizică a routerului, nu putea fi mutat, iar controlul era doar pasiv (observare).
+
+#### Arhitectura nouă (TZSP + RouterOS API)
+
+Acum SchoolSec funcționează cu **două mecanisme independente și complementare**:
+
+```
+                    [Internet]
+                        │
+               [Router MikroTik]
+              /         │        \
+     TZSP UDP           │         RouterOS API (TCP)
+   (streaming)          │         (control și date)
+        │               │              │
+        ▼               │              ▼
+[Server SchoolSec] ←────┘    [Server SchoolSec]
+ (oriunde pe rețea)           (oriunde pe rețea)
+```
+
+| Aspect | Port Mirroring (Vechi) | TZSP + API (Nou) |
+|--------|------------------------|------------------|
+| **Conexiune fizică** | ✅ Obligatorie | ❌ Nu e nevoie |
+| **Locație server** | ❌ Trebuie pe segmentul mirrorat | ✅ Oriunde pe rețea |
+| **Control router** | ❌ Doar observare trafic | ✅ Comandă directă prin API |
+| **Descoperire VLAN-uri** | ❌ Doar ce se mirrorează | ✅ Auto-descoperire din DHCP |
+| **Blocare automată IP** | ❌ N/A | ✅ Direct pe firewall-ul routerului |
+| **Monitorizare health router** | ❌ N/A | ✅ CPU, RAM, uptime, interfețe |
+| **Detectare atacuri externe** | ❌ N/A | ✅ Port scan, DDoS, brute force din internet |
+
+### Cum funcționează TZSP (UDP Streaming)
+
+RouterOS trimite o **copie a pachetelor** prin UDP la portul 37008 al serverului SchoolSec. Serverul ascultă pasiv — nu are nevoie de privilegii root (port > 1024) și nu trebuie să fie pe același segment de rețea.
+
+```
+Router MikroTik                    Server SchoolSec
+┌─────────────────┐   UDP:37008   ┌─────────────────┐
+│ /tool sniffer   │ ─────────────▶│ TZSP Listener   │
+│ streaming=yes   │               │ port 37008      │
+│ server=IP_SERVER│               │ (orice locație) │
+└─────────────────┘               └─────────────────┘
+```
+
+### Cum funcționează RouterOS API (TCP Control)
+
+SchoolSec se conectează **activ** prin TCP la API-ul RouterOS (port 8728 sau 8729 SSL) pentru a obține informații și a controla router-ul:
+
+```
+Server SchoolSec                   Router MikroTik
+┌─────────────────┐   TCP:8728    ┌─────────────────┐
+│ MikrotikClient  │ ─────────────▶│ RouterOS API    │
+│ - get DHCP      │               │ - DHCP leases   │
+│ - get conexiuni │◀─────────────│ - conexiuni     │
+│ - blocare IP    │               │ - firewall      │
+│ - loguri FW     │               │ - statistici    │
+└─────────────────┘               └─────────────────┘
+```
 
 ---
 
@@ -151,6 +230,8 @@ python run.py
 | `MIKROTIK_PORT` | `8728` | Portul API MikroTik (`8728` plaintext, `8729` SSL) |
 | `MIKROTIK_USERNAME` | `` | Utilizatorul API MikroTik |
 | `MIKROTIK_PASSWORD` | `` | Parola API MikroTik |
+| `MIKROTIK_SYNC_INTERVAL` | `60` | Intervalul (secunde) pentru sincronizarea datelor din RouterOS API (DHCP, conexiuni, statistici) |
+| `EXTERNAL_MONITOR_ENABLED` | `true` | Activează monitorizarea atacurilor externe din internet prin logurile firewall-ului MikroTik (activ automat când `MIKROTIK_ENABLED=true`) |
 
 ---
 
@@ -311,7 +392,36 @@ WantedBy=multi-user.target
 
 ### Ce este TZSP?
 
-**TZSP** (TaZmen Sniffer Protocol) este un protocol care permite unui router MikroTik să trimită o copie a traficului de rețea (mirroring) către un server extern prin UDP. SchoolSec poate primi și analiza acest trafic fără a fi necesar acces direct la interfața de rețea.
+**TZSP** (TaZmen Sniffer Protocol) este un protocol care permite unui router MikroTik să trimită o copie a traficului de rețea către un server extern prin **UDP**. SchoolSec poate primi și analiza acest trafic fără a fi necesar:
+
+- ❌ conexiune fizică directă la router
+- ❌ port mirroring (SPAN) la nivel hardware
+- ❌ privilegii root pe server (portul 37008 > 1024)
+
+RouterOS inițiază streaming-ul și trimite pachetele prin rețea — serverul poate fi instalat **oriunde are conectivitate IP** cu routerul.
+
+### Topologie rețea cu TZSP
+
+```
+         [Internet / WAN]
+                │
+        ┌───────┴──────────┐
+        │  Router MikroTik │  192.168.88.1
+        │  /tool sniffer   │
+        │  streaming → ────┼──── UDP:37008 ──────┐
+        └───────┬──────────┘                      │
+                │ LAN                             ▼
+        ┌───────┴──────────┐        ┌─────────────────────┐
+        │  Switch / AP     │        │  Server SchoolSec   │
+        └───────┬──────────┘        │  192.168.88.X       │
+                │                   │  (orice loc pe LAN) │
+        ┌───────┴──────────┐        └─────────────────────┘
+        │  Dispozitive     │
+        │  școlare         │
+        └──────────────────┘
+```
+
+> **Notă:** Serverul NU trebuie conectat la un port SPAN/mirror al switch-ului. Poate fi pe orice segment de rețea care are acces UDP la portul 37008 al serverului.
 
 ### Configurare MikroTik
 
@@ -323,6 +433,7 @@ set filter-interface=RETEA \
     streaming-enabled=yes \
     streaming-server=192.168.2.243 \
     filter-stream=yes
+/tool sniffer start
 ```
 
 Înlocuiți `RETEA` cu numele bridge-ului/interfeței dorite și `192.168.2.243` cu IP-ul mașinii pe care rulează SchoolSec.
@@ -360,6 +471,142 @@ Environment=TZSP_PORT=37008
 
 [Install]
 WantedBy=multi-user.target
+```
+
+---
+
+## 🔗 Integrare Completă MikroTik (TZSP + API)
+
+### Combinarea celor două mecanisme
+
+TZSP și RouterOS API sunt **opționale, dar se completează** perfect:
+
+| Mecanism | Protocol | Direcție | Funcție |
+|----------|----------|----------|---------|
+| **TZSP** | UDP:37008 | Router → Server | Streaming trafic intern (pachete capturate) |
+| **RouterOS API** | TCP:8728/8729 | Server → Router | Control și date de management |
+
+Când sunt active **ambele**, SchoolSec poate:
+- 📦 Analiza traficul intern în timp real (TZSP)
+- 🖥️ Sincroniza automat DHCP leases și mapa IP → hostname → VLAN (API)
+- 🚫 Bloca automat IP-uri suspecte direct pe firewall-ul MikroTik (API)
+- 🌐 Detecta atacuri din internet prin logurile firewall (API)
+- 📊 Monitoriza sănătatea router-ului (CPU, RAM, uptime, trafic interfețe) (API)
+
+### Detectare atacuri externe
+
+Cu `EXTERNAL_MONITOR_ENABLED=true` (implicit când MikroTik este activ), SchoolSec analizează logurile firewall ale routerului pentru a detecta:
+
+- **Port scanning** din internet (multe porturi lovite de același IP extern)
+- **Brute force** pe servicii expuse (SSH, HTTP, RDP)
+- **DDoS / flooding** — volume mari de conexiuni respinse
+
+```
+[Atacator extern]
+       │ port scan / brute force
+       ▼
+[Router MikroTik]
+       │ drop + log (firewall)
+       │
+       ▼ RouterOS API (loguri firewall)
+[Server SchoolSec]
+       │ analiză + alertă
+       ▼
+[Dashboard + Telegram]
+```
+
+### Configurare completă `.env`
+
+```bash
+# ── Sniffer ──────────────────────────────────────────
+SNIFFER_MODE=tzsp
+TZSP_LISTEN_ADDRESS=0.0.0.0
+TZSP_PORT=37008
+
+# ── RouterOS API ─────────────────────────────────────
+MIKROTIK_ENABLED=true
+MIKROTIK_HOST=192.168.88.1
+MIKROTIK_PORT=8728          # sau 8729 pentru SSL
+MIKROTIK_USERNAME=admin
+MIKROTIK_PASSWORD=parola-router
+
+# Sincronizare DHCP, conexiuni și statistici la fiecare 60 secunde
+MIKROTIK_SYNC_INTERVAL=60
+
+# Monitorizare atacuri externe prin loguri firewall
+EXTERNAL_MONITOR_ENABLED=true
+
+# ── Notificări ───────────────────────────────────────
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+TELEGRAM_CHAT_ID=-1001234567890
+TELEGRAM_MIN_SEVERITY=high
+
+# ── Securitate ───────────────────────────────────────
+SECRET_KEY=<cheie-aleatorie-puternica>
+FLASK_ENV=production
+SSL_CERT=/etc/letsencrypt/live/domeniu.scoala.ro/fullchain.pem
+SSL_KEY=/etc/letsencrypt/live/domeniu.scoala.ro/privkey.pem
+```
+
+### Exemplu fișier systemd complet (`schoolsec.service`)
+
+```ini
+[Unit]
+Description=SchoolSec Network Security Monitor
+After=network.target
+
+[Service]
+User=schoolsec
+WorkingDirectory=/opt/school-network-security
+ExecStart=/opt/school-network-security/venv/bin/python run.py
+Restart=always
+EnvironmentFile=/opt/school-network-security/.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Comenzi complete RouterOS pentru setup TZSP + API
+
+```routeros
+# 1. Activare API RouterOS (pentru integrarea SchoolSec)
+/ip service enable api
+/ip service set api port=8728
+
+# 2. (Opțional) API cu SSL
+/ip service enable api-ssl
+/ip service set api-ssl port=8729
+
+# 3. Configurare utilizator dedicat pentru SchoolSec
+/user add name=schoolsec password=parola-puternica group=read
+# Sau full pentru auto-blocare IP:
+/user add name=schoolsec password=parola-puternica group=full
+
+# 4. Activare streaming TZSP
+/tool sniffer
+set filter-interface=bridge-lan \
+    streaming-enabled=yes \
+    streaming-server=192.168.88.X \
+    filter-stream=yes
+/tool sniffer start
+
+# 5. (Opțional) Firewall logging pentru detectare atacuri externe
+/ip firewall filter add chain=input action=drop \
+    src-address-list=!whitelist log=yes log-prefix="FW-DROP:" \
+    comment="Log și drop conexiuni neautorizate"
+```
+
+### Timeline sincronizare (cum funcționează periodic)
+
+```
+T+0s    Server pornit → conectare API MikroTik
+T+5s    Prima sincronizare DHCP → descoperire dispozitive și VLAN-uri
+T+10s   Pornire TZSP listener → recepție trafic în timp real
+T+60s   Sincronizare periodică: DHCP, conexiuni active, statistici interfețe
+T+60s   Analiză loguri firewall → detectare atacuri externe
+...
+T+N*60s Sincronizare continuă cu intervalul MIKROTIK_SYNC_INTERVAL
 ```
 
 ---
