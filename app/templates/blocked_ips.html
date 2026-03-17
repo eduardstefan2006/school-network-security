@@ -16,6 +16,32 @@
 </div>
 
 {% if blocked_ips %}
+<!-- Search Bar -->
+<div class="mb-3">
+    <input type="text" id="searchIP" class="form-control"
+           placeholder="🔍 Caută IP, Motiv, sau Dată..."
+           aria-label="Caută IP, Motiv, sau Dată" />
+</div>
+
+<script>
+document.getElementById('searchIP').addEventListener('keyup', function() {
+    const searchVal = this.value.toLowerCase();
+    const rows = document.querySelectorAll('tbody tr');
+
+    rows.forEach(row => {
+        const ip = row.cells[1]?.textContent.toLowerCase() || '';
+        const reason = row.cells[2]?.textContent.toLowerCase() || '';
+        const date = row.cells[4]?.textContent.toLowerCase() || '';
+
+        const matches = ip.includes(searchVal) ||
+                       reason.includes(searchVal) ||
+                       date.includes(searchVal);
+
+        row.style.display = matches ? '' : 'none';
+    });
+});
+</script>
+
 <div class="card schoolsec-card border-secondary">
     <div class="card-body p-0">
         <div class="table-responsive">
