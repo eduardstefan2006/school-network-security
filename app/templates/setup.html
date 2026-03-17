@@ -166,7 +166,7 @@
         </div>
         <div class="alert alert-info py-2 mb-3">
             <i class="bi bi-info-circle me-1"></i>
-            Contul administrator va folosi parola implicit&#x103; <strong>admin123</strong>.
+            Contul administrator va folosi parola implicit&#x103; <strong>Admin123</strong>.
             Schimba&#x21b;i-o din <strong>Setari &rarr; Profil</strong> dup&#x103; prima autentificare.
         </div>
 
@@ -834,7 +834,7 @@ function initializeSystem() {
 }
 
 function skipSetup() {
-    if (!confirm('Sari peste configurare?\nSistemul va porni in modul demo cu credentialele implicite (admin/admin123).'))
+    if (!confirm('Sari peste configurare?\nSistemul va porni in modul demo cu credentialele implicite (admin/Admin123).'))
         return;
     fetch('/api/setup/skip', {method: 'POST'})
     .then(function(r) { return r.json(); })

@@ -245,7 +245,7 @@ python run.py
 Deschide browserul la: **http://localhost:5000**
 
 Credențiale implicite:
-- **Admin**: `admin` / `admin123`
+- **Admin**: `admin` / `Admin123`
 - **Monitor**: `monitor` / `monitor123`
 
 ---
@@ -368,7 +368,7 @@ La fiecare răspuns, aplicația adaugă automat:
 ### Schimbarea credențialelor implicite
 
 ```bash
-# Login cu admin / admin123 la https://localhost:5000
+# Login cu admin / Admin123 la https://localhost:5000
 # Mergeți la Setări → Utilizatori → Schimbați parola
 ```
 
@@ -778,7 +778,7 @@ La prima pornire, aplicația creează automat un cont administrator cu credenți
 
 | Utilizator | Parolă |
 |------------|--------|
-| `admin` | `admin123` |
+| `admin` | `Admin123` |
 
 > **⚠️ Important:** Schimbați parola implicită imediat după prima autentificare!
 > Mergeți la **Setări → Profil → Schimbare parolă**.
@@ -920,12 +920,12 @@ app = create_app()
 with app.app_context():
     user = User.query.filter_by(username='admin').first()
     if user:
-        user.set_password('admin123')
+        user.set_password('Admin123')
         db.session.commit()
         print('Parola resetata cu succes!')
     else:
         user = User(username='admin', email='admin@schoolsec.local', role='admin')
-        user.set_password('admin123')
+        user.set_password('Admin123')
         db.session.add(user)
         db.session.commit()
         print('Utilizator admin creat!')

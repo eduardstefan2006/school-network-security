@@ -318,9 +318,9 @@ def initialize():
         # 1. Creare / actualizare utilizator admin
         admin_user = User.query.filter_by(username=admin_username).first()
         if admin_user is None:
-            # Utilizatorul nu există – îl creăm cu parola implicită admin123
+            # Utilizatorul nu există – îl creăm cu parola implicită Admin123
             admin_user = User(username=admin_username, email=f'{admin_username}@schoolsec.local', role='admin')
-            admin_user.set_password('admin123')
+            admin_user.set_password('Admin123')
             db.session.add(admin_user)
         else:
             admin_user.role = 'admin'
