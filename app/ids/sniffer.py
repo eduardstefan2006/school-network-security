@@ -3,6 +3,7 @@ Modulul de captură a pachetelor de rețea.
 Folosește Scapy pentru captură reală sau generează trafic simulat pentru testare.
 """
 import json
+import logging
 import os
 import re
 import threading
@@ -12,6 +13,8 @@ import socket
 import ipaddress
 from datetime import datetime, timezone
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Mapare hostname → nume aplicație (cu emoji-uri)
@@ -1773,7 +1776,12 @@ def start_sniffer(app):
                     )
                     db.session.add(log)
                     db.session.commit()
-                    print(f"[IDS] Alertă salvată: {alert_data['alert_type']} de la {alert_data['source_ip']}")
+                    logger.info(
+                        '[IDS] Alertă creată: %s de la %s (severitate: %s)',
+                        alert_data['alert_type'],
+                        alert_data['source_ip'],
+                        alert_data['severity'],
+                    )
 
                     # Trimitem notificare Telegram (non-blocant)
                     from app.notifications.telegram import send_alert_notification
