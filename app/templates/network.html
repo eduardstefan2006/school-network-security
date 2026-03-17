@@ -135,6 +135,7 @@
                     data-type="{{ device.device_type }}"
                     data-online="{{ 'true' if is_online else 'false' }}"
                     data-known="{{ 'true' if device.is_known else 'false' }}"
+                    data-locked="{{ 'true' if device.type_locked else 'false' }}"
                     style="cursor:pointer"
                     onclick="toggleDetails(this)">
                     <td>
@@ -163,6 +164,9 @@
                             <span class="badge bg-danger">📱 Mobile</span>
                         {% else %}
                             <span class="badge bg-secondary">❓ Necunoscut</span>
+                        {% endif %}
+                        {% if device.type_locked %}
+                            <span class="ms-1 text-warning" title="Tip blocat manual – nu se reclasifică automat">🔒</span>
                         {% endif %}
                     </td>
                     <td><small class="text-light">{{ device.description or '-' }}</small></td>
@@ -200,7 +204,7 @@
                     <td>
                         <button class="btn btn-sm btn-outline-secondary"
                                 title="Editează"
-                                onclick="event.stopPropagation(); openEditModal({{ device.id }}, '{{ device.ip_address }}', '{{ device.device_type }}', '{{ (device.description or '') | replace("'", "\\'") }}', {{ 'true' if device.is_known else 'false' }})">
+                                onclick="event.stopPropagation(); openEditModal({{ device.id }}, '{{ device.ip_address }}', '{{ device.device_type }}', '{{ (device.description or '') | replace("'", "\\'") }}', {{ 'true' if device.is_known else 'false' }}, {{ 'true' if device.type_locked else 'false' }})">
                             <i class="bi bi-pencil"></i>
                         </button>
                     </td>
@@ -266,6 +270,12 @@
                     <input class="form-check-input" type="checkbox" id="modal-known">
                     <label class="form-check-label text-muted" for="modal-known">
                         Dispozitiv cunoscut (infrastructură / whitelisted)
+                    </label>
+                </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="modal-locked">
+                    <label class="form-check-label text-muted" for="modal-locked">
+                        🔒 Blochează tipul manual (nu se reclasifică automat)
                     </label>
                 </div>
             </div>
@@ -524,12 +534,13 @@ setInterval(function() {
 // ============================================================
 // Modal editare dispozitiv (admin)
 // ============================================================
-function openEditModal(id, ip, type, desc, isKnown) {
+function openEditModal(id, ip, type, desc, isKnown, isLocked) {
     document.getElementById('modal-device-id').value = id;
     document.getElementById('modal-ip').textContent = ip;
     document.getElementById('modal-type').value = type;
     document.getElementById('modal-desc').value = desc;
     document.getElementById('modal-known').checked = isKnown;
+    document.getElementById('modal-locked').checked = isLocked || false;
     var modal = new bootstrap.Modal(document.getElementById('editDeviceModal'));
     modal.show();
 }
@@ -542,6 +553,7 @@ function saveDevice() {
         device_type: document.getElementById('modal-type').value,
         description: document.getElementById('modal-desc').value,
         is_known: document.getElementById('modal-known').checked,
+        type_locked: document.getElementById('modal-locked').checked,
     };
 
     fetch(`/api/network/device/${id}/update`, {

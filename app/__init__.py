@@ -36,6 +36,13 @@ def _run_migrations(app):
                 ))
                 conn.commit()
                 print("[DB] Migrare: coloana 'hostname' adăugată în network_devices.")
+
+            if 'type_locked' not in existing_cols:
+                conn.execute(text(
+                    "ALTER TABLE network_devices ADD COLUMN type_locked BOOLEAN DEFAULT 0"
+                ))
+                conn.commit()
+                print("[DB] Migrare: coloana 'type_locked' adăugată în network_devices.")
     except Exception as e:
         print(f"[DB] Eroare la migrare automată: {e}")
 

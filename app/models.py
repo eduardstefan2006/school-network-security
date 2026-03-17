@@ -269,6 +269,8 @@ class NetworkDevice(db.Model):
     is_online = db.Column(db.Boolean, default=True)
     vlan = db.Column(db.String(20), nullable=True)
     alert_count = db.Column(db.Integer, default=0)
+    # True dacă tipul a fost setat manual de admin — blochează reclasificarea automată
+    type_locked = db.Column(db.Boolean, default=False)
 
     def __repr__(self):
         return f'<NetworkDevice {self.ip_address} ({self.device_type})>'
