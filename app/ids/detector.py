@@ -28,6 +28,10 @@ _whitelist_cache = None
 _whitelist_cache_time = 0.0
 _WHITELIST_CACHE_TTL = 60  # secunde
 
+# Cache pentru IP-urile dispozitivelor marcate "Cunoscut" în BD
+_known_devices_cache = None
+_known_devices_cache_time = 0.0
+
 # Cache pentru IP-urile blocate (evită interogarea DB la fiecare pachet)
 _blocked_cache = None
 _blocked_cache_time = 0.0
@@ -44,8 +48,9 @@ _blocked_hostname_cache_time = 0.0
 
 def invalidate_whitelist_cache():
     """Invalidează cache-ul listei albe (apelat după fiecare modificare a JSON-ului)."""
-    global _whitelist_cache
+    global _whitelist_cache, _known_devices_cache
     _whitelist_cache = None
+    _known_devices_cache = None
 
 
 def _is_randomized_mac(mac: str) -> bool:
@@ -248,7 +253,7 @@ class IntrusionDetector:
                 pass
 
     def _is_whitelisted(self, ip):
-        """Verifică dacă IP-ul este în lista albă (builtin + personalizată)."""
+        """Verifică dacă IP-ul este în lista albă (builtin + personalizată + dispozitive Cunoscute)."""
         if ip in WHITELIST_IPS:
             return True
         # Verifică lista personalizată din JSON, cu cache de 60 de secunde
@@ -261,7 +266,19 @@ class IntrusionDetector:
                 _whitelist_cache_time = now
             except Exception:
                 return False
-        return ip in _whitelist_cache
+        if ip in _whitelist_cache:
+            return True
+        # Verifică dispozitivele marcate "Cunoscut" (is_known=True) în baza de date
+        global _known_devices_cache, _known_devices_cache_time
+        if _known_devices_cache is None or (now - _known_devices_cache_time) > _WHITELIST_CACHE_TTL:
+            try:
+                from app.models import NetworkDevice
+                known = NetworkDevice.query.filter_by(is_known=True).with_entities(NetworkDevice.ip_address).all()
+                _known_devices_cache = {row.ip_address for row in known}
+                _known_devices_cache_time = now
+            except Exception:
+                return False
+        return ip in _known_devices_cache
 
     def _is_blocked(self, ip):
         """Verifică dacă IP-ul este blocat în baza de date (cu cache TTL 60s)."""
