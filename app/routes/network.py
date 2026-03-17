@@ -110,6 +110,26 @@ def update_device(device_id):
         device.type_locked = bool(data['type_locked'])
     if 'is_known' in data:
         device.is_known = bool(data['is_known'])
+        # Actualizăm tipul dispozitivului în funcție de flagul is_known
+        if device.is_known and not device.type_locked:
+            device.device_type = 'known'
+        elif not device.is_known and device.device_type == 'known' and not device.type_locked:
+            # Când se elimină flagul "Cunoscut", reclasificăm dispozitivul
+            from app.ids.sniffer import _detect_device_type, _calc_online_hours
+            vlan_id = None
+            if device.vlan:
+                try:
+                    vlan_id = int(device.vlan)
+                except (ValueError, TypeError):
+                    pass
+            device.device_type = _detect_device_type(
+                device.ip_address,
+                mac=device.mac_address,
+                vlan_id=vlan_id,
+                hostname=device.hostname,
+                online_hours=_calc_online_hours(device),
+                is_known=False,
+            )
         # Auto-rezolvă alertele new_device active când dispozitivul devine cunoscut
         if device.is_known and device.ip_address:
             Alert.query.filter_by(
@@ -117,6 +137,12 @@ def update_device(device_id):
                 source_ip=device.ip_address,
                 status='active',
             ).update({'status': 'resolved'}, synchronize_session=False)
+        # Invalidăm cache-ul de whitelist pentru a include/exclude noul dispozitiv
+        try:
+            from app.ids.detector import invalidate_whitelist_cache
+            invalidate_whitelist_cache()
+        except Exception:
+            pass
     db.session.commit()
     return jsonify({'success': True})
 
