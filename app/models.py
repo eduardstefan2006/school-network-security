@@ -389,6 +389,57 @@ class DiscoveredVLAN(db.Model):
 
 
 # =============================================================================
+# Model Log Firewall (syslog de la RouterOS)
+# =============================================================================
+class FirewallLog(db.Model):
+    """Intrări de log firewall primite prin syslog UDP de la RouterOS.
+
+    Mesajele cu prefix SCHOOLSEC-DROP-* sau SCHOOLSEC-REJECT-* sunt
+    parsate și stocate aici de serverul syslog intern.
+    """
+    __tablename__ = 'firewall_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+    # Adresa IP sursă
+    src_ip = db.Column(db.String(45), nullable=True)
+    # Adresa IP destinație
+    dst_ip = db.Column(db.String(45), nullable=True)
+    # Portul sursă
+    src_port = db.Column(db.Integer, nullable=True)
+    # Portul destinație
+    dst_port = db.Column(db.Integer, nullable=True)
+    # Protocolul (TCP, UDP, ICMP, etc.)
+    protocol = db.Column(db.String(20), nullable=True)
+    # Acțiunea: drop, reject
+    action = db.Column(db.String(20), nullable=True)
+    # Mesajul brut primit prin syslog
+    raw_message = db.Column(db.Text, nullable=True)
+
+    def to_dict(self):
+        """Convertește log-ul în dicționar pentru API JSON."""
+        return {
+            'id': self.id,
+            'timestamp': self.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'src_ip': self.src_ip,
+            'dst_ip': self.dst_ip,
+            'src_port': self.src_port,
+            'dst_port': self.dst_port,
+            'protocol': self.protocol,
+            'action': self.action,
+            'raw_message': self.raw_message,
+        }
+
+    def __repr__(self):
+        return f'<FirewallLog {self.action} {self.src_ip}->{self.dst_ip} at {self.timestamp}>'
+
+
+# =============================================================================
 # Model Statistici Pachete
 # =============================================================================
 class PacketStat(db.Model):

@@ -234,6 +234,10 @@ def create_app(config_name=None):
     # Pornire integrare MikroTik – prioritate: config din BD, fallback la .env
     _init_mikrotik(app)
 
+    # Pornire server syslog UDP – primește log-uri firewall de la RouterOS
+    from app.ids.syslog_server import start_syslog_server
+    start_syslog_server(app)
+
     @app.template_filter('to_local')
     def to_local_filter(dt):
         """Convertește un datetime UTC la ora locală a României."""
