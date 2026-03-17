@@ -74,7 +74,7 @@ if __name__ == '__main__':
         print("     openssl req -x509 -newkey rsa:4096 -nodes \\")
         print("       -out cert.pem -keyout key.pem -days 365 -subj \"/CN=localhost\"")
     print(f"  Acces: {protocol}://localhost:{port}")
-    print("  ⚠️  Credențiale implicite: admin / admin123 — schimbați-le!")
+    print("  ⚠️  Credențiale implicite: admin / Admin123 — schimbați-le!")
     print("=" * 60)
 
     # Pornim serverul Flask (cu sau fără SSL)

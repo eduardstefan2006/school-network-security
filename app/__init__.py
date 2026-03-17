@@ -159,13 +159,13 @@ def _ensure_admin_user():
     """Creează utilizatorul admin implicit dacă nu există în baza de date.
 
     La prima rulare, aplicația va crea automat utilizatorul 'admin' cu parola
-    'admin123'. Aceasta poate fi schimbată din pagina de Setări după autentificare.
+    'Admin123'. Aceasta poate fi schimbată din pagina de Setări după autentificare.
     """
     try:
         from app.models import User
         if not User.query.filter_by(username='admin').first():
             admin = User(username='admin', email='admin@schoolsec.local', role='admin')
-            admin.set_password('admin123')
+            admin.set_password('Admin123')
             db.session.add(admin)
             db.session.commit()
             print('[DB] Utilizator admin creat cu credențiale implicite.')
