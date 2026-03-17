@@ -137,7 +137,15 @@ def send_alert_notification(alert_data: dict, app_config: dict) -> None:
     :param app_config: Dicționar cu configurația aplicației Flask (app.config)
     """
     try:
+        alert_type = alert_data.get('alert_type', '')
+        source_ip = alert_data.get('source_ip', '')
+
         if not app_config.get('TELEGRAM_ENABLED', False):
+            logger.debug(
+                '[Telegram] Dezactivat, notificarea omisă pentru: %s de la %s',
+                alert_type or 'N/A',
+                source_ip or 'N/A',
+            )
             return
 
         token = app_config.get('TELEGRAM_BOT_TOKEN', '')
@@ -151,9 +159,6 @@ def send_alert_notification(alert_data: dict, app_config: dict) -> None:
         if _severity_index(alert_severity) < _severity_index(min_severity):
             return
 
-        source_ip = alert_data.get('source_ip', '')
-        alert_type = alert_data.get('alert_type', '')
-
         if _is_rate_limited(source_ip, alert_type):
             logger.debug(
                 '[Telegram] Rate limit activ pentru %s / %s, notificare omisă.',
@@ -163,6 +168,12 @@ def send_alert_notification(alert_data: dict, app_config: dict) -> None:
             return
 
         message = _format_message(alert_data)
+
+        logger.info(
+            '[Telegram] Notificare programată pentru trimitere: %s de la %s',
+            alert_type or 'N/A',
+            source_ip or 'N/A',
+        )
 
         # Trimitem în fundal pentru a nu bloca thread-ul de procesare pachete
         t = threading.Thread(

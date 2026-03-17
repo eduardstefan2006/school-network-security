@@ -2,6 +2,7 @@
 Monitorizare securitate externă — analizează logurile MikroTik pentru detectarea
 atacurilor din internet asupra routerului și rețelei școlii.
 """
+import logging
 import re
 import ipaddress
 from collections import defaultdict, deque
@@ -15,6 +16,8 @@ from app.ids.rules import (
     EXTERNAL_TRUSTED_IPS,
     EXTERNAL_TRUSTED_SUBNETS,
 )
+
+logger = logging.getLogger(__name__)
 
 # Interval cooldown implicit în secunde (5 minute)
 _ALERT_COOLDOWN_SECONDS = 300
@@ -349,7 +352,12 @@ class ExternalMonitor:
                 )
                 db.session.add(log)
                 db.session.commit()
-                print(f"[ExternalMonitor] Alertă: {alert_type} de la {source_ip}")
+                logger.info(
+                    '[ExternalMonitor] Alertă creată: %s de la %s (severitate: %s)',
+                    alert_type,
+                    source_ip,
+                    severity,
+                )
 
                 # Auto-blocare pe MikroTik (pentru atacuri externe)
                 if auto_block and source_ip and source_ip != '0.0.0.0':
@@ -359,7 +367,7 @@ class ExternalMonitor:
                             comment=f'Auto-blocat SchoolSec ({alert_type})',
                         )
                     except Exception as block_exc:
-                        print(f"[ExternalMonitor] Eroare auto-block {source_ip}: {block_exc}")
+                        logger.warning('[ExternalMonitor] Eroare auto-block %s: %s', source_ip, block_exc)
 
                 # Notificare Telegram
                 from app.notifications.telegram import send_alert_notification
@@ -375,7 +383,7 @@ class ExternalMonitor:
                 send_alert_notification(alert_data, self.app.config)
 
             except Exception as exc:
-                print(f"[ExternalMonitor] Eroare la salvarea alertei {alert_type}: {exc}")
+                logger.error('[ExternalMonitor] Eroare la salvarea alertei %s: %s', alert_type, exc)
                 try:
                     from app import db
                     db.session.rollback()
