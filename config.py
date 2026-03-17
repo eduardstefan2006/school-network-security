@@ -82,6 +82,10 @@ class Config:
     # Activat automat când MikroTik este activ
     EXTERNAL_MONITOR_ENABLED = os.environ.get('EXTERNAL_MONITOR_ENABLED', 'true').lower() == 'true'
 
+    # Server syslog intern (primește log-uri firewall de la RouterOS prin UDP)
+    SYSLOG_LISTEN_ADDRESS = os.environ.get('SYSLOG_LISTEN_ADDRESS', '0.0.0.0')
+    SYSLOG_PORT = int(os.environ.get('SYSLOG_PORT', 514))
+
     # Setări detectare DNS Tunneling
     # Lungimea maximă permisă a subdomain-ului (caractere) — interogări cu subdomenii mai lungi declanșează alerta
     DNS_TUNNELING_MAX_SUBDOMAIN_LENGTH = int(os.environ.get('DNS_TUNNELING_MAX_SUBDOMAIN_LENGTH', 100))
