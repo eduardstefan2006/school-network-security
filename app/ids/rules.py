@@ -139,13 +139,13 @@ WHITELIST_IPS = [
 # =============================================================================
 _dns_trusted_default = '192.168.2.1,8.8.8.8,1.1.1.1'
 DNS_TUNNELING_RULES = {
-    'enabled': True,
+    'enabled': False,  # Dezactivat temporar — VLAN-uri cu DNS central declanșau false positive-uri
     # Lungimea maximă permisă a subdomain-ului (caractere)
     # Configurabil prin variabila de mediu DNS_TUNNELING_MAX_SUBDOMAIN_LENGTH
-    'max_subdomain_length': int(os.environ.get('DNS_TUNNELING_MAX_SUBDOMAIN_LENGTH', 100)),
+    'max_subdomain_length': int(os.environ.get('DNS_TUNNELING_MAX_SUBDOMAIN_LENGTH', 150)),
     # Numărul de query-uri DNS unice care declanșează alerta
     # Configurabil prin variabila de mediu DNS_TUNNELING_UNIQUE_QUERIES_THRESHOLD
-    'unique_queries_threshold': int(os.environ.get('DNS_TUNNELING_UNIQUE_QUERIES_THRESHOLD', 100)),
+    'unique_queries_threshold': int(os.environ.get('DNS_TUNNELING_UNIQUE_QUERIES_THRESHOLD', 200)),
     # Fereastra de timp în secunde
     'window_seconds': 60,
     # Severitatea alertei
