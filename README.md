@@ -541,23 +541,26 @@ WantedBy=multi-user.target
 
 ---
 
-## 🔗 Integrare Completă MikroTik (TZSP + API)
+## 🔗 Integrare Completă MikroTik (TZSP + API + Syslog)
 
-### Combinarea celor două mecanisme
+### Combinarea celor trei mecanisme
 
-TZSP și RouterOS API sunt **opționale, dar se completează** perfect:
+TZSP, RouterOS API și Syslog sunt **opționale, dar se completează** perfect:
 
 | Mecanism | Protocol | Direcție | Funcție |
 |----------|----------|----------|---------|
 | **TZSP** | UDP:37008 | Router → Server | Streaming trafic intern (pachete capturate) |
-| **RouterOS API** | TCP:8728/8729 | Server → Router | Control și date de management |
+| **RouterOS API** | TCP:8728/8729 | Server → Router | Control și date de management (health, DHCP leases, reguli, blocări) |
+| **Syslog** | UDP:514 | Router → Server | **Loguri firewall** (drop/reject) pentru detectarea atacurilor externe |
 
-Când sunt active **ambele**, SchoolSec poate:
+Când sunt active **toate trei mecanismele**, SchoolSec poate:
 - 📦 Analiza traficul intern în timp real (TZSP)
 - 🖥️ Sincroniza automat DHCP leases și mapa IP → hostname → VLAN (API)
 - 🚫 Bloca automat IP-uri suspecte direct pe firewall-ul MikroTik (API)
-- 🌐 Detecta atacuri din internet prin logurile firewall (API)
+- 🌐 Detecta atacuri din internet prin logurile firewall (Syslog UDP 514)
 - 📊 Monitoriza sănătatea router-ului (CPU, RAM, uptime, trafic interfețe) (API)
+
+> **Important:** Logurile firewall (drop/reject) sunt transmise prin **Syslog remote (UDP 514)**, nu prin RouterOS API `/log/print`. Acest lucru asigură livrarea în timp real și evită problemele de buffer sau filtrare topic/action.
 
 ### Detectare atacuri externe
 
@@ -572,13 +575,15 @@ Cu `EXTERNAL_MONITOR_ENABLED=true` (implicit când MikroTik este activ), SchoolS
        │ port scan / brute force
        ▼
 [Router MikroTik]
-       │ drop + log (firewall)
+       │ drop + log=yes + log-prefix (reguli firewall)
        │
-       ▼ RouterOS API (loguri firewall)
-[Server SchoolSec]
-       │ analiză + alertă
-       ▼
-[Dashboard + Telegram]
+       ├──▶ Syslog UDP 514 ──▶ [Server SchoolSec]
+       │                               │ analiză + alertă
+       │                               ▼
+       │                       [Dashboard + Telegram]
+       │
+       └──▶ RouterOS API TCP 8728 ──▶ [Server SchoolSec]
+                                              (health, DHCP, blocări)
 ```
 
 ### Configurare completă `.env`
@@ -633,34 +638,68 @@ EnvironmentFile=/opt/school-network-security/.env
 WantedBy=multi-user.target
 ```
 
-### Comenzi complete RouterOS pentru setup TZSP + API
+### Comenzi complete RouterOS pentru setup TZSP + API + Syslog
+
+> **Variabile — înlocuiește în comenzile de mai jos:**
+> - `<SCHOOLSEC_SERVER_IP>` = IP-ul serverului unde rulează SchoolSec
+> - `<LAN_SUBNET>` = subnet-ul din care permiți acces la API (ex: `192.168.4.0/24`)
+> - `<TZSP_INTERFACE>` = interfața/bridge-ul de pe care vrei streaming (ex: `bridge`, `bridge-lan`)
+> - `<WAN1_IF>` / `<WAN2_IF>` = interfețele WAN (ex: `pppoe-out1`, `ether1`, `WAN2`)
+> - `<PAROLA_PUTERNICA>` = parolă sigură pentru utilizatorul SchoolSec
 
 ```routeros
 # 1. Activare API RouterOS (pentru integrarea SchoolSec)
 /ip service enable api
 /ip service set api port=8728
 
+# Recomandat: restricționează accesul la API doar din rețeaua locală
+/ip service set api address=<LAN_SUBNET>
+
 # 2. (Opțional) API cu SSL
 /ip service enable api-ssl
 /ip service set api-ssl port=8729
 
 # 3. Configurare utilizator dedicat pentru SchoolSec
-/user add name=schoolsec password=parola-puternica group=read
+/user add name=schoolsec password=<PAROLA_PUTERNICA> group=read
 # Sau full pentru auto-blocare IP:
-/user add name=schoolsec password=parola-puternica group=full
+/user add name=schoolsec password=<PAROLA_PUTERNICA> group=full
 
 # 4. Activare streaming TZSP
-/tool sniffer
-set filter-interface=bridge-lan \
-    streaming-enabled=yes \
-    streaming-server=192.168.88.X \
+/tool sniffer set filter-interface=<TZSP_INTERFACE> \
+    streaming-enabled=yes streaming-server=<SCHOOLSEC_SERVER_IP> \
     filter-stream=yes
 /tool sniffer start
 
-# 5. (Opțional) Firewall logging pentru detectare atacuri externe
+# 5. Configurare Syslog remote (UDP 514) pentru loguri firewall
+/system logging action add name=schoolsec-remote target=remote \
+    remote=<SCHOOLSEC_SERVER_IP> remote-port=514 remote-protocol=udp
+
+# 6. Trimite topic firewall către acțiunea syslog
+/system logging add topics=firewall action=schoolsec-remote
+/system logging add topics=firewall,info action=schoolsec-remote
+
+# 7. Reguli firewall care GENEREAZĂ loguri (log=yes + log-prefix)
+# IMPORTANT: Plasați aceste reguli după regulile care acceptă traficul legitim
+# (connection-state=established,related) pentru a nu bloca conexiunile valide.
+# WAN1 – forward (trafic spre LAN)
+/ip firewall filter add chain=forward action=drop connection-state=invalid,new \
+    in-interface=<WAN1_IF> log=yes log-prefix="SCHOOLSEC-DROP-FWD" \
+    comment="SchoolSec: log+drop forward WAN1"
+
+# WAN1 – input (trafic spre router)
 /ip firewall filter add chain=input action=drop \
-    src-address-list=!whitelist log=yes log-prefix="FW-DROP:" \
-    comment="Log și drop conexiuni neautorizate"
+    in-interface=<WAN1_IF> log=yes log-prefix="SCHOOLSEC-DROP-INPUT" \
+    comment="SchoolSec: log+drop input WAN1"
+
+# WAN2 – forward (dacă există al doilea WAN)
+/ip firewall filter add chain=forward action=drop connection-state=invalid,new \
+    in-interface=<WAN2_IF> log=yes log-prefix="SCHOOLSEC-DROP-FWD" \
+    comment="SchoolSec: log+drop forward WAN2"
+
+# WAN2 – input (dacă există al doilea WAN)
+/ip firewall filter add chain=input action=drop \
+    in-interface=<WAN2_IF> log=yes log-prefix="SCHOOLSEC-DROP-INPUT" \
+    comment="SchoolSec: log+drop input WAN2"
 ```
 
 ### Timeline sincronizare (cum funcționează periodic)
@@ -785,49 +824,158 @@ La prima pornire, aplicația creează automat un cont administrator cu credenți
 
 ---
 
-## 🔧 Configurare MikroTik – Reguli Firewall
+## 🔧 Configurare MikroTik – Syslog + API + TZSP (Ghid Complet)
+
+Pentru o implementare universală a SchoolSec cu **varianta B (Syslog + API + TZSP)**, urmați pașii de mai jos. Înlocuiți variabilele cu valorile din rețeaua voastră:
+
+- `<SCHOOLSEC_SERVER_IP>` = IP-ul serverului SchoolSec în rețeaua locală
+- `<LAN_SUBNET>` = subnet-ul rețelei locale (ex: `192.168.4.0/24`)
+- `<TZSP_INTERFACE>` = bridge-ul sau interfața LAN pentru streaming TZSP
+- `<WAN1_IF>` / `<WAN2_IF>` = interfețele WAN (ex: `pppoe-out1`, `ether1`, `WAN2`)
+- `<PAROLA_PUTERNICA>` = parolă sigură pentru utilizatorul SchoolSec pe router
+
+### 1. Activare și restricționare RouterOS API (TCP 8728)
 
 Pentru ca SchoolSec să se poată conecta la API-ul RouterOS, portul **8728** (sau 8729 pentru SSL) trebuie să fie accesibil din rețeaua locală.
 
-### Verificare acces port 8728
+```routeros
+/ip service enable api
+/ip service set api port=8728
 
-Dacă aplicația nu se poate conecta, adăugați o regulă de firewall pe MikroTik care permite accesul la API-ul RouterOS:
-
+# Recomandat: restricționează accesul la API doar din subnet-ul local
+/ip service set api address=<LAN_SUBNET>
 ```
-# Rulați în Winbox Terminal sau SSH pe MikroTik:
+
+Opțional, pentru SSL:
+
+```routeros
+/ip service enable api-ssl
+/ip service set api-ssl port=8729
+```
+
+### 2. Utilizator dedicat SchoolSec pe RouterOS
+
+```routeros
+/user add name=schoolsec password=<PAROLA_PUTERNICA> group=read
+# Sau "full" dacă vrei auto-blocare IP din aplicație:
+/user add name=schoolsec password=<PAROLA_PUTERNICA> group=full
+```
+
+### 3. Verificare acces port 8728
+
+Dacă aplicația nu se poate conecta, adăugați o regulă de firewall care permite accesul la API-ul RouterOS:
+
+```routeros
 /ip firewall filter add \
     chain=input \
     protocol=tcp \
     dst-port=8728 \
-    src-address=192.168.0.0/16 \
+    src-address=<LAN_SUBNET> \
     action=accept \
     comment="Allow SchoolSec API access" \
     place-before=0
 ```
 
-Înlocuiți `192.168.0.0/16` cu subnet-ul rețelei voastre locale (de exemplu `192.168.4.0/24`).
-
 ### Verificare regulă existentă
 
-```
+```routeros
 /ip firewall filter print where dst-port=8728
 ```
 
-### Activare serviciu API în RouterOS
+### 4. Configurare TZSP (streaming pachete)
 
-```
-/ip service enable api
-/ip service set api port=8728
-```
-
-### Configurare TZSP (streaming pachete)
-
-```
-/tool sniffer set streaming-enabled=yes streaming-server=<IP_SERVER_SCHOOLSEC> filter-ip-protocol=all
+```routeros
+/tool sniffer set filter-interface=<TZSP_INTERFACE> \
+    streaming-enabled=yes streaming-server=<SCHOOLSEC_SERVER_IP> \
+    filter-stream=yes
 /tool sniffer start
 ```
 
-Înlocuiți `<IP_SERVER_SCHOOLSEC>` cu adresa IP a serverului unde rulează SchoolSec.
+### 5. Configurare Syslog Remote (UDP 514) pentru loguri firewall
+
+> **De ce Syslog și nu RouterOS API pentru loguri?**
+> RouterOS API (`/log/print`) poate să nu livreze în timp real intrările de firewall dacă acțiunea este configurată ca `remote`. Syslog remote (UDP 514) cu reguli `log=yes` și `log-prefix` este metoda recomandată pentru colectarea fiabilă a logurilor de drop/reject.
+
+#### 5.1. Crează acțiunea syslog remote
+
+```routeros
+/system logging action add name=schoolsec-remote target=remote \
+    remote=<SCHOOLSEC_SERVER_IP> remote-port=514 remote-protocol=udp
+```
+
+Verifică că acțiunea a fost creată:
+
+```routeros
+/system logging action print
+```
+
+#### 5.2. Asociază topicurile firewall cu acțiunea syslog
+
+```routeros
+/system logging add topics=firewall action=schoolsec-remote
+/system logging add topics=firewall,info action=schoolsec-remote
+```
+
+### 6. Reguli firewall care GENEREAZĂ loguri (log=yes + log-prefix)
+
+Syslog-ul primește doar ce loghează firewall-ul. Regulile de mai jos generează intrări cu prefix recunoscute de SchoolSec:
+
+> **Atenție:** Plasați aceste reguli **după** regulile care acceptă traficul legitim (ex: `connection-state=established,related accept`) pentru a nu bloca conexiunile valide stabilite. Regulile de drop de mai jos se aplică traficului care nu a fost deja acceptat de regulile anterioare din chain.
+
+```routeros
+# WAN1 – forward: drop trafic suspect dinspre WAN spre LAN
+/ip firewall filter add chain=forward action=drop connection-state=invalid,new \
+    in-interface=<WAN1_IF> log=yes log-prefix="SCHOOLSEC-DROP-FWD" \
+    comment="SchoolSec: log+drop forward WAN1"
+
+# WAN1 – input: drop trafic suspect destinat routerului
+/ip firewall filter add chain=input action=drop \
+    in-interface=<WAN1_IF> log=yes log-prefix="SCHOOLSEC-DROP-INPUT" \
+    comment="SchoolSec: log+drop input WAN1"
+
+# WAN2 – forward (dacă ai al doilea WAN)
+/ip firewall filter add chain=forward action=drop connection-state=invalid,new \
+    in-interface=<WAN2_IF> log=yes log-prefix="SCHOOLSEC-DROP-FWD" \
+    comment="SchoolSec: log+drop forward WAN2"
+
+# WAN2 – input (dacă ai al doilea WAN)
+/ip firewall filter add chain=input action=drop \
+    in-interface=<WAN2_IF> log=yes log-prefix="SCHOOLSEC-DROP-INPUT" \
+    comment="SchoolSec: log+drop input WAN2"
+```
+
+### 7. Verificare și Troubleshooting
+
+#### Confirmă configurația de logging
+
+```routeros
+/system logging print
+/system logging action print
+```
+
+#### Verifică regulile firewall SchoolSec
+
+```routeros
+/ip firewall filter print where comment~"SchoolSec"
+```
+
+#### Generează un mesaj de test către syslog
+
+```routeros
+/log add topics=firewall message="SCHOOLSEC SYSLOG TEST"
+```
+
+Dacă SchoolSec ascultă pe UDP 514, mesajul ar trebui să apară în pagina:
+**Securitate Externă → Log Firewall** în câteva secunde.
+
+#### Probleme frecvente
+
+| Problemă | Cauze posibile |
+|----------|---------------|
+| Nu apar loguri în SchoolSec | Serverul nu primește UDP 514 (firewall Linux/UFW); IP greșit în acțiunea syslog; regulile drop nu sunt atinse (nu e trafic suspect) |
+| Router conectat (API OK), dar 0 loguri firewall | API merge, dar logurile firewall vin prin syslog — verifică pașii 5 și 6 |
+| Listener syslog nu pornește | Portul 514 poate necesita privilegii; rulează SchoolSec cu permisiunile corespunzătoare |
+| Regulile nu generează loguri | Verifică că regulile au `log=yes` și că sunt atinse (counters cresc în `/ip firewall filter print`) |
 
 ---
 
