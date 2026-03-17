@@ -141,6 +141,72 @@ school-network-security/
 - Python 3.10+
 - pip
 
+### Cerințe de Sistem
+
+#### Minimum (modul simulat / TZSP fără mirroring direct)
+
+| Componentă | Cerință minimă |
+|------------|---------------|
+| **CPU** | 2 core (Pentium, ARM, etc.) |
+| **RAM** | 1 GB (512 MB pentru modul simulat) |
+| **Spațiu disk** | 500 MB (bază de date SQLite) |
+| **Rețea** | Conector Ethernet (pentru TZSP de la router) |
+| **OS** | Linux (Debian/Ubuntu), macOS, Windows (modul simulat) |
+| **Python** | 3.10+ |
+
+#### Recomandat (producție cu TZSP + RouterOS API)
+
+| Componentă | Cerință recomandată |
+|------------|---------------------|
+| **CPU** | 4 core (Intel i5/i7, ARM Cortex A53+) |
+| **RAM** | 4 GB (minimum 2 GB pentru bază de date mai mare) |
+| **Spațiu disk** | 10–20 GB (pentru istoric loguri și alerte) |
+| **Rețea** | Gigabit Ethernet |
+| **OS** | Linux (Debian 11+, Ubuntu 20.04+) |
+| **Python** | 3.10+ |
+| **Bază de date** | PostgreSQL 12+ (opțional, în locul SQLite) |
+
+#### Cu modul interface (captură directă pe interfață)
+
+| Componentă | Cerință |
+|------------|---------|
+| **CPU** | 4+ core (pentru procesare realtime) |
+| **RAM** | 8 GB |
+| **Rețea** | Gigabit Ethernet + port mirror/SPAN configurat |
+| **OS** | Linux (doar) |
+| **Privilegii** | root (sudo) obligatoriu |
+
+### Tabel comparativ moduri de funcționare
+
+| Mod | CPU | RAM | Disk | Rețea | OS | Root | Utilizare |
+|-----|-----|-----|------|-------|----|------|-----------|
+| **Simulat** | 2 core | 512 MB | 500 MB | Nu e necesar | Windows/macOS/Linux | Nu | Demo/test |
+| **TZSP** | 2 core | 1 GB | 1–5 GB | Gigabit (UDP 37008) | Linux | Nu | Producție, flexibil |
+| **Interface** | 4+ core | 8 GB | 10–20 GB | Gigabit + SPAN | Linux | Da | Captură directă |
+| **TZSP + API** | 4 core | 4 GB | 10–20 GB | Gigabit | Linux | Nu | **Recomandat** |
+
+> **Notă disk TZSP vs TZSP + API:** Modul TZSP + API stochează suplimentar istoricul DHCP leases, conexiunile active, statisticile interfețelor și logurile firewall (necesare pentru detectarea atacurilor externe), ceea ce crește semnificativ volumul de date față de modul TZSP simplu.
+
+### Dependențe de sistem (nu doar Python)
+
+Pe sisteme Linux, instalați dependențele de sistem înainte de `pip install`:
+
+```bash
+sudo apt update
+sudo apt install -y \
+    libffi-dev \
+    libssl-dev \
+    python3-dev \
+    libpcap-dev
+```
+
+| Pachet | Rol |
+|--------|-----|
+| `libffi-dev` | Necesar pentru biblioteca `cryptography` (TLS/SSL) |
+| `libssl-dev` | Header-uri OpenSSL pentru operații criptografice |
+| `python3-dev` | Header-uri Python necesare la compilarea extensiilor C |
+| `libpcap-dev` | Suport pcap pentru Scapy (captură pachete în modul `interface`) |
+
 ### Instalare
 
 ```bash
