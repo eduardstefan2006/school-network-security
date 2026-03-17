@@ -106,6 +106,8 @@ def update_device(device_id):
         device.description = data['description']
     if 'device_type' in data:
         device.device_type = data['device_type']
+    if 'type_locked' in data:
+        device.type_locked = bool(data['type_locked'])
     if 'is_known' in data:
         device.is_known = bool(data['is_known'])
         # Auto-rezolvă alertele new_device active când dispozitivul devine cunoscut
@@ -141,19 +143,22 @@ def reclassify_mobile_devices():
     """Reclasifică dispozitivele 'client' care ar trebui să fie 'mobile'."""
     if not current_user.is_admin():
         return jsonify({'error': 'Acces interzis'}), 403
-    from app.ids.sniffer import _detect_device_type, _mobile_traffic_hints
+    from app.ids.sniffer import _detect_device_type, _mobile_traffic_hints, _calc_online_hours
     from app.models import NetworkDevice
 
     reclassified = []
     devices = NetworkDevice.query.filter_by(device_type='client').all()
     for device in devices:
+        # Skip devices with locked type or known infrastructure
+        if device.type_locked or device.is_known:
+            continue
         vlan_id = None
         if device.vlan:
             try:
                 vlan_id = int(device.vlan)
             except (ValueError, TypeError):
                 pass
-        new_type = _detect_device_type(device.ip_address, mac=device.mac_address, vlan_id=vlan_id, hostname=device.hostname)
+        new_type = _detect_device_type(device.ip_address, mac=device.mac_address, vlan_id=vlan_id, hostname=device.hostname, online_hours=_calc_online_hours(device))
         if new_type == 'mobile':
             device.device_type = 'mobile'
             reclassified.append(device.ip_address)

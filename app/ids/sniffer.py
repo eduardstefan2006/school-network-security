@@ -649,7 +649,21 @@ _AP_IPS = {
 _FIXED_DEVICE_TYPES = frozenset({'ap', 'router', 'switch', 'server', 'camera'})
 
 
-def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
+def _calc_online_hours(device) -> float | None:
+    """Calculează numărul de ore cât un dispozitiv a stat online (first_seen → last_seen).
+
+    Args:
+        device: Obiect NetworkDevice cu câmpurile first_seen și last_seen.
+    Returns:
+        Număr de ore ca float, sau None dacă datele lipsesc.
+    """
+    if device.first_seen and device.last_seen:
+        delta = device.last_seen - device.first_seen
+        return delta.total_seconds() / 3600
+    return None
+
+
+def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_hours=None):
     """Auto-detectează tipul dispozitivului pe baza MAC (OUI vendor), IP, VLAN și hostname.
 
     Prioritate de detecție:
@@ -659,7 +673,8 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     4. Dacă MAC aparține unui producător de camere de supraveghere (Kedacom/Tiandy) → 'camera'
     5. Dacă MAC aparține unui producător de dispozitive mobile (Apple, Samsung, etc.) → 'mobile'
     6. Dacă hostname-ul (DHCP/DNS) sugerează un dispozitiv mobil → 'mobile'
-    7. Dacă MAC-ul este randomizat (LAA bit setat) și dispozitivul e pe un subnet VLAN client → 'mobile'
+    7. Dacă MAC-ul este randomizat (LAA bit setat) și dispozitivul e pe un subnet VLAN client
+       și dispozitivul NU a stat online ≥6 ore → 'mobile'
     8. Fallback → 'client'
     """
     # 1. Detecție automată AP pe baza OUI + VLAN (are prioritate față de IP)
@@ -731,8 +746,10 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None):
     # 7. Detecție pe baza MAC randomizat (LAA bit) — telefoane moderne cu privacy MAC
     # Aplicăm doar dacă dispozitivul este pe un subnet VLAN (rețea Wi-Fi de clienți)
     # și nu e pe subnet-ul principal 192.168.2.x (infrastructură)
+    # Excepție: dacă dispozitivul a stat online ≥6 ore, probabil e un AP/server fix, NU mobil.
     if _is_randomized_mac(mac) and _get_vlan_from_ip(ip_str) is not None:
-        return 'mobile'
+        if online_hours is None or online_hours < 6:
+            return 'mobile'
 
     # 8. Hint din trafic (porturi mobile) - doar pe subnet VLAN
     if _mobile_traffic_hints.get(ip_str) and _get_vlan_from_ip(ip_str) is not None:
@@ -827,7 +844,8 @@ def _flush_device_buffer(app):
                                 device.vlan = str(fallback_vlan)
                         # Dispozitivele cu tip fix (cameră, router, switch etc.) nu se reclasifică niciodată.
                         # Actualizăm doar statisticile și metadatele lipsă.
-                        if device.device_type not in _FIXED_DEVICE_TYPES:
+                        # De asemenea, dispozitivele cu type_locked=True nu se reclasifică automat.
+                        if device.device_type not in _FIXED_DEVICE_TYPES and not device.type_locked:
                             # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul,
                             # sau dacă tipul e 'client' și avem acum MAC/hostname (posibil mobil nedetectat)
                             should_reclassify = (
@@ -843,7 +861,11 @@ def _flush_device_buffer(app):
                                         vlan_for_check = int(device.vlan)
                                     except (ValueError, TypeError):
                                         pass
-                                new_type = _detect_device_type(ip, mac=device.mac_address, vlan_id=vlan_for_check, hostname=device.hostname)
+                                # Calculăm cât timp a stat online pentru heuristica de stabilitate
+                                new_type = _detect_device_type(ip, mac=device.mac_address, vlan_id=vlan_for_check, hostname=device.hostname, online_hours=_calc_online_hours(device))
+                                # Dispozitivele known nu trebuie reclasificate ca 'mobile'
+                                if device.is_known and new_type == 'mobile':
+                                    new_type = 'client'
                                 if new_type != device.device_type:
                                     device.device_type = new_type
                     else:
@@ -1449,6 +1471,9 @@ def _fix_device_types(app):
                 # Sări peste dispozitivele cu tip fix (infrastructură de rețea)
                 if device.device_type in _FIXED_DEVICE_TYPES:
                     continue
+                # Sări peste dispozitivele cu tip blocat manual de admin
+                if device.type_locked:
+                    continue
 
                 vlan_id = None
                 if device.vlan is not None:
@@ -1456,12 +1481,17 @@ def _fix_device_types(app):
                         vlan_id = int(device.vlan)
                     except (ValueError, TypeError):
                         pass
+                # Calculăm durata online pentru heuristica de stabilitate
                 new_type = _detect_device_type(
                     device.ip_address,
                     mac=device.mac_address,
                     vlan_id=vlan_id,
                     hostname=device.hostname,
+                    online_hours=_calc_online_hours(device),
                 )
+                # Dispozitivele known nu trebuie reclasificate ca 'mobile'
+                if device.is_known and new_type == 'mobile':
+                    new_type = 'client'
                 # Reclasificăm dacă tipul detectat e diferit și mai specific decât 'client'/'unknown'
                 # (inclusiv lateral: 'mobile' → 'camera' când OUI indică un producător de camere)
                 if new_type != device.device_type and new_type not in ('client', 'unknown'):
@@ -1608,7 +1638,10 @@ def _reset_mobile_devices(app):
             # Reclasificăm dispozitivele known care au ajuns eronat la tip 'mobile'
             known_mobile = NetworkDevice.query.filter_by(device_type='mobile', is_known=True).all()
             for device in known_mobile:
-                correct_type = _detect_device_type(device.ip_address, mac=device.mac_address)
+                # Dacă tipul e blocat manual de admin, nu îl modificăm
+                if device.type_locked:
+                    continue
+                correct_type = _detect_device_type(device.ip_address, mac=device.mac_address, online_hours=_calc_online_hours(device))
                 if correct_type != 'mobile':
                     device.device_type = correct_type
                     print(f"[Sniffer] Reclasificat {device.ip_address}: mobile → {correct_type} (is_known=True)")
