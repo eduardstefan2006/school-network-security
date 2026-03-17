@@ -2,6 +2,7 @@
 Regulile de detectare pentru IDS.
 Aceste reguli sunt configurabile și definesc pragurile pentru detectarea amenințărilor.
 """
+import os
 
 # =============================================================================
 # Reguli pentru detectarea Port Scanning
@@ -136,16 +137,26 @@ WHITELIST_IPS = [
 # =============================================================================
 # Reguli pentru detectarea DNS Tunneling
 # =============================================================================
+_dns_trusted_default = '192.168.2.1,8.8.8.8,1.1.1.1'
 DNS_TUNNELING_RULES = {
     'enabled': True,
     # Lungimea maximă permisă a subdomain-ului (caractere)
-    'max_subdomain_length': 50,
+    # Configurabil prin variabila de mediu DNS_TUNNELING_MAX_SUBDOMAIN_LENGTH
+    'max_subdomain_length': int(os.environ.get('DNS_TUNNELING_MAX_SUBDOMAIN_LENGTH', 100)),
     # Numărul de query-uri DNS unice care declanșează alerta
-    'unique_queries_threshold': 30,
+    # Configurabil prin variabila de mediu DNS_TUNNELING_UNIQUE_QUERIES_THRESHOLD
+    'unique_queries_threshold': int(os.environ.get('DNS_TUNNELING_UNIQUE_QUERIES_THRESHOLD', 100)),
     # Fereastra de timp în secunde
     'window_seconds': 60,
     # Severitatea alertei
     'severity': 'high',
+    # Servere DNS de încredere — query-urile DNS înspre aceste IP-uri NU declanșează alerta
+    # Configurabil prin variabila de mediu DNS_TRUSTED_SERVERS (listă separată prin virgulă)
+    'trusted_dns_servers': frozenset(
+        s.strip()
+        for s in os.environ.get('DNS_TRUSTED_SERVERS', _dns_trusted_default).split(',')
+        if s.strip()
+    ),
 }
 
 # =============================================================================

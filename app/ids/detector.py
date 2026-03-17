@@ -2,6 +2,7 @@
 Modulul de detectare a intruziunilor (IDS - Intrusion Detection System).
 Analizează traficul capturat și detectează comportamente suspecte.
 """
+import logging
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timezone
@@ -11,6 +12,8 @@ from app.ids.rules import (
     DNS_TUNNELING_RULES, DHCP_RULES, PACKET_FLOOD_RULES,
     INSECURE_PROTOCOL_RULES, SYN_FLOOD_RULES,
 )
+
+logger = logging.getLogger(__name__)
 
 # Lungimea maximă a unui query DNS afișat în mesajele de alertă
 _DNS_QUERY_MAX_DISPLAY_LEN = 80
@@ -375,7 +378,7 @@ class IntrusionDetector:
         # Verificăm DNS tunneling
         dns_query = packet_info.get('dns_query')
         if DNS_TUNNELING_RULES['enabled'] and dns_query:
-            self._check_dns_tunneling(src_ip, dns_query, current_time)
+            self._check_dns_tunneling(src_ip, dst_ip, dns_query, current_time)
 
         # Verificăm DHCP spoofing
         if DHCP_RULES['enabled'] and protocol == 'DHCP':
@@ -502,11 +505,22 @@ class IntrusionDetector:
             )
             self._arp_tracker[src_ip].clear()
 
-    def _check_dns_tunneling(self, src_ip, dns_query, current_time):
+    def _check_dns_tunneling(self, src_ip, dst_ip, dns_query, current_time):
         """Detectează DNS tunneling prin analiza query-urilor DNS."""
         rules = DNS_TUNNELING_RULES
         window = rules['window_seconds']
         tracker = self._dns_tracker[src_ip]
+
+        # Verifică dacă query-ul este înspre un server DNS de încredere
+        trusted_servers = rules.get('trusted_dns_servers', frozenset())
+        is_trusted = dst_ip in trusted_servers
+        logger.debug(
+            "[DNS] Query: %s → %s for %s (trusted: %s)",
+            src_ip, dst_ip, dns_query[:_DNS_QUERY_MAX_DISPLAY_LEN],
+            'Y' if is_trusted else 'N',
+        )
+        if is_trusted:
+            return
 
         tracker.append((current_time, dns_query))
 

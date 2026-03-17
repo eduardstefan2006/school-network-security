@@ -82,6 +82,18 @@ class Config:
     # Activat automat când MikroTik este activ
     EXTERNAL_MONITOR_ENABLED = os.environ.get('EXTERNAL_MONITOR_ENABLED', 'true').lower() == 'true'
 
+    # Setări detectare DNS Tunneling
+    # Lungimea maximă permisă a subdomain-ului (caractere) — interogări cu subdomenii mai lungi declanșează alerta
+    DNS_TUNNELING_MAX_SUBDOMAIN_LENGTH = int(os.environ.get('DNS_TUNNELING_MAX_SUBDOMAIN_LENGTH', 100))
+    # Numărul de query-uri DNS unice în 60 de secunde care declanșează alerta
+    DNS_TUNNELING_UNIQUE_QUERIES_THRESHOLD = int(os.environ.get('DNS_TUNNELING_UNIQUE_QUERIES_THRESHOLD', 100))
+    # Servere DNS de încredere (listă separată prin virgulă) — interogările înspre acestea sunt ignorate
+    DNS_TRUSTED_SERVERS = [
+        s.strip()
+        for s in os.environ.get('DNS_TRUSTED_SERVERS', '192.168.2.1,8.8.8.8,1.1.1.1').split(',')
+        if s.strip()
+    ]
+
 
 class DevelopmentConfig(Config):
     """Configurare pentru dezvoltare."""
