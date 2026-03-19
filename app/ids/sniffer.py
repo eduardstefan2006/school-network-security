@@ -760,6 +760,14 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_ho
     if _mobile_traffic_hints.get(ip_str) and _get_vlan_from_ip(ip_str) is not None:
         return 'mobile'
 
+    # 9. Fallback pentru VLAN-urile de clienți Wi-Fi:
+    # în rețeaua școlii, subrețelele VLAN mapate sunt folosite pentru clienții
+    # conectați prin AP-uri. Dacă dispozitivul nu pare infrastructură și nu este
+    # marcat known, îl tratăm implicit ca 'mobile' pentru a fi redescoperit rapid
+    # după resetul periodic al telefoanelor care își schimbă AP-ul/IP-ul.
+    if _get_vlan_from_ip(ip_str) is not None:
+        return 'mobile'
+
     return 'client'
 
 
@@ -1619,7 +1627,8 @@ def _reset_mobile_devices(app):
 
     DHCP lease-ul este de 10 minute. Telefoanele care au plecat din rețea nu mai
     generează trafic, deci nu vor fi redescoperite după reset. Telefoanele active
-    vor fi redescoperite automat de sniffer în câteva secunde după reset.
+    vor fi redescoperite automat de sniffer / sincronizarea DHCP după reset,
+    chiar dacă au trecut pe alt AP și au primit alt IP.
 
     NU șterge dispozitive din _FIXED_DEVICE_TYPES (ap, router, switch, server, camera).
     """

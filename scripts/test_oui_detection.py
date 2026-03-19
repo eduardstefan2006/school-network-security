@@ -191,6 +191,9 @@ def test_detect_device_type_extended():
     # AP OUI are prioritate față de hostname
     _assert(_detect_device_type("192.168.221.5", mac="EC:08:6B:AA:BB:CC", hostname="Galaxy-S24") == 'ap',
             "TP-Link OUI + VLAN + hostname Galaxy → ap (OUI AP are prioritate)")
+    # Fallback VLAN client subnet → mobile
+    _assert(_detect_device_type("192.168.221.11", mac="AA:BB:CC:DD:EE:FF") == 'mobile',
+            "Subnet VLAN client + vendor necunoscut → mobile")
 
 
 def test_new_mobile_vendors():
