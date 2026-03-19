@@ -275,11 +275,29 @@ def test_reset_mobile_always_logs():
             "Log-ul 'Reset mobile' este în afara blocului 'if count > 0' (rulează mereu)")
 
 
+# ---------------------------------------------------------------------------
+# Test 5: dispozitivele 'mobile' pot fi corectate înapoi la 'client'
+# ---------------------------------------------------------------------------
+
+def test_mobile_can_be_reclassified_to_client():
+    print("\n--- Reclasificare mobile fals pozitiv → client ---")
+
+    from app.ids.sniffer import _detect_device_type
+
+    # B8:27:EB = Raspberry Pi, nu vendor mobil.
+    # Într-un entry deja marcat greșit ca 'mobile', detectorul trebuie să poată
+    # reveni la 'client' când are MAC-ul real disponibil.
+    detected = _detect_device_type("192.168.221.5", mac="B8:27:EB:BF:D6:ED")
+    _assert(detected == 'client',
+            "Raspberry Pi pe VLAN 201 este detectat ca 'client', nu 'mobile'")
+
+
 if __name__ == '__main__':
     test_fixed_device_types_set()
     test_flush_does_not_reclassify_fixed_types()
     test_mobile_reset_flag_and_scheduler_structure()
     test_reset_mobile_always_logs()
+    test_mobile_can_be_reclassified_to_client()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")

@@ -193,7 +193,15 @@
                                 data-state="{{ 'active' if ip.is_active else 'inactive' }}"
                                 {% if not ip.is_active %}class="opacity-50"{% endif %}>
                                 <td><small class="text-muted">{{ ip.id }}</small></td>
-                                <td><code class="text-danger">{{ ip.ip_address }}</code></td>
+                                <td>
+                                    <a href="#" class="ip-lookup-link text-danger text-decoration-none"
+                                       data-ip="{{ ip.ip_address }}"
+                                       data-bs-toggle="modal" data-bs-target="#ipLookupModal"
+                                       title="Vezi detalii pentru IP">
+                                        <code>{{ ip.ip_address }}</code>
+                                        <i class="bi bi-search ms-1" style="font-size:0.7rem;"></i>
+                                    </a>
+                                </td>
                                 <td>
                                     <small class="text-muted" title="{{ ip.reason }}">
                                         {{ ip.reason[:60] }}{% if ip.reason|length > 60 %}...{% endif %}

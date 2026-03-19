@@ -479,6 +479,29 @@ def _load_camera_vendor_ouis() -> dict:
     return {}
 
 
+def _load_client_vendor_ouis() -> dict:
+    """Încarcă OUI-urile dispozitivelor non-mobile / client din data/oui_vendors.json.
+
+    Folosit pentru SBC-uri, imprimante și stații de lucru care altfel pot ajunge
+    eronat la 'mobile' pe VLAN-uri de clienți.
+    """
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    json_path = os.path.join(base_dir, 'data', 'oui_vendors.json')
+    if os.path.isfile(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            client_vendors = data.get('_client_vendors', [])
+            return {
+                vendor: [oui.upper() for oui in data[vendor]]
+                for vendor in client_vendors
+                if vendor in data and isinstance(data[vendor], list)
+            }
+        except Exception as e:
+            print(f"[Sniffer] Eroare la încărcarea OUI-urilor client din {json_path}: {e}")
+    return {}
+
+
 _AP_VENDOR_OUIS = _load_ap_vendor_ouis()
 
 # Set plat de OUI-uri AP pentru lookup O(1)
@@ -498,6 +521,13 @@ _CAMERA_VENDOR_OUIS = _load_camera_vendor_ouis()
 # Set plat de OUI-uri camere de supraveghere pentru lookup O(1)
 _CAMERA_OUI_SET = frozenset(
     oui for ouis in _CAMERA_VENDOR_OUIS.values() for oui in ouis
+)
+
+_CLIENT_VENDOR_OUIS = _load_client_vendor_ouis()
+
+# Set plat de OUI-uri non-mobile / client pentru lookup O(1)
+_CLIENT_OUI_SET = frozenset(
+    oui for ouis in _CLIENT_VENDOR_OUIS.values() for oui in ouis
 )
 
 # Pattern regex pentru hostname-uri tipice de dispozitive mobile
@@ -620,6 +650,17 @@ def _looks_like_camera(mac: str | None) -> bool:
     return oui in _CAMERA_OUI_SET
 
 
+def _looks_like_client_device(mac: str | None) -> bool:
+    """Returnează True dacă MAC-ul aparține unui device tipic non-mobile/client.
+
+    Exemple: Raspberry Pi, imprimante Epson, laptopuri / desktopuri cu OUI cunoscut.
+    """
+    if not mac:
+        return False
+    oui = get_mac_oui(mac)
+    return oui in _CLIENT_OUI_SET
+
+
 # Access Point-uri (routere TP-Link/Asus în modul AP pe VLAN-uri)
 # Menținut pentru compatibilitate inversă; detecția automată OUI are prioritate.
 _AP_IPS = {
@@ -646,7 +687,7 @@ _AP_IPS = {
 
 # Tipuri de dispozitive cu clasificare fixă care nu trebuie reclasificate
 # automat pe baza VLAN-ului (infrastructură de rețea)
-_FIXED_DEVICE_TYPES = frozenset({'ap', 'router', 'switch', 'server', 'camera', 'known'})
+_FIXED_DEVICE_TYPES = frozenset({'ap', 'router', 'switch', 'server', 'camera'})
 
 
 def _calc_online_hours(device) -> float | None:
@@ -663,11 +704,10 @@ def _calc_online_hours(device) -> float | None:
     return None
 
 
-def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_hours=None, is_known=False):
+def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_hours=None):
     """Auto-detectează tipul dispozitivului pe baza MAC (OUI vendor), IP, VLAN și hostname.
 
     Prioritate de detecție:
-    0. Dacă is_known=True → 'known' (dispozitiv marcat manual ca "Cunoscut" — nu se aplică heuristici)
     1. Dacă MAC aparține unui vendor AP (TP-Link/ASUS) și dispozitivul e pe un VLAN → 'ap'
     2. Clasificare din BD (dispozitive is_known cu tip fix salvat via auto-discovery)
     3. IP hardcodat (compatibilitate inversă: router, switch, cameră, server, AP din _AP_IPS)
@@ -678,10 +718,6 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_ho
        și dispozitivul NU a stat online ≥6 ore → 'mobile'
     8. Fallback → 'client'
     """
-    # 0. Dispozitiv marcat manual ca "Cunoscut" — returnăm imediat fără a aplica heuristici
-    if is_known:
-        return 'known'
-
     # 1. Detecție automată AP pe baza OUI + VLAN (are prioritate față de IP)
     if _looks_like_ap(mac, vlan_id, ip_str):
         return 'ap'
@@ -734,6 +770,11 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_ho
     # 4. Detecție automată camere de supraveghere pe baza OUI producător
     if _looks_like_camera(mac):
         return 'camera'
+
+    # 4.5. Detecție automată dispozitive client non-mobile pe baza OUI producător
+    # (Raspberry Pi, imprimante, stații de lucru etc.)
+    if _looks_like_client_device(mac):
+        return 'client'
 
     # 5. Detecție automată dispozitive mobile pe baza OUI producător (MAC real)
     if _looks_like_mobile(mac):
@@ -852,12 +893,13 @@ def _flush_device_buffer(app):
                         # De asemenea, dispozitivele cu type_locked=True nu se reclasifică automat.
                         if device.device_type not in _FIXED_DEVICE_TYPES and not device.type_locked:
                             # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul,
-                            # sau dacă tipul e 'client' și avem acum MAC/hostname (posibil mobil nedetectat)
+                            # sau dacă tipul e 'client'/'mobile' și avem MAC/hostname pentru o reverificare
                             should_reclassify = (
                                 mac_updated
                                 or hostname_updated
                                 or (data.get('vlan_id') is not None)
                                 or (device.device_type == 'client' and (device.mac_address or device.hostname))
+                                or (device.device_type == 'mobile' and (device.mac_address or device.hostname))
                             )
                             if should_reclassify:
                                 vlan_for_check = data.get('vlan_id')
@@ -867,7 +909,10 @@ def _flush_device_buffer(app):
                                     except (ValueError, TypeError):
                                         pass
                                 # Calculăm cât timp a stat online pentru heuristica de stabilitate
-                                new_type = _detect_device_type(ip, mac=device.mac_address, vlan_id=vlan_for_check, hostname=device.hostname, online_hours=_calc_online_hours(device), is_known=device.is_known)
+                                new_type = _detect_device_type(ip, mac=device.mac_address, vlan_id=vlan_for_check, hostname=device.hostname, online_hours=_calc_online_hours(device))
+                                # Dispozitivele known nu trebuie reclasificate ca 'mobile'
+                                if device.is_known and new_type == 'mobile':
+                                    new_type = 'client'
                                 if new_type != device.device_type:
                                     device.device_type = new_type
                     else:
@@ -1490,11 +1535,16 @@ def _fix_device_types(app):
                     vlan_id=vlan_id,
                     hostname=device.hostname,
                     online_hours=_calc_online_hours(device),
-                    is_known=device.is_known,
                 )
+                # Dispozitivele known nu trebuie reclasificate ca 'mobile'
+                if device.is_known and new_type == 'mobile':
+                    new_type = 'client'
                 # Reclasificăm dacă tipul detectat e diferit și mai specific decât 'client'/'unknown'
-                # (inclusiv lateral: 'mobile' → 'camera' când OUI indică un producător de camere)
-                if new_type != device.device_type and new_type not in ('client', 'unknown'):
+                # sau dacă trebuie să corectăm explicit un fals pozitiv 'mobile' → 'client'.
+                if new_type != device.device_type and (
+                    new_type not in ('client', 'unknown')
+                    or (device.device_type == 'mobile' and new_type == 'client')
+                ):
                     print(f"[Sniffer] Reclasificare: {device.ip_address} {device.device_type} → {new_type}")
                     device.device_type = new_type
                     count += 1
@@ -1641,14 +1691,14 @@ def _reset_mobile_devices(app):
                 # Dacă tipul e blocat manual de admin, nu îl modificăm
                 if device.type_locked:
                     continue
-                correct_type = _detect_device_type(device.ip_address, mac=device.mac_address, online_hours=_calc_online_hours(device), is_known=device.is_known)
+                correct_type = _detect_device_type(device.ip_address, mac=device.mac_address, online_hours=_calc_online_hours(device))
                 if correct_type != 'mobile':
                     device.device_type = correct_type
-                    print(f"[Sniffer] Reclasificat {device.ip_address}: mobile → {correct_type} (dispozitiv cunoscut)")
+                    print(f"[Sniffer] Reclasificat {device.ip_address}: mobile → {correct_type} (is_known=True)")
                 else:
                     # Fallback sigur: dacă nu putem detecta tipul corect, setăm 'client'
                     device.device_type = 'client'
-                    print(f"[Sniffer] Reclasificat {device.ip_address}: mobile → client (dispozitiv cunoscut, fallback)")
+                    print(f"[Sniffer] Reclasificat {device.ip_address}: mobile → client (is_known=True, fallback)")
 
             for device in mobile_devices:
                 db.session.delete(device)

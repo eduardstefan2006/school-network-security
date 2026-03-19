@@ -145,7 +145,17 @@
                             <span title="Offline" class="text-danger fs-5">●</span>
                         {% endif %}
                     </td>
-                    <td><code class="text-info">{{ device.ip_address }}</code></td>
+                    <td>
+                        <a href="#"
+                           class="ip-lookup-link text-info text-decoration-none"
+                           data-ip="{{ device.ip_address }}"
+                           data-bs-toggle="modal" data-bs-target="#ipLookupModal"
+                           title="Vezi detalii pentru IP"
+                           onclick="event.stopPropagation();">
+                            <code class="text-info">{{ device.ip_address }}</code>
+                            <i class="bi bi-search ms-1" style="font-size:0.7rem;"></i>
+                        </a>
+                    </td>
                     <td><small class="text-muted font-monospace">{{ device.mac_address or 'N/A' }}</small></td>
                     <td>
                         {% if device.device_type == 'router' %}
