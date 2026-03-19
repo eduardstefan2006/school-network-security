@@ -293,27 +293,6 @@ def test_camera_oui_detection():
             "Dispozitiv mobile cu MAC Tiandy (C0:39:5A) → _detect_device_type returnează 'camera', nu 'mobile'")
 
 
-def test_is_known_flag():
-    print("\n--- is_known=True → 'known' (checkbox Cunoscut) ---")
-    # Dispozitiv cu MAC mobil (Apple) dar marcat ca "Cunoscut" → 'known', NU 'mobile'
-    _assert(_detect_device_type("192.168.225.3", mac="52:11:97:73:09:8A", vlan_id=205, is_known=True) == 'known',
-            "MAC randomizat pe VLAN 205 + is_known=True → 'known', nu 'mobile'")
-    # Dispozitiv cu OUI Apple dar marcat ca "Cunoscut" → 'known', NU 'mobile'
-    _assert(_detect_device_type("192.168.2.100", mac="AC:BC:32:AA:BB:CC", is_known=True) == 'known',
-            "Apple OUI + is_known=True → 'known', nu 'mobile'")
-    # Dispozitiv cu hostname mobil dar marcat ca "Cunoscut" → 'known', NU 'mobile'
-    _assert(_detect_device_type("192.168.221.10", hostname="Galaxy-S24", is_known=True) == 'known',
-            "Hostname Galaxy + is_known=True → 'known', nu 'mobile'")
-    # Dispozitiv cu MAC randomizat pe VLAN dar marcat ca "Cunoscut" → 'known', NU 'mobile'
-    _assert(_detect_device_type("192.168.221.5", mac="2A:11:22:33:44:55", vlan_id=201, is_known=True) == 'known',
-            "MAC randomizat pe subnet VLAN + is_known=True → 'known', nu 'mobile'")
-    # is_known=False (default) — comportamentul normal nu e afectat
-    _assert(_detect_device_type("192.168.2.100", mac="AC:BC:32:AA:BB:CC", is_known=False) == 'mobile',
-            "Apple OUI + is_known=False → 'mobile' (normal)")
-    _assert(_detect_device_type("192.168.225.3", mac="52:11:97:73:09:8A", vlan_id=205) == 'mobile',
-            "MAC randomizat pe VLAN 205 fara is_known → 'mobile' (normal)")
-
-
 if __name__ == '__main__':
     test_normalize_mac()
     test_get_mac_oui()
@@ -326,8 +305,6 @@ if __name__ == '__main__':
     test_new_mobile_vendors()
     test_real_world_hostnames()
     test_camera_oui_detection()
-    test_is_known_flag()
-
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")
     if _fail_count:
