@@ -94,6 +94,10 @@ class Config:
         if s.strip()
     ]
 
+    # Retenție pentru istoricul conexiunilor per IP (site-uri/aplicații accesate)
+    # Intrările mai vechi decât acest prag sunt șterse periodic.
+    IP_CONNECTION_RETENTION_DAYS = int(os.environ.get('IP_CONNECTION_RETENTION_DAYS', 30))
+
 
 class DevelopmentConfig(Config):
     """Configurare pentru dezvoltare."""
