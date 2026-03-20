@@ -326,6 +326,10 @@ def _get_vlan_from_ip(ip_str):
     1. VLAN-uri descoperite dinamic din BD (auto-discovery)
     2. Mapare statică (fallback pentru compatibilitate inversă)
 
+    Important: dacă auto-discovery a salvat doar o parte din VLAN-uri, nu
+    pierdem fallback-ul istoric pentru subrețelele lipsă. Harta dinamică se
+    verifică prima, apoi completăm cu maparea statică.
+
     Returnează None dacă IP-ul nu aparține niciunui subnet VLAN cunoscut.
     """
     global _dynamic_vlan_map
@@ -341,9 +345,15 @@ def _get_vlan_from_ip(ip_str):
                 loaded = _load_vlan_map_from_db()
                 _dynamic_vlan_map = loaded  # poate rămâne None dacă BD e gol
 
-    # Folosim harta dinamică dacă există
-    vlan_map = _dynamic_vlan_map if _dynamic_vlan_map is not None else _STATIC_VLAN_MAP
-    for network, vlan_id in vlan_map:
+    # Verificăm mai întâi VLAN-urile descoperite dinamic, apoi fallback-ul static
+    # pentru subrețelele care lipsesc din BD. Astfel telefoanele de pe VLAN-uri
+    # vechi/omise rămân detectabile ca mobile.
+    if _dynamic_vlan_map is not None:
+        for network, vlan_id in _dynamic_vlan_map:
+            if ip in network:
+                return vlan_id
+
+    for network, vlan_id in _STATIC_VLAN_MAP:
         if ip in network:
             return vlan_id
     return None
