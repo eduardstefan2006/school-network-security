@@ -554,8 +554,15 @@ _MOBILE_HOSTNAME_RE = re.compile(
     r'v\d{4}[a-z]?|'
     r'redmi[-\s]?note|'
     r'honor[-\s]?\w+|'
-    r'lenovo[-\s]?\w+|'
     r'phone|mobile|smartphone)',
+    re.IGNORECASE
+)
+
+# Pattern regex pentru hostname-uri tipice de PC / laptop
+_COMPUTER_HOSTNAME_RE = re.compile(
+    r'(windows|win\d+|desktop|laptop|notebook|macbook|imac|thinkpad|ideapad|legion|'
+    r'latitude|precision|optiplex|vostro|inspiron|elitebook|probook|zbook|pavilion|'
+    r'omen|envy|aspire|swift|travelmate|surface|workstation|pc[-_\s]?|nb[-_\s]?)',
     re.IGNORECASE
 )
 
@@ -595,6 +602,18 @@ def _hostname_suggests_mobile(hostname: str | None) -> bool:
     if not hostname:
         return False
     return bool(_MOBILE_HOSTNAME_RE.search(hostname))
+
+
+def _hostname_suggests_computer(hostname: str | None) -> bool:
+    """Returnează True dacă hostname-ul sugerează un PC sau laptop.
+
+    Filtrul este folosit pentru a evita fals pozitivele în care hostname-uri de
+    tip Lenovo/Windows/ThinkPad ajung marcate drept `mobile` doar pentru că sunt
+    pe VLAN-uri Wi-Fi sau au nume generice apropiate de cele ale telefoanelor.
+    """
+    if not hostname:
+        return False
+    return bool(_COMPUTER_HOSTNAME_RE.search(hostname))
 
 
 def _looks_like_ap(mac: str | None, vlan_id: int | None, ip: str | None) -> bool:
@@ -796,6 +815,8 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_ho
     if not effective_hostname:
         with _device_hostname_cache_lock:
             effective_hostname = _device_hostname_cache.get(ip_str)
+    if _hostname_suggests_computer(effective_hostname):
+        return 'client'
     if _hostname_suggests_mobile(effective_hostname):
         return 'mobile'
 
@@ -812,12 +833,11 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_ho
         return 'mobile'
 
     # 9. Fallback pentru VLAN-urile de clienți Wi-Fi:
-    # în rețeaua școlii, subrețelele VLAN mapate sunt folosite pentru clienții
-    # conectați prin AP-uri. Dacă dispozitivul nu pare infrastructură și nu este
-    # marcat known, îl tratăm implicit ca 'mobile' pentru a fi redescoperit rapid
-    # după resetul periodic al telefoanelor care își schimbă AP-ul/IP-ul.
+    # Simplul fapt că un dispozitiv este pe Wi-Fi nu înseamnă că este telefon.
+    # PC-urile și laptopurile de pe aceleași VLAN-uri trebuie păstrate ca 'client'
+    # dacă nu avem indicii mobile mai puternice (OUI, hostname, MAC randomizat etc.).
     if _get_vlan_from_ip(ip_str) is not None:
-        return 'mobile'
+        return 'client'
 
     return 'client'
 
@@ -911,13 +931,16 @@ def _flush_device_buffer(app):
                         # De asemenea, dispozitivele cu type_locked=True nu se reclasifică automat.
                         if device.device_type not in _FIXED_DEVICE_TYPES and not device.type_locked:
                             # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul,
-                            # sau dacă tipul e 'client'/'mobile' și avem MAC/hostname pentru o reverificare
+                            # sau dacă tipul e 'client'/'mobile'/'unknown' și avem MAC/hostname pentru
+                            # o reverificare periodică. Cazul 'unknown' este important pentru dispozitivele
+                            # create inițial cu date incomplete și completate ulterior în cache-ul live.
                             should_reclassify = (
                                 mac_updated
                                 or hostname_updated
                                 or (data.get('vlan_id') is not None)
                                 or (device.device_type == 'client' and (device.mac_address or device.hostname))
                                 or (device.device_type == 'mobile' and (device.mac_address or device.hostname))
+                                or (device.device_type == 'unknown' and (device.mac_address or device.hostname))
                             )
                             if should_reclassify:
                                 vlan_for_check = data.get('vlan_id')

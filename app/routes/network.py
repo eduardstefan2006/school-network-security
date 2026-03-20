@@ -166,14 +166,16 @@ def reclassify_devices():
 @network_bp.route('/api/devices/reclassify-mobile', methods=['POST'])
 @login_required
 def reclassify_mobile_devices():
-    """Reclasifică dispozitivele 'client' care ar trebui să fie 'mobile'."""
+    """Reclasifică dispozitivele 'client' sau 'unknown' care ar trebui să fie 'mobile'."""
     if not current_user.is_admin():
         return jsonify({'error': 'Acces interzis'}), 403
     from app.ids.sniffer import _detect_device_type, _mobile_traffic_hints, _calc_online_hours
     from app.models import NetworkDevice
 
     reclassified = []
-    devices = NetworkDevice.query.filter_by(device_type='client').all()
+    devices = NetworkDevice.query.filter(
+        NetworkDevice.device_type.in_(('client', 'unknown'))
+    ).all()
     for device in devices:
         # Skip devices with locked type or known infrastructure
         if device.type_locked or device.is_known:
