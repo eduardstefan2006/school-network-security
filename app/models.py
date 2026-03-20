@@ -299,6 +299,31 @@ class IPConnection(db.Model):
 
 
 # =============================================================================
+# Model Trafic Aplicații / Site-uri (agregare zilnică)
+# =============================================================================
+class AppTrafficStat(db.Model):
+    """Agregare zilnică per IP sursă și aplicație/site accesat."""
+    __tablename__ = 'app_traffic_stats'
+
+    id = db.Column(db.Integer, primary_key=True)
+    stat_date = db.Column(db.Date, nullable=False, index=True)
+    source_ip = db.Column(db.String(45), nullable=False, index=True)
+    hostname = db.Column(db.String(255), nullable=False, index=True)
+    app_name = db.Column(db.String(100), nullable=True, index=True)
+    bytes_total = db.Column(db.BigInteger, default=0)
+    packets_count = db.Column(db.Integer, default=0)
+    first_seen = db.Column(db.DateTime, default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('stat_date', 'source_ip', 'hostname', name='uq_app_traffic_stat'),
+    )
+
+    def __repr__(self):
+        return f'<AppTrafficStat {self.stat_date} {self.source_ip} -> {self.hostname}>'
+
+
+# =============================================================================
 # Model Configurație MikroTik
 # =============================================================================
 class MikroTikConfig(db.Model):

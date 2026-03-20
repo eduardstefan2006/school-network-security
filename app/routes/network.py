@@ -128,7 +128,6 @@ def update_device(device_id):
                 vlan_id=vlan_id,
                 hostname=device.hostname,
                 online_hours=_calc_online_hours(device),
-                is_known=False,
             )
         # Auto-rezolvă alertele new_device active când dispozitivul devine cunoscut
         if device.is_known and device.ip_address:
