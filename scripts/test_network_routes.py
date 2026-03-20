@@ -61,6 +61,10 @@ def _login(client, user_id):
         session['_fresh'] = True
 
 
+def _utc_naive_now():
+    return datetime.utcnow()
+
+
 def test_api_ip_connections_returns_sorted_results():
     print("\n--- /api/network/ip/<ip>/connections ---")
 
@@ -78,7 +82,7 @@ def test_api_ip_connections_returns_sorted_results():
                     app_name='📘 Facebook',
                     bytes_total=2048,
                     packets_count=10,
-                    last_seen=datetime.now(timezone.utc),
+                    last_seen=_utc_naive_now(),
                 ),
                 IPConnection(
                     source_ip='192.168.224.6',
@@ -86,7 +90,7 @@ def test_api_ip_connections_returns_sorted_results():
                     app_name='🎵 TikTok',
                     bytes_total=4096,
                     packets_count=20,
-                    last_seen=datetime.now(timezone.utc),
+                    last_seen=_utc_naive_now(),
                 ),
             ])
             db.session.commit()
@@ -208,14 +212,14 @@ def test_cleanup_old_ip_connections_respects_retention():
                     hostname='old.example',
                     bytes_total=100,
                     packets_count=1,
-                    last_seen=datetime.now(timezone.utc) - timedelta(days=45),
+                    last_seen=_utc_naive_now() - timedelta(days=45),
                 ),
                 IPConnection(
                     source_ip='192.168.224.6',
                     hostname='recent.example',
                     bytes_total=200,
                     packets_count=2,
-                    last_seen=datetime.now(timezone.utc) - timedelta(days=2),
+                    last_seen=_utc_naive_now() - timedelta(days=2),
                 ),
             ])
             db.session.commit()
@@ -232,11 +236,66 @@ def test_cleanup_old_ip_connections_respects_retention():
             os.unlink(db_path)
 
 
+def test_api_app_usage_returns_percentages_and_filters():
+    print("\n--- /api/statistics/app-usage ---")
+
+    app, db_path = _build_app()
+    try:
+        from app import db
+        from app.models import User, AppTrafficStat
+
+        today = datetime.now(timezone.utc)
+        with app.app_context():
+            admin = User.query.filter_by(username='admin-test').first()
+            db.session.add_all([
+                AppTrafficStat(
+                    stat_date=today.date(),
+                    source_ip='192.168.224.6',
+                    hostname='facebook.com',
+                    app_name='📘 Facebook',
+                    bytes_total=3000,
+                    packets_count=30,
+                    first_seen=today - timedelta(minutes=20),
+                    last_seen=today - timedelta(minutes=5),
+                ),
+                AppTrafficStat(
+                    stat_date=today.date(),
+                    source_ip='192.168.224.7',
+                    hostname='tiktok.com',
+                    app_name='🎵 TikTok',
+                    bytes_total=7000,
+                    packets_count=70,
+                    first_seen=today - timedelta(minutes=18),
+                    last_seen=today - timedelta(minutes=2),
+                ),
+            ])
+            db.session.commit()
+            admin_id = admin.id
+
+        client = app.test_client()
+        _login(client, admin_id)
+
+        response = client.get('/api/statistics/app-usage?period=today')
+        data = response.get_json()
+        _assert(response.status_code == 200, "API-ul app-usage răspunde cu 200")
+        _assert(data['summary']['total_apps'] == 2, "API-ul app-usage raportează corect numărul de aplicații")
+        _assert(data['top_apps'][0]['app_name'] == '🎵 TikTok', "Top aplicații este ordonat după bytes_total")
+        _assert(round(data['top_apps'][0]['traffic_percent'], 2) == 70.00, "Procentajul traficului este calculat corect")
+
+        filtered = client.get('/api/statistics/app-usage?period=today&app=tiktok').get_json()
+        _assert(len(filtered['top_apps']) == 1, "Filtrarea după aplicație/hostname funcționează")
+        _assert(filtered['top_apps'][0]['app_name'] == '🎵 TikTok', "Filtrarea returnează aplicația cerută")
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 if __name__ == '__main__':
     test_api_ip_connections_returns_sorted_results()
     test_update_device_can_remove_known_flag_without_typeerror()
     test_reclassify_mobile_includes_unknown_devices()
     test_cleanup_old_ip_connections_respects_retention()
+    test_api_app_usage_returns_percentages_and_filters()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")
