@@ -147,13 +147,18 @@
                     </td>
                     <td>
                         <a href="#"
-                           class="ip-lookup-link text-info text-decoration-none"
+                           class="text-info text-decoration-none"
+                           title="Vezi traficul și site-urile accesate de acest dispozitiv"
+                           onclick="event.preventDefault(); event.stopPropagation(); toggleDetails(this.closest('tr'));">
+                            <code class="text-info">{{ device.ip_address }}</code>
+                        </a>
+                        <a href="#"
+                           class="ip-lookup-link text-info text-decoration-none ms-1"
                            data-ip="{{ device.ip_address }}"
                            data-bs-toggle="modal" data-bs-target="#ipLookupModal"
-                           title="Vezi detalii pentru IP"
+                           title="Vezi lookup-ul general pentru IP"
                            onclick="event.stopPropagation();">
-                            <code class="text-info">{{ device.ip_address }}</code>
-                            <i class="bi bi-search ms-1" style="font-size:0.7rem;"></i>
+                            <i class="bi bi-search" style="font-size:0.7rem;"></i>
                         </a>
                     </td>
                     <td><small class="text-muted font-monospace">{{ device.mac_address or 'N/A' }}</small></td>
