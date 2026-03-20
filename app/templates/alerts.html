@@ -105,6 +105,20 @@
 <div class="card bg-black border-secondary mb-4">
     <div class="card-body py-2">
         <form method="GET" class="row g-2 align-items-center">
+            <div class="col-12 col-md-4">
+                <label class="text-muted small">Căutare:</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-dark border-secondary text-muted">
+                        <i class="bi bi-search"></i>
+                    </span>
+                    <input type="text" id="alerts-search" class="form-control bg-dark text-light border-secondary"
+                           placeholder="Caută IP, mesaj, tip sau port..."
+                           autocomplete="off">
+                    <button class="btn btn-outline-secondary" type="button" id="alerts-search-clear" title="Șterge căutarea">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            </div>
             <div class="col-auto">
                 <label class="text-muted small">Stare:</label>
                 <select name="status" class="form-select form-select-sm bg-dark text-light border-secondary ms-1"
@@ -157,14 +171,14 @@
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Severitate</th>
-                        <th>Tip</th>
-                        <th>IP Sursă</th>
-                        <th>IP Destinație</th>
-                        <th>Port</th>
-                        <th>Mesaj</th>
-                        <th>Timestamp</th>
-                        <th>Stare</th>
+                        <th class="sortable-header" data-col="1">Severitate <span class="sort-icon">⇅</span></th>
+                        <th class="sortable-header" data-col="2">Tip <span class="sort-icon">⇅</span></th>
+                        <th class="sortable-header" data-col="3">IP Sursă <span class="sort-icon">⇅</span></th>
+                        <th class="sortable-header" data-col="4">IP Destinație <span class="sort-icon">⇅</span></th>
+                        <th class="sortable-header" data-col="5">Port <span class="sort-icon">⇅</span></th>
+                        <th class="sortable-header" data-col="6">Mesaj <span class="sort-icon">⇅</span></th>
+                        <th class="sortable-header" data-col="7">Timestamp <span class="sort-icon">⇅</span></th>
+                        <th class="sortable-header" data-col="8">Stare <span class="sort-icon">⇅</span></th>
                         {% if current_user.is_admin() %}
                         <th>Acțiuni</th>
                         {% endif %}
@@ -304,4 +318,72 @@
     <p>{% if status or severity or alert_type %}Niciun rezultat pentru filtrele selectate.{% else %}Rețeaua este sigură momentan.{% endif %}</p>
 </div>
 {% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const table = document.querySelector('.table.table-dark.table-hover');
+    const tbody = table ? table.querySelector('tbody') : null;
+    const searchInput = document.getElementById('alerts-search');
+    const clearBtn = document.getElementById('alerts-search-clear');
+    const headers = document.querySelectorAll('.sortable-header');
+    if (!tbody || !searchInput) return;
+
+    let sortState = { col: null, dir: 'asc' };
+
+    function normalize(text) {
+        return (text || '').toLowerCase().trim();
+    }
+
+    function filterRows() {
+        const query = normalize(searchInput.value);
+        Array.from(tbody.rows).forEach((row) => {
+            const text = normalize(row.innerText);
+            row.style.display = !query || text.includes(query) ? '' : 'none';
+        });
+    }
+
+    function compareValues(a, b) {
+        const numA = parseFloat(a.replace(',', '.'));
+        const numB = parseFloat(b.replace(',', '.'));
+        if (!Number.isNaN(numA) && !Number.isNaN(numB)) return numA - numB;
+        return a.localeCompare(b, 'ro', { numeric: true, sensitivity: 'base' });
+    }
+
+    headers.forEach((header) => {
+        header.style.cursor = 'pointer';
+        header.addEventListener('click', function () {
+            const col = parseInt(header.dataset.col, 10);
+            if (sortState.col === col) {
+                sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortState = { col, dir: 'asc' };
+            }
+
+            headers.forEach((h) => {
+                const icon = h.querySelector('.sort-icon');
+                if (icon) icon.textContent = '⇅';
+            });
+            const currentIcon = header.querySelector('.sort-icon');
+            if (currentIcon) currentIcon.textContent = sortState.dir === 'asc' ? '↑' : '↓';
+
+            const rows = Array.from(tbody.rows);
+            rows.sort((rowA, rowB) => {
+                const textA = normalize(rowA.cells[col]?.innerText || '');
+                const textB = normalize(rowB.cells[col]?.innerText || '');
+                const result = compareValues(textA, textB);
+                return sortState.dir === 'asc' ? result : -result;
+            });
+            rows.forEach((row) => tbody.appendChild(row));
+            filterRows();
+        });
+    });
+
+    searchInput.addEventListener('input', filterRows);
+    clearBtn?.addEventListener('click', function () {
+        searchInput.value = '';
+        searchInput.focus();
+        filterRows();
+    });
+});
+</script>
 {% endblock %}
