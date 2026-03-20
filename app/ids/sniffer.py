@@ -11,7 +11,7 @@ import time
 import random
 import socket
 import ipaddress
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
@@ -223,6 +223,53 @@ def _maybe_flush_connections(app):
                 db.session.rollback()
 
     threading.Thread(target=_do_flush, daemon=True).start()
+
+
+def _cleanup_old_ip_connections(app, retention_days=None):
+    """Șterge intrările vechi din istoricul conexiunilor per IP.
+
+    Args:
+        app: Instanța Flask.
+        retention_days: Numărul maxim de zile păstrate. Dacă este None, se citește din config.
+    Returns:
+        Numărul de înregistrări șterse.
+    """
+    from app import db
+    from app.models import IPConnection
+
+    if retention_days is None:
+        retention_days = app.config.get('IP_CONNECTION_RETENTION_DAYS', 30)
+    try:
+        retention_days = int(retention_days)
+    except (TypeError, ValueError):
+        retention_days = 30
+
+    if retention_days <= 0:
+        return 0
+
+    threshold = datetime.utcnow() - timedelta(days=retention_days)
+
+    try:
+        with app.app_context():
+            deleted = (
+                IPConnection.query
+                .filter(IPConnection.last_seen < threshold)
+                .delete(synchronize_session=False)
+            )
+            if deleted:
+                db.session.commit()
+                print(f"[Sniffer] Curățare IPConnection: {deleted} intrări mai vechi de {retention_days} zile șterse.")
+            else:
+                db.session.rollback()
+            return deleted
+    except Exception as e:
+        print(f"[Sniffer] Eroare la curățarea IPConnection: {e}")
+        try:
+            with app.app_context():
+                db.session.rollback()
+        except Exception:
+            pass
+        return 0
 
 
 def _is_private_ip(ip_str):
@@ -1826,6 +1873,7 @@ def _mobile_reset_scheduler(app):
     Rulează:
     - _reset_mobile_devices: șterge dispozitivele mobile inactive
     - _cleanup_inactive_mobile_devices: curăță mobile cu MAC randomizat >24h
+    - _cleanup_old_ip_connections: aplică retenția pentru istoricul site-urilor/aplicațiilor per IP
     - _fix_device_types: reclasifică tipurile de dispozitive
     - _fix_device_vlans: setează VLAN-urile lipsă
     - _deduplicate_devices: consolidează dispozitive duplicate (același MAC)
@@ -1841,6 +1889,7 @@ def _mobile_reset_scheduler(app):
         try:
             _reset_mobile_devices(app)
             _cleanup_inactive_mobile_devices(app)
+            _cleanup_old_ip_connections(app)
             _fix_device_types(app)
             _fix_device_vlans(app)
             _deduplicate_devices(app)
@@ -1868,6 +1917,8 @@ def start_sniffer(app):
     _deduplicate_devices(app)
     # Deduplicăm dispozitivele mobile inclusiv MAC-uri randomizate la pornire
     _deduplicate_all_mobile_devices(app)
+    # Curățăm istoricul foarte vechi al conexiunilor per IP la pornire
+    _cleanup_old_ip_connections(app)
 
     # Înregistrăm callback-ul pentru salvarea alertelor în baza de date
     with app.app_context():
