@@ -79,7 +79,9 @@ def _classify_device_type(ip: str, mac: str | None, hostname: str | None,
 
     if hostname:
         try:
-            from app.ids.sniffer import _hostname_suggests_mobile
+            from app.ids.sniffer import _hostname_suggests_computer, _hostname_suggests_mobile
+            if _hostname_suggests_computer(hostname):
+                return 'client'
             if _hostname_suggests_mobile(hostname):
                 return 'mobile'
         except Exception:

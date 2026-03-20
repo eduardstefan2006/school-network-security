@@ -437,6 +437,10 @@ def _get_vlan_from_ip(ip_str):
     1. VLAN-uri descoperite dinamic din BD (auto-discovery)
     2. Mapare statică (fallback pentru compatibilitate inversă)
 
+    Important: dacă auto-discovery a salvat doar o parte din VLAN-uri, nu
+    pierdem fallback-ul istoric pentru subrețelele lipsă. Harta dinamică se
+    verifică prima, apoi completăm cu maparea statică.
+
     Returnează None dacă IP-ul nu aparține niciunui subnet VLAN cunoscut.
     """
     global _dynamic_vlan_map
@@ -452,9 +456,15 @@ def _get_vlan_from_ip(ip_str):
                 loaded = _load_vlan_map_from_db()
                 _dynamic_vlan_map = loaded  # poate rămâne None dacă BD e gol
 
-    # Folosim harta dinamică dacă există
-    vlan_map = _dynamic_vlan_map if _dynamic_vlan_map is not None else _STATIC_VLAN_MAP
-    for network, vlan_id in vlan_map:
+    # Verificăm mai întâi VLAN-urile descoperite dinamic, apoi fallback-ul static
+    # pentru subrețelele care lipsesc din BD. Astfel telefoanele de pe VLAN-uri
+    # vechi/omise rămân detectabile ca mobile.
+    if _dynamic_vlan_map is not None:
+        for network, vlan_id in _dynamic_vlan_map:
+            if ip in network:
+                return vlan_id
+
+    for network, vlan_id in _STATIC_VLAN_MAP:
         if ip in network:
             return vlan_id
     return None
@@ -655,8 +665,15 @@ _MOBILE_HOSTNAME_RE = re.compile(
     r'v\d{4}[a-z]?|'
     r'redmi[-\s]?note|'
     r'honor[-\s]?\w+|'
-    r'lenovo[-\s]?\w+|'
     r'phone|mobile|smartphone)',
+    re.IGNORECASE
+)
+
+# Pattern regex pentru hostname-uri tipice de PC / laptop
+_COMPUTER_HOSTNAME_RE = re.compile(
+    r'(windows|win\d+|desktop|laptop|notebook|macbook|imac|thinkpad|ideapad|legion|'
+    r'latitude|precision|optiplex|vostro|inspiron|elitebook|probook|zbook|pavilion|'
+    r'omen|envy|aspire|swift|travelmate|surface|workstation|pc[-_\s]?|nb[-_\s]?)',
     re.IGNORECASE
 )
 
@@ -696,6 +713,18 @@ def _hostname_suggests_mobile(hostname: str | None) -> bool:
     if not hostname:
         return False
     return bool(_MOBILE_HOSTNAME_RE.search(hostname))
+
+
+def _hostname_suggests_computer(hostname: str | None) -> bool:
+    """Returnează True dacă hostname-ul sugerează un PC sau laptop.
+
+    Filtrul este folosit pentru a evita fals pozitivele în care hostname-uri de
+    tip Lenovo/Windows/ThinkPad ajung marcate drept `mobile` doar pentru că sunt
+    pe VLAN-uri Wi-Fi sau au nume generice apropiate de cele ale telefoanelor.
+    """
+    if not hostname:
+        return False
+    return bool(_COMPUTER_HOSTNAME_RE.search(hostname))
 
 
 def _looks_like_ap(mac: str | None, vlan_id: int | None, ip: str | None) -> bool:
@@ -897,6 +926,8 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_ho
     if not effective_hostname:
         with _device_hostname_cache_lock:
             effective_hostname = _device_hostname_cache.get(ip_str)
+    if _hostname_suggests_computer(effective_hostname):
+        return 'client'
     if _hostname_suggests_mobile(effective_hostname):
         return 'mobile'
 
@@ -913,12 +944,11 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_ho
         return 'mobile'
 
     # 9. Fallback pentru VLAN-urile de clienți Wi-Fi:
-    # în rețeaua școlii, subrețelele VLAN mapate sunt folosite pentru clienții
-    # conectați prin AP-uri. Dacă dispozitivul nu pare infrastructură și nu este
-    # marcat known, îl tratăm implicit ca 'mobile' pentru a fi redescoperit rapid
-    # după resetul periodic al telefoanelor care își schimbă AP-ul/IP-ul.
+    # Simplul fapt că un dispozitiv este pe Wi-Fi nu înseamnă că este telefon.
+    # PC-urile și laptopurile de pe aceleași VLAN-uri trebuie păstrate ca 'client'
+    # dacă nu avem indicii mobile mai puternice (OUI, hostname, MAC randomizat etc.).
     if _get_vlan_from_ip(ip_str) is not None:
-        return 'mobile'
+        return 'client'
 
     return 'client'
 
