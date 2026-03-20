@@ -931,13 +931,16 @@ def _flush_device_buffer(app):
                         # De asemenea, dispozitivele cu type_locked=True nu se reclasifică automat.
                         if device.device_type not in _FIXED_DEVICE_TYPES and not device.type_locked:
                             # Reclasifică dispozitivul dacă tocmai am aflat MAC-ul, hostname-ul sau VLAN-ul,
-                            # sau dacă tipul e 'client'/'mobile' și avem MAC/hostname pentru o reverificare
+                            # sau dacă tipul e 'client'/'mobile'/'unknown' și avem MAC/hostname pentru
+                            # o reverificare periodică. Cazul 'unknown' este important pentru dispozitivele
+                            # create inițial cu date incomplete și completate ulterior în cache-ul live.
                             should_reclassify = (
                                 mac_updated
                                 or hostname_updated
                                 or (data.get('vlan_id') is not None)
                                 or (device.device_type == 'client' and (device.mac_address or device.hostname))
                                 or (device.device_type == 'mobile' and (device.mac_address or device.hostname))
+                                or (device.device_type == 'unknown' and (device.mac_address or device.hostname))
                             )
                             if should_reclassify:
                                 vlan_for_check = data.get('vlan_id')
