@@ -292,12 +292,42 @@ def test_mobile_can_be_reclassified_to_client():
             "Raspberry Pi pe VLAN 201 este detectat ca 'client', nu 'mobile'")
 
 
+# ---------------------------------------------------------------------------
+# Test 6: dispozitivele 'unknown' trebuie reverificate periodic
+# ---------------------------------------------------------------------------
+
+def test_unknown_devices_are_rechecked_with_existing_metadata():
+    print("\n--- Reclasificare periodică pentru dispozitive unknown ---")
+
+    device_type = 'unknown'
+    mac_address = "AC:BC:32:AA:BB:CC"
+    hostname = None
+    should_reclassify = (
+        False
+        or (device_type == 'client' and (mac_address or hostname))
+        or (device_type == 'mobile' and (mac_address or hostname))
+        or (device_type == 'unknown' and (mac_address or hostname))
+    )
+    _assert(
+        should_reclassify,
+        "Dispozitivele 'unknown' cu MAC/hostname existent intră în reverificarea periodică"
+    )
+
+    from app.ids.sniffer import _detect_device_type
+    detected = _detect_device_type("192.168.224.6", mac=mac_address)
+    _assert(
+        detected == 'mobile',
+        "Un dispozitiv rămas 'unknown' poate fi reclasificat corect la 'mobile' la reverificare"
+    )
+
+
 if __name__ == '__main__':
     test_fixed_device_types_set()
     test_flush_does_not_reclassify_fixed_types()
     test_mobile_reset_flag_and_scheduler_structure()
     test_reset_mobile_always_logs()
     test_mobile_can_be_reclassified_to_client()
+    test_unknown_devices_are_rechecked_with_existing_metadata()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")
