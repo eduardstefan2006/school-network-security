@@ -66,6 +66,9 @@
             <span class="badge bg-light text-dark" id="type-client">
                 💻 Clienți <span class="ms-1">{{ type_counts.get('client', 0) }}</span>
             </span>
+            <span class="badge bg-warning text-dark" id="type-printer">
+                🖨️ Imprimante <span class="ms-1">{{ type_counts.get('printer', 0) }}</span>
+            </span>
             <span class="badge bg-danger" id="type-mobile">
                 📱 Mobile <span class="ms-1">{{ type_counts.get('mobile', 0) }}</span>
             </span>
@@ -175,6 +178,8 @@
                             <span class="badge bg-success">🖥️ Server</span>
                         {% elif device.device_type == 'client' %}
                             <span class="badge bg-light text-dark">💻 Client</span>
+                        {% elif device.device_type == 'printer' %}
+                            <span class="badge bg-warning text-dark">🖨️ Imprimantă</span>
                         {% elif device.device_type == 'mobile' %}
                             <span class="badge bg-danger">📱 Mobile</span>
                         {% else %}
@@ -272,6 +277,7 @@
                         <option value="camera">📹 Cameră</option>
                         <option value="server">🖥️ Server</option>
                         <option value="client">💻 Client</option>
+                        <option value="printer">🖨️ Imprimantă</option>
                         <option value="mobile">📱 Mobile</option>
                         <option value="unknown">❓ Necunoscut</option>
                     </select>
@@ -532,7 +538,7 @@ function updateStats(devices) {
     devices.forEach(d => {
         typeCounts[d.type] = (typeCounts[d.type] || 0) + 1;
     });
-    ['router', 'switch', 'ap', 'camera', 'server', 'client', 'mobile', 'unknown'].forEach(t => {
+    ['router', 'switch', 'ap', 'camera', 'server', 'client', 'printer', 'mobile', 'unknown'].forEach(t => {
         const el = document.getElementById('type-' + t);
         const countEl = el && el.querySelector('span');
         if (countEl) countEl.textContent = typeCounts[t] || 0;
