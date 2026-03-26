@@ -29,7 +29,6 @@ def _assert(condition, description):
 def test_client_vendor_ouis():
     print("\n--- OUI non-mobile / client ---")
     _assert(_looks_like_client_device("B8:27:EB:BF:D6:ED"), "Raspberry Pi OUI → client")
-    _assert(_looks_like_client_device("DC:CD:2F:86:4F:15"), "Epson OUI → client")
     _assert(_looks_like_client_device("40:C2:BA:70:6B:56"), "Compal OUI → client")
     _assert(not _looks_like_client_device("AC:BC:32:AA:BB:CC"), "Apple OUI → NU client non-mobile")
 
@@ -38,8 +37,8 @@ def test_detect_device_type_for_reported_devices():
     print("\n--- Dispozitive raportate din UI ---")
     _assert(_detect_device_type("192.168.221.5", mac="B8:27:EB:BF:D6:ED") == 'client',
             "192.168.221.5 Raspberry Pi → client")
-    _assert(_detect_device_type("192.168.221.4", mac="DC:CD:2F:86:4F:15") == 'client',
-            "192.168.221.4 Epson → client")
+    _assert(_detect_device_type("192.168.221.4", mac="DC:CD:2F:86:4F:15") == 'printer',
+            "192.168.221.4 Epson → printer")
     _assert(_detect_device_type("192.168.231.14", mac="40:C2:BA:70:6B:56") == 'client',
             "192.168.231.14 calculator laborator → client")
 

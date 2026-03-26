@@ -623,6 +623,25 @@ def _load_client_vendor_ouis() -> dict:
     return {}
 
 
+def _load_printer_vendor_ouis() -> dict:
+    """Încarcă OUI-urile imprimantelor din data/oui_vendors.json."""
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    json_path = os.path.join(base_dir, 'data', 'oui_vendors.json')
+    if os.path.isfile(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            printer_vendors = data.get('_printer_vendors', [])
+            return {
+                vendor: [oui.upper() for oui in data[vendor]]
+                for vendor in printer_vendors
+                if vendor in data and isinstance(data[vendor], list)
+            }
+        except Exception as e:
+            print(f"[Sniffer] Eroare la încărcarea OUI-urilor imprimante din {json_path}: {e}")
+    return {}
+
+
 _AP_VENDOR_OUIS = _load_ap_vendor_ouis()
 
 # Set plat de OUI-uri AP pentru lookup O(1)
@@ -651,6 +670,13 @@ _CLIENT_OUI_SET = frozenset(
     oui for ouis in _CLIENT_VENDOR_OUIS.values() for oui in ouis
 )
 
+_PRINTER_VENDOR_OUIS = _load_printer_vendor_ouis()
+
+# Set plat de OUI-uri imprimante pentru lookup O(1)
+_PRINTER_OUI_SET = frozenset(
+    oui for ouis in _PRINTER_VENDOR_OUIS.values() for oui in ouis
+)
+
 # Pattern regex pentru hostname-uri tipice de dispozitive mobile
 _MOBILE_HOSTNAME_RE = re.compile(
     r'(iphone|ipad|ipod|android|galaxy|samsung|pixel|nexus|oneplus|huawei|xiaomi|'
@@ -674,6 +700,13 @@ _COMPUTER_HOSTNAME_RE = re.compile(
     r'(windows|win\d+|desktop|laptop|notebook|macbook|imac|thinkpad|ideapad|legion|'
     r'latitude|precision|optiplex|vostro|inspiron|elitebook|probook|zbook|pavilion|'
     r'omen|envy|aspire|swift|travelmate|surface|workstation|pc[-_\s]?|nb[-_\s]?)',
+    re.IGNORECASE
+)
+
+# Pattern regex pentru hostname-uri tipice de imprimante
+_PRINTER_HOSTNAME_RE = re.compile(
+    r'(printer|imprimanta|print|epson|hp[-_\s]?(laserjet|officejet|deskjet|envy)|'
+    r'brother|canon|xerox|kyocera|ricoh|lexmark|mfp)',
     re.IGNORECASE
 )
 
@@ -801,6 +834,17 @@ def _looks_like_client_device(mac: str | None) -> bool:
     return oui in _CLIENT_OUI_SET
 
 
+def _looks_like_printer(mac: str | None, hostname: str | None = None) -> bool:
+    """Returnează True dacă dispozitivul pare a fi o imprimantă."""
+    if mac:
+        oui = get_mac_oui(mac)
+        if oui in _PRINTER_OUI_SET:
+            return True
+    if hostname and _PRINTER_HOSTNAME_RE.search(hostname):
+        return True
+    return False
+
+
 # Access Point-uri (routere TP-Link/Asus în modul AP pe VLAN-uri)
 # Menținut pentru compatibilitate inversă; detecția automată OUI are prioritate.
 _AP_IPS = {
@@ -852,11 +896,12 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_ho
     2. Clasificare din BD (dispozitive is_known cu tip fix salvat via auto-discovery)
     3. IP hardcodat (compatibilitate inversă: router, switch, cameră, server, AP din _AP_IPS)
     4. Dacă MAC aparține unui producător de camere de supraveghere (Kedacom/Tiandy) → 'camera'
-    5. Dacă MAC aparține unui producător de dispozitive mobile (Apple, Samsung, etc.) → 'mobile'
-    6. Dacă hostname-ul (DHCP/DNS) sugerează un dispozitiv mobil → 'mobile'
-    7. Dacă MAC-ul este randomizat (LAA bit setat) și dispozitivul e pe un subnet VLAN client
+    5. Dacă MAC/hostname sugerează o imprimantă → 'printer'
+    6. Dacă MAC aparține unui producător de dispozitive mobile (Apple, Samsung, etc.) → 'mobile'
+    7. Dacă hostname-ul (DHCP/DNS) sugerează un dispozitiv mobil → 'mobile'
+    8. Dacă MAC-ul este randomizat (LAA bit setat) și dispozitivul e pe un subnet VLAN client
        și dispozitivul NU a stat online ≥6 ore → 'mobile'
-    8. Fallback → 'client'
+    9. Fallback → 'client'
     """
     # 1. Detecție automată AP pe baza OUI + VLAN (are prioritate față de IP)
     if _looks_like_ap(mac, vlan_id, ip_str):
@@ -911,7 +956,11 @@ def _detect_device_type(ip_str, mac=None, vlan_id=None, hostname=None, online_ho
     if _looks_like_camera(mac):
         return 'camera'
 
-    # 4.5. Detecție automată dispozitive client non-mobile pe baza OUI producător
+    # 4.5. Detecție automată imprimante pe baza OUI/hostname
+    if _looks_like_printer(mac, hostname):
+        return 'printer'
+
+    # 4.6. Detecție automată dispozitive client non-mobile pe baza OUI producător
     # (Raspberry Pi, imprimante, stații de lucru etc.)
     if _looks_like_client_device(mac):
         return 'client'
