@@ -150,6 +150,9 @@ def block_ip(alert_id):
     mikrotik = getattr(current_app, 'mikrotik_client', None)
     if mikrotik and mikrotik.is_connected():
         comment = f'Blocat din SchoolSec de {current_user.username}'
+        ip_success = mikrotik.block_ip_on_router(alert.source_ip, comment=comment)
+        if ip_success:
+            flash(f'IP-ul {alert.source_ip} a fost blocat și pe routerul MikroTik.', 'info')
         if mac_blocked:
             success = mikrotik.block_mac_on_router(blocked_mac_addr, comment=comment)
             if success:
@@ -158,10 +161,8 @@ def block_ip(alert_id):
             success = mikrotik.block_hostname_on_router(blocked_hostname_val, comment=comment)
             if success:
                 flash(f'Hostname-ul {blocked_hostname_val} a fost blocat și pe routerul MikroTik.', 'info')
-        else:
-            success = mikrotik.block_ip_on_router(alert.source_ip, comment=comment)
-            if success:
-                flash(f'IP-ul {alert.source_ip} a fost blocat și pe routerul MikroTik.', 'info')
+    else:
+        flash('MikroTik nu este conectat: blocarea s-a făcut doar local în aplicație.', 'warning')
 
     if mac_blocked:
         flash(f'IP-ul {alert.source_ip} și MAC-ul {blocked_mac_addr} au fost blocate cu succes.', 'success')
