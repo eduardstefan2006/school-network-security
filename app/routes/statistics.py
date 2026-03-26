@@ -325,9 +325,6 @@ def api_app_usage():
     )
     coverage_percent = round((total_bytes / total_network_bytes) * 100, 2) if total_network_bytes > 0 else 0.0
 
-    for app in apps:
-        app['network_percent'] = round((app['bytes_total'] / total_network_bytes) * 100, 2) if total_network_bytes > 0 else 0.0
-
     return jsonify({
         'period': period,
         'summary': {
