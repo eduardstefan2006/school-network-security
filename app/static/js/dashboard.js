@@ -102,11 +102,11 @@ function updateStats() {
         })
         .then(data => {
             // Actualizăm cardurile de statistici
-            const totalPackets = document.getElementById('totalPackets');
+            const totalTraffic = document.getElementById('totalTraffic');
             const activeAlerts = document.getElementById('activeAlerts');
             const blockedIPs = document.getElementById('blockedIPs');
 
-            if (totalPackets) totalPackets.textContent = data.total_packets.toLocaleString();
+            if (totalTraffic) totalTraffic.textContent = formatBytes(data.bytes_total || 0);
             if (activeAlerts) activeAlerts.textContent = data.active_alerts;
             if (blockedIPs) blockedIPs.textContent = data.blocked_ips;
 

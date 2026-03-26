@@ -116,7 +116,7 @@
                     <th>Descriere</th>
                     <th class="sortable d-none d-md-table-cell" data-col="first_seen">Prima dată</th>
                     <th class="sortable" data-col="last_seen">Ultima dată</th>
-                    <th class="sortable text-end" data-col="packets">Pachete</th>
+                    <th class="sortable text-end" data-col="packets">Trafic</th>
                     <th class="text-end">Alerte</th>
                     <th>VLAN</th>
                     <th>Cunoscut</th>
@@ -138,6 +138,7 @@
                     data-type="{{ device.device_type }}"
                     data-online="{{ 'true' if is_online else 'false' }}"
                     data-known="{{ 'true' if device.is_known else 'false' }}"
+                    data-bytes="{{ device.total_bytes or 0 }}"
                     data-locked="{{ 'true' if device.type_locked else 'false' }}"
                     style="cursor:pointer"
                     onclick="toggleDetails(this)">
@@ -197,7 +198,7 @@
                         <small class="text-muted">{{ (device.last_seen|to_local).strftime('%d.%m.%Y %H:%M') }}</small>
                     </td>
                     <td class="text-end">
-                        <small class="text-light">{{ device.total_packets }}</small>
+                        <small class="text-info">{{ (device.total_bytes or 0)|filesizeformat(true) }}</small>
                     </td>
                     <td class="text-end">
                         {% if device.alert_count > 0 %}
@@ -410,7 +411,7 @@ function getCellVal(row, col) {
         'type': () => row.dataset.type,
         'first_seen': () => row.querySelector('td:nth-child(6)') ? row.querySelector('td:nth-child(6)').textContent.trim() : '',
         'last_seen': () => row.querySelector('td:nth-child(7)') ? row.querySelector('td:nth-child(7)').textContent.trim() : '',
-        'packets': () => parseInt(row.querySelector('td:nth-child(8)').textContent.trim()) || 0,
+        'packets': () => parseInt(row.dataset.bytes || '0', 10) || 0,
     };
     const fn = colMap[col];
     return fn ? fn() : '';
@@ -484,7 +485,8 @@ function toggleDetails(row) {
                 const pct = Math.round((c.bytes_total / maxBytes) * 100);
                 const kb = c.bytes_total < 1024 ? c.bytes_total + ' B'
                          : c.bytes_total < 1048576 ? (c.bytes_total / 1024).toFixed(1) + ' KB'
-                         : (c.bytes_total / 1048576).toFixed(2) + ' MB';
+                         : c.bytes_total < 1073741824 ? (c.bytes_total / 1048576).toFixed(2) + ' MB'
+                         : (c.bytes_total / 1073741824).toFixed(2) + ' GB';
                 return `<tr>
                     <td style="width:30%"><span class="text-light">${_escHtml(c.app_name)}</span></td>
                     <td style="width:35%">
