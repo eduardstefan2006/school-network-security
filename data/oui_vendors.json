@@ -3,7 +3,8 @@
   "_ap_vendors": ["tplink", "asus"],
   "_mobile_vendors": ["apple_mobile", "samsung_mobile", "xiaomi", "oneplus", "huawei", "oppo", "vivo", "motorola_mobile", "realme", "nokia", "poco", "honor", "lenovo", "google"],
   "_camera_vendors": ["surveillance_cameras"],
-  "_client_vendors": ["raspberry_pi", "epson", "compal"],
+  "_client_vendors": ["raspberry_pi", "compal"],
+  "_printer_vendors": ["epson"],
   "surveillance_cameras": [
     "E0:61:B2",
     "C0:39:5A",
