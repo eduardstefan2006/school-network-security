@@ -79,6 +79,7 @@ def api_devices():
         'first_seen': d.first_seen.strftime('%d.%m.%Y %H:%M'),
         'last_seen': d.last_seen.strftime('%d.%m.%Y %H:%M'),
         'packets': d.total_packets,
+        'bytes': d.total_bytes or 0,
         'is_known': d.is_known,
         'is_online': (now - d.last_seen).total_seconds() < 300,
         'alert_count': d.alert_count,
