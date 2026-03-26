@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from flask import Blueprint, render_template, jsonify, request
 from flask_login import login_required
 from sqlalchemy import func, or_
-from app.models import Alert, AppTrafficStat
+from app.models import Alert, AppTrafficStat, NetworkDevice
 from app import db
 
 statistics_bp = Blueprint('statistics', __name__)
@@ -269,7 +269,6 @@ def api_app_usage():
     app_totals = {}
     timeline_buckets = {}
     total_bytes = 0
-    total_packets = 0
     unique_ips = set()
     latest_seen = None
 
@@ -278,20 +277,17 @@ def api_app_usage():
         entry = app_totals.setdefault(key, {
             'app_name': key,
             'bytes_total': 0,
-            'packets_count': 0,
             'unique_ips': set(),
             'last_seen': None,
             'hostnames': set(),
         })
         entry['bytes_total'] += row.bytes_total or 0
-        entry['packets_count'] += row.packets_count or 0
         entry['unique_ips'].add(row.source_ip)
         entry['hostnames'].add(row.hostname)
         if entry['last_seen'] is None or (row.last_seen and row.last_seen > entry['last_seen']):
             entry['last_seen'] = row.last_seen
 
         total_bytes += row.bytes_total or 0
-        total_packets += row.packets_count or 0
         unique_ips.add(row.source_ip)
         if latest_seen is None or (row.last_seen and row.last_seen > latest_seen):
             latest_seen = row.last_seen
@@ -306,7 +302,6 @@ def api_app_usage():
         apps.append({
             'app_name': entry['app_name'],
             'bytes_total': entry['bytes_total'],
-            'packets_count': entry['packets_count'],
             'unique_ips': len(entry['unique_ips']),
             'traffic_percent': pct,
             'last_seen': entry['last_seen'].strftime('%d.%m.%Y %H:%M:%S') if entry['last_seen'] else 'N/A',
@@ -325,12 +320,21 @@ def api_app_usage():
         'bytes_total': [timeline_buckets[label] for label in timeline_labels],
     }
 
+    total_network_bytes = (
+        db.session.query(func.coalesce(func.sum(NetworkDevice.total_bytes), 0)).scalar() or 0
+    )
+    coverage_percent = round((total_bytes / total_network_bytes) * 100, 2) if total_network_bytes > 0 else 0.0
+
+    for app in apps:
+        app['network_percent'] = round((app['bytes_total'] / total_network_bytes) * 100, 2) if total_network_bytes > 0 else 0.0
+
     return jsonify({
         'period': period,
         'summary': {
             'total_apps': len(apps),
             'total_bytes': total_bytes,
-            'total_packets': total_packets,
+            'total_network_bytes': total_network_bytes,
+            'traffic_coverage_percent': coverage_percent,
             'unique_ips': len(unique_ips),
             'latest_seen': latest_seen.strftime('%d.%m.%Y %H:%M:%S') if latest_seen else 'N/A',
         },
