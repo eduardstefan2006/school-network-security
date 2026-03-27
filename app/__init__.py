@@ -166,7 +166,11 @@ def create_app(config_name=None):
     from config import config
     if config_name is None:
         config_name = os.environ.get('FLASK_ENV', 'default')
-    app.config.from_object(config[config_name])
+    config_class = config[config_name]
+    app.config.from_object(config_class)
+    # Hook opțional de inițializare/validare specific mediului
+    if hasattr(config_class, 'init_app'):
+        config_class.init_app(app)
 
     # Crearea directorului de loguri dacă nu există
     os.makedirs(app.config['LOG_DIR'], exist_ok=True)

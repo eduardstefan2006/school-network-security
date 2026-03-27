@@ -48,7 +48,10 @@ def _build_app():
     with app.app_context():
         admin = User(username='admin-test', role='admin', email='admin@test.local')
         admin.set_password('secret')
+        monitor = User(username='monitor-test', role='monitor', email='monitor@test.local')
+        monitor.set_password('secret')
         db.session.add(admin)
+        db.session.add(monitor)
         db.session.add(NetworkConfig(key='setup_complete', value='true'))
         db.session.commit()
 
@@ -417,6 +420,43 @@ def test_statistics_app_usage_export_csv():
             os.unlink(db_path)
 
 
+def test_exports_require_admin_and_bulk_has_limit():
+    print("\n--- export permissions + bulk limit ---")
+
+    app, db_path = _build_app()
+    try:
+        from app import db
+        from app.models import User, NetworkDevice
+
+        with app.app_context():
+            monitor = User.query.filter_by(username='monitor-test').first()
+            admin = User.query.filter_by(username='admin-test').first()
+            db.session.add(NetworkDevice(ip_address='192.168.224.55', device_type='unknown', is_known=False))
+            db.session.commit()
+            monitor_id = monitor.id
+            admin_id = admin.id
+
+        monitor_client = app.test_client()
+        _login(monitor_client, monitor_id)
+        _assert(monitor_client.get('/network/export.csv').status_code == 403, "Export network CSV este interzis pentru non-admin")
+        _assert(
+            monitor_client.get('/statistics/apps/export.csv?period=today').status_code == 403,
+            "Export app-usage CSV este interzis pentru non-admin",
+        )
+
+        admin_client = app.test_client()
+        _login(admin_client, admin_id)
+        too_many_ids = list(range(1, 205))
+        resp = admin_client.post('/api/network/devices/bulk-update', json={
+            'action': 'mark_known',
+            'device_ids': too_many_ids,
+        })
+        _assert(resp.status_code == 400, "Bulk update respinge payload-uri peste limita configurată")
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 if __name__ == '__main__':
     test_api_ip_connections_returns_sorted_results()
     test_update_device_can_remove_known_flag_without_typeerror()
@@ -426,6 +466,7 @@ if __name__ == '__main__':
     test_api_app_usage_handles_missing_hostnames_and_timeline_order()
     test_network_bulk_update_and_export_csv()
     test_statistics_app_usage_export_csv()
+    test_exports_require_admin_and_bulk_has_limit()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")

@@ -5,7 +5,7 @@ Afișează toate dispozitivele detectate în rețea.
 from datetime import datetime
 import csv
 import io
-from flask import Blueprint, render_template, jsonify, request, Response
+from flask import Blueprint, render_template, jsonify, request, Response, current_app
 from flask_login import login_required, current_user
 
 from app import db
@@ -93,6 +93,8 @@ def api_devices():
 @login_required
 def export_devices_csv():
     """Exportă lista dispozitivelor detectate în format CSV."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis'}), 403
     devices = NetworkDevice.query.order_by(NetworkDevice.last_seen.desc()).all()
     output = io.StringIO()
     writer = csv.writer(output)
@@ -196,6 +198,11 @@ def bulk_update_devices():
     action = (data.get('action') or '').strip().lower()
     if not ids or action not in {'mark_known', 'mark_unknown', 'reclassify'}:
         return jsonify({'error': 'Parametri invalizi'}), 400
+    max_items = int(current_app.config.get('BULK_UPDATE_MAX_ITEMS', 200))
+    if len(ids) > max_items:
+        return jsonify({
+            'error': f'Prea multe dispozitive selectate ({len(ids)}). Maxim permis: {max_items}.'
+        }), 400
 
     devices = NetworkDevice.query.filter(NetworkDevice.id.in_(ids)).all()
     if not devices:

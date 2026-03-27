@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 import csv
 import io
 from flask import Blueprint, render_template, jsonify, request, Response
-from flask_login import login_required
+from flask_login import login_required, current_user
 from sqlalchemy import func, or_
 from app.models import Alert, AppTrafficStat, NetworkDevice
 from app import db
@@ -348,6 +348,8 @@ def api_app_usage():
 @login_required
 def export_app_usage_csv():
     """Exportă raportul app-usage în CSV pentru perioada/selectarea curentă."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis'}), 403
     period = request.args.get('period', 'today')
     if period not in ('today', '7d', '30d', 'all'):
         period = 'today'

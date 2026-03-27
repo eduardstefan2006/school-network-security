@@ -15,7 +15,8 @@
     </div>
 </div>
 
-<div class="alert alert-secondary py-2 mb-4 d-flex flex-wrap align-items-center gap-3 small">
+<div class="alert py-2 mb-4 d-flex flex-wrap align-items-center gap-3 small text-light border border-info"
+     style="background:#1f2937;">
     <span><strong>Health:</strong></span>
     <span id="healthSniffer" class="badge {% if health_status.sniffer_running %}bg-success{% else %}bg-danger{% endif %}">
         Sniffer: {% if health_status.sniffer_running %}RUNNING{% else %}STOPPED{% endif %}
@@ -23,10 +24,10 @@
     <span id="healthMikrotik" class="badge {% if health_status.mikrotik_connected %}bg-success{% else %}bg-warning text-dark{% endif %}">
         MikroTik: {% if health_status.mikrotik_connected %}CONNECTED{% else %}DISCONNECTED{% endif %}
     </span>
-    <span class="text-muted" id="healthLastPacket">
+    <span class="text-info" id="healthLastPacket">
         Ultim pachet: {{ health_status.last_packet_seen or 'N/A' }}
     </span>
-    <span class="text-muted">Sniffer start: {{ health_status.sniffer_start_time or 'N/A' }}</span>
+    <span class="text-info">Sniffer start: {{ health_status.sniffer_start_time or 'N/A' }}</span>
 </div>
 
 <!-- Carduri statistici principale -->
