@@ -290,12 +290,62 @@ def test_api_app_usage_returns_percentages_and_filters():
             os.unlink(db_path)
 
 
+def test_api_app_usage_handles_missing_hostnames_and_timeline_order():
+    print("\n--- /api/statistics/app-usage (hostname null + timeline) ---")
+
+    app, db_path = _build_app()
+    try:
+        from app import db
+        from app.models import User, AppTrafficStat
+
+        with app.app_context():
+            admin = User.query.filter_by(username='admin-test').first()
+            db.session.add_all([
+                AppTrafficStat(
+                    stat_date=datetime(2025, 12, 31, tzinfo=timezone.utc).date(),
+                    source_ip='192.168.224.8',
+                    hostname='unknown.local',
+                    app_name=None,
+                    bytes_total=1000,
+                    packets_count=10,
+                    first_seen=datetime(2025, 12, 31, 12, 0, tzinfo=timezone.utc),
+                    last_seen=datetime(2025, 12, 31, 12, 10, tzinfo=timezone.utc),
+                ),
+                AppTrafficStat(
+                    stat_date=datetime(2026, 1, 1, tzinfo=timezone.utc).date(),
+                    source_ip='192.168.224.9',
+                    hostname='example.org',
+                    app_name='Example',
+                    bytes_total=2000,
+                    packets_count=20,
+                    first_seen=datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc),
+                    last_seen=datetime(2026, 1, 1, 12, 10, tzinfo=timezone.utc),
+                ),
+            ])
+            db.session.commit()
+            admin_id = admin.id
+
+        client = app.test_client()
+        _login(client, admin_id)
+        response = client.get('/api/statistics/app-usage?period=all')
+        data = response.get_json()
+
+        _assert(response.status_code == 200, "API-ul app-usage răspunde cu 200 când există hostname-uri lipsă")
+        _assert(data['timeline']['labels'] == ['31.12', '01.01'], "Timeline-ul este ordonat cronologic pe date reale")
+        fallback_apps = [app for app in data['top_apps'] if app['app_name'] == 'unknown.local']
+        _assert(bool(fallback_apps), "Intrările fără app_name folosesc fallback-ul pe hostname")
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 if __name__ == '__main__':
     test_api_ip_connections_returns_sorted_results()
     test_update_device_can_remove_known_flag_without_typeerror()
     test_reclassify_mobile_includes_unknown_devices()
     test_cleanup_old_ip_connections_respects_retention()
     test_api_app_usage_returns_percentages_and_filters()
+    test_api_app_usage_handles_missing_hostnames_and_timeline_order()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")
