@@ -136,7 +136,7 @@
                         </thead>
                         <tbody id="apps-table-body">
                             <tr>
-                                <td colspan="8" class="text-center text-muted py-3">Se încarcă...</td>
+                                <td colspan="7" class="text-center text-muted py-3">Se încarcă...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -178,7 +178,7 @@
             .then(renderUsage)
             .catch(err => {
                 document.getElementById('apps-table-body').innerHTML = `
-                    <tr><td colspan="8" class="text-center text-danger py-3">
+                    <tr><td colspan="7" class="text-center text-danger py-3">
                         Eroare la încărcarea datelor: ${String(err)}
                     </td></tr>`;
             });
@@ -202,7 +202,7 @@
 
         const tableBody = document.getElementById('apps-table-body');
         if (!apps.length) {
-            tableBody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Nu există încă trafic agregat pentru perioada selectată.</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Nu există încă trafic agregat pentru perioada selectată.</td></tr>';
         } else {
             tableBody.innerHTML = apps.map((app, idx) => `
                 <tr>
