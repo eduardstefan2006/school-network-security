@@ -31,7 +31,7 @@ def _run_sync(app, mikrotik_client):
 
     with app.app_context():
         from app import db
-        from app.models import NetworkDevice, BlockedHostname, SecurityLog
+        from app.models import NetworkDevice, BlockedIP, BlockedMAC, BlockedHostname, SecurityLog
         from app.ids.sniffer import (
             _get_vlan_from_ip,
             traffic_stats,
@@ -171,7 +171,78 @@ def _run_sync(app, mikrotik_client):
                     print(f"[MikroTik Sync] Eroare la actualizarea ARP: {e}")
 
         # ------------------------------------------------------------------
-        # 3. Actualizare traffic_stats cu protocoalele din firewall connections
+        # 3. Retry automat sincronizare blocări active pe router
+        # ------------------------------------------------------------------
+        active_ips = BlockedIP.query.filter_by(is_active=True).all()
+        active_macs = BlockedMAC.query.filter_by(is_active=True).all()
+        active_hostnames = BlockedHostname.query.filter_by(is_active=True).all()
+
+        router_ip_set = {
+            (entry.get('address') or '').strip()
+            for entry in mikrotik_client.get_address_list_entries('schoolsec-blocked')
+        }
+        router_mac_entries = mikrotik_client.get_blocked_macs_on_router()
+        router_mac_set = {
+            (entry.get('mac_address') or '').strip().upper()
+            for entry in router_mac_entries
+        }
+        router_hostname_markers = {
+            ((entry.get('comment') or '').lower())
+            for entry in router_mac_entries
+            if entry.get('comment')
+        }
+
+        ip_ok = 0
+        for entry in active_ips:
+            ip = (entry.ip_address or '').strip()
+            if not ip:
+                continue
+            if ip in router_ip_set:
+                ip_ok += 1
+                continue
+            if mikrotik_client.block_ip_on_router(ip, comment='SchoolSec auto-sync blocked IP'):
+                ip_ok += 1
+
+        mac_ok = 0
+        for entry in active_macs:
+            mac = (entry.mac_address or '').strip().upper()
+            if not mac:
+                continue
+            if mac in router_mac_set:
+                mac_ok += 1
+                continue
+            if mikrotik_client.block_mac_on_router(mac, comment='SchoolSec auto-sync blocked MAC'):
+                mac_ok += 1
+
+        hn_ok = 0
+        for entry in active_hostnames:
+            hostname = (entry.hostname or '').strip().lower()
+            if not hostname:
+                continue
+            marker = f'hostname={hostname}'
+            if any(marker in comment for comment in router_hostname_markers):
+                hn_ok += 1
+                continue
+            if mikrotik_client.block_hostname_on_router(hostname, comment='SchoolSec auto-sync blocked hostname'):
+                hn_ok += 1
+
+        # Logăm doar când există diferențe (sincronizare incompletă)
+        if ip_ok != len(active_ips) or mac_ok != len(active_macs) or hn_ok != len(active_hostnames):
+            db.session.add(SecurityLog(
+                event_type='router_sync_partial',
+                message=(
+                    f'Auto-sync blocări parțial: IP {ip_ok}/{len(active_ips)}, '
+                    f'MAC {mac_ok}/{len(active_macs)}, Hostname {hn_ok}/{len(active_hostnames)}'
+                ),
+                severity='warning',
+            ))
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        # ------------------------------------------------------------------
+        # 4. Actualizare traffic_stats cu protocoalele din firewall connections
         # ------------------------------------------------------------------
         connections = mikrotik_client.get_active_connections()
         if connections:
@@ -185,7 +256,7 @@ def _run_sync(app, mikrotik_client):
               f"{len(arp_table)} ARP, {len(connections)} conexiuni.")
 
         # ------------------------------------------------------------------
-        # 4. Monitorizare securitate externă
+        # 5. Monitorizare securitate externă
         # ------------------------------------------------------------------
         external_monitor = getattr(app, '_external_monitor', None)
         if external_monitor:

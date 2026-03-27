@@ -150,6 +150,9 @@ def block_ip(alert_id):
     mikrotik = getattr(current_app, 'mikrotik_client', None)
     if mikrotik and mikrotik.is_connected():
         comment = f'Blocat din SchoolSec de {current_user.username}'
+        ip_success = mikrotik.block_ip_on_router(alert.source_ip, comment=comment)
+        if ip_success:
+            flash(f'IP-ul {alert.source_ip} a fost blocat și pe routerul MikroTik.', 'info')
         if mac_blocked:
             success = mikrotik.block_mac_on_router(blocked_mac_addr, comment=comment)
             if success:
@@ -158,10 +161,8 @@ def block_ip(alert_id):
             success = mikrotik.block_hostname_on_router(blocked_hostname_val, comment=comment)
             if success:
                 flash(f'Hostname-ul {blocked_hostname_val} a fost blocat și pe routerul MikroTik.', 'info')
-        else:
-            success = mikrotik.block_ip_on_router(alert.source_ip, comment=comment)
-            if success:
-                flash(f'IP-ul {alert.source_ip} a fost blocat și pe routerul MikroTik.', 'info')
+    else:
+        flash('MikroTik nu este conectat: blocarea s-a făcut doar local în aplicație.', 'warning')
 
     if mac_blocked:
         flash(f'IP-ul {alert.source_ip} și MAC-ul {blocked_mac_addr} au fost blocate cu succes.', 'success')
@@ -183,6 +184,47 @@ def blocked_devices():
                            blocked_ips=ips,
                            blocked_macs=macs,
                            blocked_hostnames=hostnames)
+
+
+@alerts_bp.route('/blocked/sync-router', methods=['POST'])
+@login_required
+def sync_blocked_to_router():
+    """Retry sincronizare blocări active pe routerul MikroTik."""
+    if not current_user.is_admin():
+        flash('Nu ai permisiunea de a sincroniza blocările pe router.', 'danger')
+        return redirect(url_for('alerts.blocked_devices'))
+
+    mikrotik = getattr(current_app, 'mikrotik_client', None)
+    if not mikrotik or not mikrotik.is_connected():
+        flash('MikroTik nu este conectat. Sincronizarea a fost amânată.', 'warning')
+        return redirect(url_for('alerts.blocked_devices'))
+
+    comment = f'Sync manual din SchoolSec de {current_user.username}'
+    ips = BlockedIP.query.filter_by(is_active=True).all()
+    macs = BlockedMAC.query.filter_by(is_active=True).all()
+    hostnames = BlockedHostname.query.filter_by(is_active=True).all()
+
+    ip_ok = sum(1 for ip in ips if mikrotik.block_ip_on_router(ip.ip_address, comment=comment))
+    mac_ok = sum(1 for mac in macs if mikrotik.block_mac_on_router(mac.mac_address, comment=comment))
+    hn_ok = sum(1 for hn in hostnames if mikrotik.block_hostname_on_router(hn.hostname, comment=comment))
+
+    log = SecurityLog(
+        event_type='router_sync_blocked',
+        message=(
+            f'Sincronizare blocări pe router de {current_user.username}: '
+            f'IP {ip_ok}/{len(ips)}, MAC {mac_ok}/{len(macs)}, Hostname {hn_ok}/{len(hostnames)}'
+        ),
+        severity='info',
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    flash(
+        f'Sincronizare router finalizată: IP {ip_ok}/{len(ips)}, '
+        f'MAC {mac_ok}/{len(macs)}, Hostname {hn_ok}/{len(hostnames)}.',
+        'info',
+    )
+    return redirect(url_for('alerts.blocked_devices'))
 
 
 @alerts_bp.route('/blocked-ips')

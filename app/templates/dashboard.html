@@ -15,6 +15,21 @@
     </div>
 </div>
 
+<div class="alert py-2 mb-4 d-flex flex-wrap align-items-center gap-3 small text-light border border-info"
+     style="background:#1f2937;">
+    <span><strong>Health:</strong></span>
+    <span id="healthSniffer" class="badge {% if health_status.sniffer_running %}bg-success{% else %}bg-danger{% endif %}">
+        Sniffer: {% if health_status.sniffer_running %}RUNNING{% else %}STOPPED{% endif %}
+    </span>
+    <span id="healthMikrotik" class="badge {% if health_status.mikrotik_connected %}bg-success{% else %}bg-warning text-dark{% endif %}">
+        MikroTik: {% if health_status.mikrotik_connected %}CONNECTED{% else %}DISCONNECTED{% endif %}
+    </span>
+    <span class="text-info" id="healthLastPacket">
+        Ultim pachet: {{ health_status.last_packet_seen or 'N/A' }}
+    </span>
+    <span class="text-info">Sniffer start: {{ health_status.sniffer_start_time or 'N/A' }}</span>
+</div>
+
 <!-- Carduri statistici principale -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">
@@ -22,15 +37,18 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <p class="text-muted small mb-1">Total Pachete</p>
-                        <h3 class="text-success fw-bold" id="totalPackets">{{ stats.total_packets }}</h3>
+                        <p class="text-muted small mb-1" data-bs-toggle="tooltip" title="Trafic total observat de senzor, exprimat în bytes">Trafic Total</p>
+                        <h3 class="text-success fw-bold" id="totalTraffic">
+                            {% set bytes = stats.bytes_total or 0 %}
+                            {% if bytes < 1024 %}{{ bytes }} B
+                            {% elif bytes < 1048576 %}{{ "%.1f"|format(bytes / 1024) }} KB
+                            {% elif bytes < 1073741824 %}{{ "%.2f"|format(bytes / 1048576) }} MB
+                            {% else %}{{ "%.2f"|format(bytes / 1073741824) }} GB
+                            {% endif %}
+                        </h3>
                     </div>
                     <i class="bi bi-diagram-3 text-success" style="font-size: 2rem; opacity: 0.5;"></i>
                 </div>
-                <small class="text-muted">
-                    <i class="bi bi-hdd me-1"></i>
-                    {{ "%.1f"|format(stats.bytes_total / 1024 / 1024) }} MB transferați
-                </small>
             </div>
         </div>
     </div>
@@ -39,7 +57,7 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <p class="text-muted small mb-1">Alerte Active</p>
+                        <p class="text-muted small mb-1" data-bs-toggle="tooltip" title="Numărul alertelor cu status activ">Alerte Active</p>
                         <h3 class="text-danger fw-bold" id="activeAlerts">{{ active_alerts }}</h3>
                     </div>
                     <i class="bi bi-exclamation-triangle text-danger" style="font-size: 2rem; opacity: 0.5;"></i>
@@ -55,7 +73,7 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <p class="text-muted small mb-1">IP-uri Blocate</p>
+                        <p class="text-muted small mb-1" data-bs-toggle="tooltip" title="IP-uri blocate local în aplicație (sincronizate best-effort cu routerul)">IP-uri Blocate</p>
                         <h3 class="text-warning fw-bold" id="blockedIPs">{{ blocked_ips_count }}</h3>
                     </div>
                     <i class="bi bi-shield-x text-warning" style="font-size: 2rem; opacity: 0.5;"></i>
@@ -71,7 +89,7 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <p class="text-muted small mb-1">Protocoale Active</p>
+                        <p class="text-muted small mb-1" data-bs-toggle="tooltip" title="Protocoale detectate în pachetele recente capturate">Protocoale Active</p>
                         <h3 class="text-info fw-bold" id="activeProtocols">{{ stats.protocols | length }}</h3>
                     </div>
                     <i class="bi bi-layers text-info" style="font-size: 2rem; opacity: 0.5;"></i>
@@ -104,26 +122,33 @@
                 <h6 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Top Surse Trafic</h6>
             </div>
             <div class="card-body">
-                {% if stats.top_sources %}
+                {% if top_sources_bytes %}
                 <div class="table-responsive">
                     <table class="table table-dark table-sm table-hover">
                         <thead>
                             <tr>
                                 <th>IP Sursă</th>
-                                <th>Pachete</th>
+                                <th>Trafic</th>
                                 <th>Procent</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% set total = stats.total_packets if stats.total_packets > 0 else 1 %}
-                            {% for ip, count in stats.top_sources.items() %}
+                            {% set total = (top_sources_bytes | map(attribute='total_bytes') | sum) or 1 %}
+                            {% for device in top_sources_bytes %}
+                            {% set bytes = device.total_bytes or 0 %}
                             <tr>
-                                <td><code class="text-success">{{ ip }}</code></td>
-                                <td>{{ count }}</td>
+                                <td><code class="text-success">{{ device.ip_address }}</code></td>
+                                <td class="text-info">
+                                    {% if bytes < 1024 %}{{ bytes }} B
+                                    {% elif bytes < 1048576 %}{{ "%.1f"|format(bytes / 1024) }} KB
+                                    {% elif bytes < 1073741824 %}{{ "%.2f"|format(bytes / 1048576) }} MB
+                                    {% else %}{{ "%.2f"|format(bytes / 1073741824) }} GB
+                                    {% endif %}
+                                </td>
                                 <td>
                                     <div class="progress bg-secondary" style="height: 6px;">
                                         <div class="progress-bar bg-success"
-                                             style="width: {{ (count/total*100)|int }}%"></div>
+                                             style="width: {{ (bytes/total*100)|int }}%"></div>
                                     </div>
                                 </td>
                             </tr>
