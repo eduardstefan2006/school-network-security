@@ -3,7 +3,9 @@ Rute pentru pagina Hartă Rețea.
 Afișează toate dispozitivele detectate în rețea.
 """
 from datetime import datetime
-from flask import Blueprint, render_template, jsonify, request
+import csv
+import io
+from flask import Blueprint, render_template, jsonify, request, Response
 from flask_login import login_required, current_user
 
 from app import db
@@ -79,11 +81,47 @@ def api_devices():
         'first_seen': d.first_seen.strftime('%d.%m.%Y %H:%M'),
         'last_seen': d.last_seen.strftime('%d.%m.%Y %H:%M'),
         'packets': d.total_packets,
+        'bytes': d.total_bytes or 0,
         'is_known': d.is_known,
         'is_online': (now - d.last_seen).total_seconds() < 300,
         'alert_count': d.alert_count,
         'vlan': d.vlan or '-',
     } for d in devices])
+
+
+@network_bp.route('/network/export.csv')
+@login_required
+def export_devices_csv():
+    """Exportă lista dispozitivelor detectate în format CSV."""
+    devices = NetworkDevice.query.order_by(NetworkDevice.last_seen.desc()).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'ID', 'IP', 'MAC', 'Hostname', 'Tip', 'Descriere',
+        'Prima data', 'Ultima data', 'Bytes', 'Pachete', 'VLAN', 'Cunoscut'
+    ])
+    for d in devices:
+        writer.writerow([
+            d.id,
+            d.ip_address,
+            d.mac_address or '',
+            d.hostname or '',
+            d.device_type,
+            d.description or '',
+            d.first_seen.strftime('%Y-%m-%d %H:%M:%S') if d.first_seen else '',
+            d.last_seen.strftime('%Y-%m-%d %H:%M:%S') if d.last_seen else '',
+            d.total_bytes or 0,
+            d.total_packets or 0,
+            d.vlan or '',
+            'DA' if d.is_known else 'NU',
+        ])
+    output.seek(0)
+    filename = f'network_devices_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'},
+    )
 
 
 @network_bp.route('/api/network/device/<int:device_id>/update', methods=['POST'])
@@ -144,6 +182,70 @@ def update_device(device_id):
             pass
     db.session.commit()
     return jsonify({'success': True})
+
+
+@network_bp.route('/api/network/devices/bulk-update', methods=['POST'])
+@login_required
+def bulk_update_devices():
+    """Admin: actualizări bulk pentru dispozitive (known/unknown/reclassify)."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis'}), 403
+
+    data = request.get_json(silent=True) or {}
+    ids = data.get('device_ids') or []
+    action = (data.get('action') or '').strip().lower()
+    if not ids or action not in {'mark_known', 'mark_unknown', 'reclassify'}:
+        return jsonify({'error': 'Parametri invalizi'}), 400
+
+    devices = NetworkDevice.query.filter(NetworkDevice.id.in_(ids)).all()
+    if not devices:
+        return jsonify({'error': 'Dispozitive negăsite'}), 404
+
+    updated = 0
+    from app.ids.sniffer import _detect_device_type, _calc_online_hours
+    for device in devices:
+        if action == 'mark_known':
+            device.is_known = True
+            if not device.type_locked:
+                device.device_type = 'known'
+            updated += 1
+        elif action == 'mark_unknown':
+            device.is_known = False
+            if not device.type_locked and device.device_type == 'known':
+                vlan_id = None
+                if device.vlan:
+                    try:
+                        vlan_id = int(device.vlan)
+                    except (TypeError, ValueError):
+                        vlan_id = None
+                device.device_type = _detect_device_type(
+                    device.ip_address,
+                    mac=device.mac_address,
+                    vlan_id=vlan_id,
+                    hostname=device.hostname,
+                    online_hours=_calc_online_hours(device),
+                )
+            updated += 1
+        elif action == 'reclassify':
+            if device.type_locked or device.is_known:
+                continue
+            vlan_id = None
+            if device.vlan:
+                try:
+                    vlan_id = int(device.vlan)
+                except (TypeError, ValueError):
+                    vlan_id = None
+            device.device_type = _detect_device_type(
+                device.ip_address,
+                mac=device.mac_address,
+                vlan_id=vlan_id,
+                hostname=device.hostname,
+                online_hours=_calc_online_hours(device),
+            )
+            updated += 1
+
+    db.session.commit()
+    return jsonify({'success': True, 'updated': updated})
 
 
 @network_bp.route('/api/network/reclassify-devices', methods=['POST'])

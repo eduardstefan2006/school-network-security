@@ -2,10 +2,12 @@
 Rutele pentru pagina de statistici istorice.
 """
 from datetime import datetime, timezone, timedelta
-from flask import Blueprint, render_template, jsonify, request
+import csv
+import io
+from flask import Blueprint, render_template, jsonify, request, Response
 from flask_login import login_required
 from sqlalchemy import func, or_
-from app.models import Alert, AppTrafficStat
+from app.models import Alert, AppTrafficStat, NetworkDevice
 from app import db
 
 statistics_bp = Blueprint('statistics', __name__)
@@ -269,7 +271,6 @@ def api_app_usage():
     app_totals = {}
     timeline_buckets = {}
     total_bytes = 0
-    total_packets = 0
     unique_ips = set()
     latest_seen = None
 
@@ -278,27 +279,26 @@ def api_app_usage():
         entry = app_totals.setdefault(key, {
             'app_name': key,
             'bytes_total': 0,
-            'packets_count': 0,
             'unique_ips': set(),
             'last_seen': None,
             'hostnames': set(),
         })
         entry['bytes_total'] += row.bytes_total or 0
-        entry['packets_count'] += row.packets_count or 0
-        entry['unique_ips'].add(row.source_ip)
-        entry['hostnames'].add(row.hostname)
+        if row.source_ip:
+            entry['unique_ips'].add(row.source_ip)
+            unique_ips.add(row.source_ip)
+        if row.hostname:
+            entry['hostnames'].add(row.hostname)
         if entry['last_seen'] is None or (row.last_seen and row.last_seen > entry['last_seen']):
             entry['last_seen'] = row.last_seen
 
         total_bytes += row.bytes_total or 0
-        total_packets += row.packets_count or 0
-        unique_ips.add(row.source_ip)
         if latest_seen is None or (row.last_seen and row.last_seen > latest_seen):
             latest_seen = row.last_seen
 
-        label = row.stat_date.strftime('%d.%m')
-        bucket = timeline_buckets.setdefault(label, 0)
-        timeline_buckets[label] = bucket + (row.bytes_total or 0)
+        if row.stat_date:
+            bucket = timeline_buckets.setdefault(row.stat_date, 0)
+            timeline_buckets[row.stat_date] = bucket + (row.bytes_total or 0)
 
     apps = []
     for entry in app_totals.values():
@@ -306,7 +306,6 @@ def api_app_usage():
         apps.append({
             'app_name': entry['app_name'],
             'bytes_total': entry['bytes_total'],
-            'packets_count': entry['packets_count'],
             'unique_ips': len(entry['unique_ips']),
             'traffic_percent': pct,
             'last_seen': entry['last_seen'].strftime('%d.%m.%Y %H:%M:%S') if entry['last_seen'] else 'N/A',
@@ -316,24 +315,79 @@ def api_app_usage():
     apps.sort(key=lambda item: item['bytes_total'], reverse=True)
     top_apps = apps[:15]
 
-    timeline_labels = sorted(
-        timeline_buckets.keys(),
-        key=lambda label: datetime.strptime(label, '%d.%m')
-    ) if timeline_buckets else []
+    timeline_dates = sorted(timeline_buckets.keys()) if timeline_buckets else []
     timeline = {
-        'labels': timeline_labels,
-        'bytes_total': [timeline_buckets[label] for label in timeline_labels],
+        'labels': [day.strftime('%d.%m') for day in timeline_dates],
+        'bytes_total': [timeline_buckets[day] for day in timeline_dates],
     }
+
+    total_network_bytes = (
+        db.session.query(func.coalesce(func.sum(NetworkDevice.total_bytes), 0)).scalar() or 0
+    )
+    coverage_percent = round((total_bytes / total_network_bytes) * 100, 2) if total_network_bytes > 0 else 0.0
+
+    for app in apps:
+        app['network_percent'] = round((app['bytes_total'] / total_network_bytes) * 100, 2) if total_network_bytes > 0 else 0.0
 
     return jsonify({
         'period': period,
         'summary': {
             'total_apps': len(apps),
             'total_bytes': total_bytes,
-            'total_packets': total_packets,
+            'total_network_bytes': total_network_bytes,
+            'traffic_coverage_percent': coverage_percent,
             'unique_ips': len(unique_ips),
             'latest_seen': latest_seen.strftime('%d.%m.%Y %H:%M:%S') if latest_seen else 'N/A',
         },
         'top_apps': top_apps,
         'timeline': timeline,
     })
+
+
+@statistics_bp.route('/statistics/apps/export.csv')
+@login_required
+def export_app_usage_csv():
+    """Exportă raportul app-usage în CSV pentru perioada/selectarea curentă."""
+    period = request.args.get('period', 'today')
+    if period not in ('today', '7d', '30d', 'all'):
+        period = 'today'
+    search = (request.args.get('app') or '').strip().lower()
+
+    period_start = _get_app_period_start(period)
+    query = AppTrafficStat.query
+    if period_start is not None:
+        query = query.filter(AppTrafficStat.last_seen >= period_start)
+    if search:
+        like_value = f'%{search}%'
+        query = query.filter(
+            or_(
+                AppTrafficStat.app_name.ilike(like_value),
+                AppTrafficStat.hostname.ilike(like_value),
+            )
+        )
+
+    rows = query.order_by(AppTrafficStat.bytes_total.desc()).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Data', 'IP sursa', 'Hostname', 'Aplicatie', 'Bytes total', 'Pachete', 'Ultima activitate'
+    ])
+    for row in rows:
+        writer.writerow([
+            row.stat_date.isoformat() if row.stat_date else '',
+            row.source_ip or '',
+            row.hostname or '',
+            row.app_name or '',
+            row.bytes_total or 0,
+            row.packets_count or 0,
+            row.last_seen.strftime('%Y-%m-%d %H:%M:%S') if row.last_seen else '',
+        ])
+    output.seek(0)
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={
+            'Content-Disposition': f'attachment; filename=app_usage_{period}_{timestamp}.csv'
+        }
+    )

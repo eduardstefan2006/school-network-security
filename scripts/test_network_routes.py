@@ -290,12 +290,142 @@ def test_api_app_usage_returns_percentages_and_filters():
             os.unlink(db_path)
 
 
+def test_api_app_usage_handles_missing_hostnames_and_timeline_order():
+    print("\n--- /api/statistics/app-usage (hostname null + timeline) ---")
+
+    app, db_path = _build_app()
+    try:
+        from app import db
+        from app.models import User, AppTrafficStat
+
+        with app.app_context():
+            admin = User.query.filter_by(username='admin-test').first()
+            db.session.add_all([
+                AppTrafficStat(
+                    stat_date=datetime(2025, 12, 31, tzinfo=timezone.utc).date(),
+                    source_ip='192.168.224.8',
+                    hostname='unknown.local',
+                    app_name=None,
+                    bytes_total=1000,
+                    packets_count=10,
+                    first_seen=datetime(2025, 12, 31, 12, 0, tzinfo=timezone.utc),
+                    last_seen=datetime(2025, 12, 31, 12, 10, tzinfo=timezone.utc),
+                ),
+                AppTrafficStat(
+                    stat_date=datetime(2026, 1, 1, tzinfo=timezone.utc).date(),
+                    source_ip='192.168.224.9',
+                    hostname='example.org',
+                    app_name='Example',
+                    bytes_total=2000,
+                    packets_count=20,
+                    first_seen=datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc),
+                    last_seen=datetime(2026, 1, 1, 12, 10, tzinfo=timezone.utc),
+                ),
+            ])
+            db.session.commit()
+            admin_id = admin.id
+
+        client = app.test_client()
+        _login(client, admin_id)
+        response = client.get('/api/statistics/app-usage?period=all')
+        data = response.get_json()
+
+        _assert(response.status_code == 200, "API-ul app-usage răspunde cu 200 când există hostname-uri lipsă")
+        _assert(data['timeline']['labels'] == ['31.12', '01.01'], "Timeline-ul este ordonat cronologic pe date reale")
+        fallback_apps = [app for app in data['top_apps'] if app['app_name'] == 'unknown.local']
+        _assert(bool(fallback_apps), "Intrările fără app_name folosesc fallback-ul pe hostname")
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_network_bulk_update_and_export_csv():
+    print("\n--- /api/network/devices/bulk-update + /network/export.csv ---")
+
+    app, db_path = _build_app()
+    try:
+        from app import db
+        from app.models import User, NetworkDevice
+
+        with app.app_context():
+            admin = User.query.filter_by(username='admin-test').first()
+            d1 = NetworkDevice(ip_address='192.168.224.21', device_type='unknown', is_known=False)
+            d2 = NetworkDevice(ip_address='192.168.224.22', device_type='unknown', is_known=False)
+            db.session.add_all([d1, d2])
+            db.session.commit()
+            admin_id = admin.id
+            d1_id = d1.id
+            d2_id = d2.id
+
+        client = app.test_client()
+        _login(client, admin_id)
+        bulk_response = client.post('/api/network/devices/bulk-update', json={
+            'action': 'mark_known',
+            'device_ids': [d1_id, d2_id],
+        })
+        bulk_data = bulk_response.get_json()
+        _assert(bulk_response.status_code == 200, "Bulk update endpoint răspunde cu 200")
+        _assert(bulk_data.get('updated') == 2, "Bulk update actualizează numărul corect de dispozitive")
+
+        with app.app_context():
+            devices = NetworkDevice.query.filter(NetworkDevice.id.in_([d1_id, d2_id])).all()
+            _assert(all(d.is_known for d in devices), "Bulk update setează is_known=True pentru dispozitivele selectate")
+
+        export_resp = client.get('/network/export.csv')
+        _assert(export_resp.status_code == 200, "Export CSV pentru network răspunde cu 200")
+        _assert('text/csv' in (export_resp.content_type or ''), "Export CSV pentru network returnează mimetype corect")
+        body = export_resp.get_data(as_text=True)
+        _assert('192.168.224.21' in body and '192.168.224.22' in body, "CSV-ul exportat conține dispozitivele așteptate")
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_statistics_app_usage_export_csv():
+    print("\n--- /statistics/apps/export.csv ---")
+
+    app, db_path = _build_app()
+    try:
+        from app import db
+        from app.models import User, AppTrafficStat
+
+        now = datetime.now(timezone.utc)
+        with app.app_context():
+            admin = User.query.filter_by(username='admin-test').first()
+            db.session.add(AppTrafficStat(
+                stat_date=now.date(),
+                source_ip='192.168.224.33',
+                hostname='youtube.com',
+                app_name='▶️ YouTube',
+                bytes_total=12345,
+                packets_count=99,
+                first_seen=now - timedelta(minutes=5),
+                last_seen=now,
+            ))
+            db.session.commit()
+            admin_id = admin.id
+
+        client = app.test_client()
+        _login(client, admin_id)
+        resp = client.get('/statistics/apps/export.csv?period=today&app=youtube')
+        _assert(resp.status_code == 200, "Export CSV app-usage răspunde cu 200")
+        _assert('text/csv' in (resp.content_type or ''), "Export CSV app-usage returnează mimetype corect")
+        csv_body = resp.get_data(as_text=True)
+        _assert('youtube.com' in csv_body, "CSV app-usage conține datele filtrate")
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
 if __name__ == '__main__':
     test_api_ip_connections_returns_sorted_results()
     test_update_device_can_remove_known_flag_without_typeerror()
     test_reclassify_mobile_includes_unknown_devices()
     test_cleanup_old_ip_connections_respects_retention()
     test_api_app_usage_returns_percentages_and_filters()
+    test_api_app_usage_handles_missing_hostnames_and_timeline_order()
+    test_network_bulk_update_and_export_csv()
+    test_statistics_app_usage_export_csv()
 
     print(f"\n{'='*40}")
     print(f"Rezultat: {_pass_count} PASS, {_fail_count} FAIL")
