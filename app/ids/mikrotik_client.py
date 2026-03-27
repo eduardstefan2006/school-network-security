@@ -191,6 +191,10 @@ class MikrotikClient:
         if not self.is_connected():
             return False
         try:
+            # Asigurăm regulile de drop pentru lista schoolsec-blocked
+            # (fără ele, adăugarea în address-list nu produce blocare efectivă).
+            self._ensure_schoolsec_ip_drop_rules()
+
             self._connection('/ip/firewall/address-list/add', **{
                 'list': 'schoolsec-blocked',
                 'address': ip_address,
@@ -201,6 +205,40 @@ class MikrotikClient:
         except Exception as e:
             print(f"[MikroTik] Eroare block_ip_on_router({ip_address}): {e}")
             return False
+
+    def _ensure_schoolsec_ip_drop_rules(self) -> None:
+        """Asigură existența regulilor firewall care dropează IP-urile din schoolsec-blocked.
+
+        Creează reguli în chain=forward și chain=input dacă acestea lipsesc.
+        """
+        if not self.is_connected():
+            return
+
+        required_chains = ('forward', 'input')
+        existing_chains = set()
+        try:
+            for item in self._connection('/ip/firewall/filter/print'):
+                if item.get('src-address-list') == 'schoolsec-blocked' and item.get('action') == 'drop':
+                    chain = item.get('chain')
+                    if chain in required_chains:
+                        existing_chains.add(chain)
+        except Exception as e:
+            print(f"[MikroTik] Eroare la verificarea regulilor schoolsec-blocked: {e}")
+            return
+
+        for chain in required_chains:
+            if chain in existing_chains:
+                continue
+            try:
+                self._connection('/ip/firewall/filter/add', **{
+                    'chain': chain,
+                    'src-address-list': 'schoolsec-blocked',
+                    'action': 'drop',
+                    'comment': 'SchoolSec auto drop blocked IPs',
+                })
+                print(f"[MikroTik] Regulă auto-adăugată: drop {chain} src-address-list=schoolsec-blocked")
+            except Exception as e:
+                print(f"[MikroTik] Eroare la adăugarea regulii schoolsec-blocked ({chain}): {e}")
 
     def unblock_ip_on_router(self, ip_address: str) -> bool:
         """Elimină IP-ul din address-list schoolsec-blocked.

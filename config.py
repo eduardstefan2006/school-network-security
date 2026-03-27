@@ -2,7 +2,6 @@
 Configurarea aplicației Flask pentru sistemul de securitate al rețelei școlare.
 """
 import os
-import warnings
 
 # Directorul de bază al proiectului
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -103,6 +102,8 @@ class Config:
     IP_CONNECTION_RETENTION_DAYS = int(os.environ.get('IP_CONNECTION_RETENTION_DAYS', 30))
     # Retenție pentru agregările zilnice pe aplicație/site.
     APP_TRAFFIC_RETENTION_DAYS = int(os.environ.get('APP_TRAFFIC_RETENTION_DAYS', 180))
+    # Limită de siguranță pentru actualizări bulk (protecție la payload-uri mari/abuzive)
+    BULK_UPDATE_MAX_ITEMS = int(os.environ.get('BULK_UPDATE_MAX_ITEMS', 200))
 
 
 class DevelopmentConfig(Config):
@@ -124,11 +125,10 @@ class ProductionConfig(Config):
     def init_app(cls, app):
         """Validare configurare producție la pornire."""
         if app.config.get('SECRET_KEY') == _DEFAULT_SECRET_KEY:
-            warnings.warn(
-                "\n\n⚠️  ATENȚIE SECURITATE: SECRET_KEY nu este setat!\n"
-                "   Setați variabila de mediu SECRET_KEY cu o valoare aleatorie puternică.\n"
-                "   Generați una cu: python -c \"import secrets; print(secrets.token_hex(32))\"\n",
-                stacklevel=2,
+            raise RuntimeError(
+                "SECRET_KEY implicit detectat în producție. "
+                "Setați variabila de mediu SECRET_KEY cu o valoare puternică "
+                "(ex: python -c \"import secrets; print(secrets.token_hex(32))\")."
             )
 
 
