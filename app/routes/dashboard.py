@@ -7,10 +7,23 @@ from datetime import datetime, timezone
 from flask import Blueprint, render_template, jsonify, request, Response
 from flask_login import login_required
 from app.models import Alert, SecurityLog, BlockedIP, BlockedHostname, NetworkDevice
-from app.ids.sniffer import get_stats
+from app.ids.sniffer import get_stats, is_sniffer_running
 from app import db
 
 dashboard_bp = Blueprint('dashboard', __name__)
+
+
+def _build_health_status():
+    """Construiește snapshot de sănătate pentru componentele cheie."""
+    stats = get_stats()
+    from flask import current_app
+    mikrotik = getattr(current_app, 'mikrotik_client', None)
+    return {
+        'sniffer_running': is_sniffer_running(),
+        'mikrotik_connected': bool(mikrotik and mikrotik.is_connected()),
+        'last_packet_seen': (stats.get('last_packets') or [{}])[-1].get('timestamp') if stats.get('last_packets') else None,
+        'sniffer_start_time': stats.get('start_time'),
+    }
 
 
 @dashboard_bp.route('/')
@@ -34,6 +47,7 @@ def index():
         .limit(10)
         .all()
     )
+    health_status = _build_health_status()
 
     return render_template(
         'dashboard.html',
@@ -43,6 +57,7 @@ def index():
         recent_alerts=recent_alerts,
         stats=stats,
         top_sources_bytes=top_sources_bytes,
+        health_status=health_status,
     )
 
 
@@ -54,6 +69,7 @@ def api_stats():
     active_alerts = Alert.query.filter_by(status='active').count()
     blocked_ips = BlockedIP.query.filter_by(is_active=True).count()
     blocked_hostnames = BlockedHostname.query.filter_by(is_active=True).count()
+    health_status = _build_health_status()
 
     return jsonify({
         'total_packets': stats['total_packets'],
@@ -64,6 +80,7 @@ def api_stats():
         'protocols': stats['protocols'],
         'top_sources': stats['top_sources'],
         'last_packets': stats['last_packets'],
+        'health': health_status,
     })
 
 

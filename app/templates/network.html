@@ -9,6 +9,9 @@
         <small class="text-muted">Dispozitive detectate în rețeaua școlii · <span id="last-refresh">actualizat acum</span> <span class="badge bg-secondary ms-1" title="Lista se actualizează automat la fiecare 5 minute" aria-label="Auto-refresh la 5 minute">⏱ 5 min</span></small>
     </div>
     <div class="col-auto">
+        <a class="btn btn-sm btn-outline-success me-1" href="{{ url_for('network.export_devices_csv') }}">
+            <i class="bi bi-download me-1"></i>Export CSV
+        </a>
         <button class="btn btn-sm btn-outline-info" onclick="refreshDevices()">
             <i class="bi bi-arrow-clockwise me-1"></i>Actualizează
         </button>
@@ -102,6 +105,21 @@
                     <button class="btn btn-outline-info" data-filter="infra">Infrastructură</button>
                 </div>
             </div>
+            {% if current_user.is_admin() %}
+            <div class="col-auto ms-auto">
+                <div class="btn-group btn-group-sm" id="bulk-actions">
+                    <button class="btn btn-outline-success" type="button" onclick="bulkUpdateDevices('mark_known')">
+                        ✅ Mark known
+                    </button>
+                    <button class="btn btn-outline-warning" type="button" onclick="bulkUpdateDevices('mark_unknown')">
+                        ❓ Mark unknown
+                    </button>
+                    <button class="btn btn-outline-info" type="button" onclick="bulkUpdateDevices('reclassify')">
+                        ♻ Reclassify
+                    </button>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -109,6 +127,9 @@
         <table class="table table-dark table-hover mb-0" id="devices-table">
             <thead>
                 <tr>
+                    <th style="width:34px">
+                        <input type="checkbox" id="select-all-devices" onclick="toggleSelectAll(this)">
+                    </th>
                     <th style="width:50px">Status</th>
                     <th class="sortable" data-col="ip">IP <i class="bi bi-arrow-down-up ms-1 text-muted small"></i></th>
                     <th>MAC</th>
@@ -116,7 +137,7 @@
                     <th>Descriere</th>
                     <th class="sortable d-none d-md-table-cell" data-col="first_seen">Prima dată</th>
                     <th class="sortable" data-col="last_seen">Ultima dată</th>
-                    <th class="sortable text-end" data-col="packets">Trafic</th>
+                    <th class="sortable text-end" data-col="packets" title="Trafic total detectat pentru dispozitiv (bytes)">Trafic</th>
                     <th class="text-end">Alerte</th>
                     <th>VLAN</th>
                     <th>Cunoscut</th>
@@ -132,6 +153,7 @@
                     {% if is_online %}row-online{% else %}row-offline{% endif %}
                     {% if not device.is_known %}row-unknown{% endif %}
                     {% if device.is_known %}row-infra{% endif %}"
+                    data-id="{{ device.id }}"
                     data-ip="{{ device.ip_address }}"
                     data-mac="{{ device.mac_address or '' }}"
                     data-desc="{{ device.description or '' }}"
@@ -142,6 +164,12 @@
                     data-locked="{{ 'true' if device.type_locked else 'false' }}"
                     style="cursor:pointer"
                     onclick="toggleDetails(this)">
+                    <td>
+                        <input type="checkbox"
+                               class="device-select"
+                               value="{{ device.id }}"
+                               onclick="event.stopPropagation();">
+                    </td>
                     <td>
                         {% if is_online %}
                             <span title="Online" class="text-success fs-5">●</span>
@@ -409,12 +437,45 @@ function getCellVal(row, col) {
     const colMap = {
         'ip': () => row.dataset.ip,
         'type': () => row.dataset.type,
-        'first_seen': () => row.querySelector('td:nth-child(6)') ? row.querySelector('td:nth-child(6)').textContent.trim() : '',
-        'last_seen': () => row.querySelector('td:nth-child(7)') ? row.querySelector('td:nth-child(7)').textContent.trim() : '',
+        'first_seen': () => row.querySelector('td:nth-child(7)') ? row.querySelector('td:nth-child(7)').textContent.trim() : '',
+        'last_seen': () => row.querySelector('td:nth-child(8)') ? row.querySelector('td:nth-child(8)').textContent.trim() : '',
         'packets': () => parseInt(row.dataset.bytes || '0', 10) || 0,
     };
     const fn = colMap[col];
     return fn ? fn() : '';
+}
+
+function toggleSelectAll(master) {
+    const checked = !!(master && master.checked);
+    document.querySelectorAll('.device-select').forEach((cb) => { cb.checked = checked; });
+}
+
+function getSelectedDeviceIds() {
+    return Array.from(document.querySelectorAll('.device-select:checked'))
+        .map((cb) => parseInt(cb.value, 10))
+        .filter((id) => !Number.isNaN(id));
+}
+
+function bulkUpdateDevices(action) {
+    const ids = getSelectedDeviceIds();
+    if (!ids.length) {
+        alert('Selectează cel puțin un dispozitiv.');
+        return;
+    }
+    fetch('/api/network/devices/bulk-update', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action, device_ids: ids}),
+    })
+    .then((r) => r.json())
+    .then((data) => {
+        if (data.success) {
+            location.reload();
+            return;
+        }
+        alert(data.error || 'Eroare la acțiunea bulk.');
+    })
+    .catch(() => alert('Eroare de rețea la acțiunea bulk.'));
 }
 
 // ============================================================

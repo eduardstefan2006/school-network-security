@@ -120,10 +120,37 @@ function updateStats() {
 
             // Actualizăm tabelul de pachete recente
             updateRecentPackets(data.last_packets);
+            updateHealthBadges(data.health || {});
         })
         .catch(error => {
             console.warn('[SchoolSec] Eroare la actualizarea statisticilor:', error);
         });
+}
+
+/**
+ * Actualizează starea componentelor de sănătate.
+ * @param {Object} health
+ */
+function updateHealthBadges(health) {
+    const sniffer = document.getElementById('healthSniffer');
+    const mikrotik = document.getElementById('healthMikrotik');
+    const lastPacket = document.getElementById('healthLastPacket');
+    if (sniffer) {
+        const running = !!health.sniffer_running;
+        sniffer.textContent = `Sniffer: ${running ? 'RUNNING' : 'STOPPED'}`;
+        sniffer.classList.toggle('bg-success', running);
+        sniffer.classList.toggle('bg-danger', !running);
+    }
+    if (mikrotik) {
+        const connected = !!health.mikrotik_connected;
+        mikrotik.textContent = `MikroTik: ${connected ? 'CONNECTED' : 'DISCONNECTED'}`;
+        mikrotik.classList.toggle('bg-success', connected);
+        mikrotik.classList.toggle('bg-warning', !connected);
+        mikrotik.classList.toggle('text-dark', !connected);
+    }
+    if (lastPacket) {
+        lastPacket.textContent = `Ultim pachet: ${health.last_packet_seen || 'N/A'}`;
+    }
 }
 
 /**

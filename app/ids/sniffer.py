@@ -2142,3 +2142,8 @@ def get_stats():
             'last_packets': traffic_stats['last_packets'][-20:],
             'start_time': traffic_stats['start_time'],
         }
+
+
+def is_sniffer_running() -> bool:
+    """Returnează True dacă thread-ul de sniffing rulează."""
+    return bool(_running)

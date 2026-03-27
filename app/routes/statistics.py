@@ -2,7 +2,9 @@
 Rutele pentru pagina de statistici istorice.
 """
 from datetime import datetime, timezone, timedelta
-from flask import Blueprint, render_template, jsonify, request
+import csv
+import io
+from flask import Blueprint, render_template, jsonify, request, Response
 from flask_login import login_required
 from sqlalchemy import func, or_
 from app.models import Alert, AppTrafficStat, NetworkDevice
@@ -340,3 +342,52 @@ def api_app_usage():
         'top_apps': top_apps,
         'timeline': timeline,
     })
+
+
+@statistics_bp.route('/statistics/apps/export.csv')
+@login_required
+def export_app_usage_csv():
+    """Exportă raportul app-usage în CSV pentru perioada/selectarea curentă."""
+    period = request.args.get('period', 'today')
+    if period not in ('today', '7d', '30d', 'all'):
+        period = 'today'
+    search = (request.args.get('app') or '').strip().lower()
+
+    period_start = _get_app_period_start(period)
+    query = AppTrafficStat.query
+    if period_start is not None:
+        query = query.filter(AppTrafficStat.last_seen >= period_start)
+    if search:
+        like_value = f'%{search}%'
+        query = query.filter(
+            or_(
+                AppTrafficStat.app_name.ilike(like_value),
+                AppTrafficStat.hostname.ilike(like_value),
+            )
+        )
+
+    rows = query.order_by(AppTrafficStat.bytes_total.desc()).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Data', 'IP sursa', 'Hostname', 'Aplicatie', 'Bytes total', 'Pachete', 'Ultima activitate'
+    ])
+    for row in rows:
+        writer.writerow([
+            row.stat_date.isoformat() if row.stat_date else '',
+            row.source_ip or '',
+            row.hostname or '',
+            row.app_name or '',
+            row.bytes_total or 0,
+            row.packets_count or 0,
+            row.last_seen.strftime('%Y-%m-%d %H:%M:%S') if row.last_seen else '',
+        ])
+    output.seek(0)
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={
+            'Content-Disposition': f'attachment; filename=app_usage_{period}_{timestamp}.csv'
+        }
+    )

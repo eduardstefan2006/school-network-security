@@ -12,22 +12,29 @@
             Consum trafic per aplicație/site, procente și agregări zilnice / săptămânale / lunare.
         </div>
     </div>
-    <div class="btn-group" role="group" aria-label="Perioadă">
-        <a href="{{ url_for('statistics.app_usage', period='today') }}"
-           class="btn btn-sm {% if period == 'today' %}btn-info{% else %}btn-outline-secondary text-light{% endif %}">
-            Azi
-        </a>
-        <a href="{{ url_for('statistics.app_usage', period='7d') }}"
-           class="btn btn-sm {% if period == '7d' %}btn-info{% else %}btn-outline-secondary text-light{% endif %}">
-            7 zile
-        </a>
-        <a href="{{ url_for('statistics.app_usage', period='30d') }}"
-           class="btn btn-sm {% if period == '30d' %}btn-info{% else %}btn-outline-secondary text-light{% endif %}">
-            30 zile
-        </a>
-        <a href="{{ url_for('statistics.app_usage', period='all') }}"
-           class="btn btn-sm {% if period == 'all' %}btn-info{% else %}btn-outline-secondary text-light{% endif %}">
-            Tot
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="btn-group" role="group" aria-label="Perioadă">
+            <a href="{{ url_for('statistics.app_usage', period='today') }}"
+               class="btn btn-sm {% if period == 'today' %}btn-info{% else %}btn-outline-secondary text-light{% endif %}">
+                Azi
+            </a>
+            <a href="{{ url_for('statistics.app_usage', period='7d') }}"
+               class="btn btn-sm {% if period == '7d' %}btn-info{% else %}btn-outline-secondary text-light{% endif %}">
+                7 zile
+            </a>
+            <a href="{{ url_for('statistics.app_usage', period='30d') }}"
+               class="btn btn-sm {% if period == '30d' %}btn-info{% else %}btn-outline-secondary text-light{% endif %}">
+                30 zile
+            </a>
+            <a href="{{ url_for('statistics.app_usage', period='all') }}"
+               class="btn btn-sm {% if period == 'all' %}btn-info{% else %}btn-outline-secondary text-light{% endif %}">
+                Tot
+            </a>
+        </div>
+        <a id="app-usage-export-link"
+           href="{{ url_for('statistics.export_app_usage_csv', period=period) }}"
+           class="btn btn-sm btn-outline-success">
+            <i class="bi bi-download me-1"></i>Export CSV
         </a>
     </div>
 </div>
@@ -36,7 +43,7 @@
     <div class="col-6 col-lg-3">
         <div class="card schoolsec-card border-secondary text-center h-100">
             <div class="card-body py-3">
-                <div class="text-muted small mb-1">Aplicații detectate</div>
+                <div class="text-muted small mb-1" data-bs-toggle="tooltip" title="Numărul aplicațiilor/site-urilor agregate în perioada selectată">Aplicații detectate</div>
                 <div class="fs-3 fw-bold text-light" id="apps-total">—</div>
             </div>
         </div>
@@ -44,7 +51,7 @@
     <div class="col-6 col-lg-3">
         <div class="card schoolsec-card border-secondary text-center h-100">
             <div class="card-body py-3">
-                <div class="text-muted small mb-1">Trafic total rețea</div>
+                <div class="text-muted small mb-1" data-bs-toggle="tooltip" title="Suma bytes pe dispozitivele detectate în rețea">Trafic total rețea</div>
                 <div class="fs-3 fw-bold text-info" id="apps-bytes">—</div>
                 <div class="small text-muted mt-1" id="apps-bytes-covered">—</div>
             </div>
@@ -53,7 +60,7 @@
     <div class="col-6 col-lg-3">
         <div class="card schoolsec-card border-secondary text-center h-100">
             <div class="card-body py-3">
-                <div class="text-muted small mb-1">IP-uri active</div>
+                <div class="text-muted small mb-1" data-bs-toggle="tooltip" title="Numărul de IP-uri distincte observate în app-usage">IP-uri active</div>
                 <div class="fs-3 fw-bold text-success" id="apps-ips">—</div>
             </div>
         </div>
@@ -61,7 +68,7 @@
     <div class="col-6 col-lg-3">
         <div class="card schoolsec-card border-secondary text-center h-100">
             <div class="card-body py-3">
-                <div class="text-muted small mb-1">Ultima activitate</div>
+                <div class="text-muted small mb-1" data-bs-toggle="tooltip" title="Cel mai recent timestamp observat în datele de aplicații">Ultima activitate</div>
                 <div class="fw-bold text-warning small mt-2" id="apps-last-seen">—</div>
             </div>
         </div>
@@ -162,6 +169,10 @@
 
     function fetchUsage() {
         const url = `/api/statistics/app-usage?period=${encodeURIComponent(PERIOD)}&app=${encodeURIComponent(currentSearch)}`;
+        const exportLink = document.getElementById('app-usage-export-link');
+        if (exportLink) {
+            exportLink.href = `/statistics/apps/export.csv?period=${encodeURIComponent(PERIOD)}&app=${encodeURIComponent(currentSearch)}`;
+        }
         fetch(url)
             .then(r => r.json())
             .then(renderUsage)
@@ -289,6 +300,8 @@
     });
 
     fetchUsage();
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (el) { return new bootstrap.Tooltip(el); });
 })();
 </script>
 {% endblock %}
