@@ -282,19 +282,21 @@ def api_app_usage():
             'hostnames': set(),
         })
         entry['bytes_total'] += row.bytes_total or 0
-        entry['unique_ips'].add(row.source_ip)
-        entry['hostnames'].add(row.hostname)
+        if row.source_ip:
+            entry['unique_ips'].add(row.source_ip)
+            unique_ips.add(row.source_ip)
+        if row.hostname:
+            entry['hostnames'].add(row.hostname)
         if entry['last_seen'] is None or (row.last_seen and row.last_seen > entry['last_seen']):
             entry['last_seen'] = row.last_seen
 
         total_bytes += row.bytes_total or 0
-        unique_ips.add(row.source_ip)
         if latest_seen is None or (row.last_seen and row.last_seen > latest_seen):
             latest_seen = row.last_seen
 
-        label = row.stat_date.strftime('%d.%m')
-        bucket = timeline_buckets.setdefault(label, 0)
-        timeline_buckets[label] = bucket + (row.bytes_total or 0)
+        if row.stat_date:
+            bucket = timeline_buckets.setdefault(row.stat_date, 0)
+            timeline_buckets[row.stat_date] = bucket + (row.bytes_total or 0)
 
     apps = []
     for entry in app_totals.values():
@@ -311,19 +313,19 @@ def api_app_usage():
     apps.sort(key=lambda item: item['bytes_total'], reverse=True)
     top_apps = apps[:15]
 
-    timeline_labels = sorted(
-        timeline_buckets.keys(),
-        key=lambda label: datetime.strptime(label, '%d.%m')
-    ) if timeline_buckets else []
+    timeline_dates = sorted(timeline_buckets.keys()) if timeline_buckets else []
     timeline = {
-        'labels': timeline_labels,
-        'bytes_total': [timeline_buckets[label] for label in timeline_labels],
+        'labels': [day.strftime('%d.%m') for day in timeline_dates],
+        'bytes_total': [timeline_buckets[day] for day in timeline_dates],
     }
 
     total_network_bytes = (
         db.session.query(func.coalesce(func.sum(NetworkDevice.total_bytes), 0)).scalar() or 0
     )
     coverage_percent = round((total_bytes / total_network_bytes) * 100, 2) if total_network_bytes > 0 else 0.0
+
+    for app in apps:
+        app['network_percent'] = round((app['bytes_total'] / total_network_bytes) * 100, 2) if total_network_bytes > 0 else 0.0
 
     return jsonify({
         'period': period,

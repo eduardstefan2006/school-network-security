@@ -121,6 +121,7 @@
                                 <th>Aplicație / Site</th>
                                 <th>Consum trafic</th>
                                 <th>% trafic</th>
+                                <th>% din trafic rețea</th>
                                 <th>IP-uri</th>
                                 <th>Hostname-uri</th>
                                 <th>Ultima activitate</th>
@@ -183,6 +184,8 @@
         document.getElementById('apps-bytes').textContent = formatBytes(totalNetworkBytes);
         document.getElementById('apps-bytes-covered').textContent =
             `Trafic aplicații identificate: ${formatBytes(identifiedBytes)} (${coveragePct.toFixed(2)}%)`;
+        document.getElementById('apps-coverage-note').textContent =
+            `Acoperire: ${coveragePct.toFixed(2)}% (${formatBytes(identifiedBytes)} din ${formatBytes(totalNetworkBytes)})`;
         document.getElementById('apps-ips').textContent = summary.unique_ips ?? 0;
         document.getElementById('apps-last-seen').textContent = summary.latest_seen || 'N/A';
 
@@ -205,6 +208,7 @@
                             <span class="small text-light">${(app.traffic_percent || 0).toFixed(2)}%</span>
                         </div>
                     </td>
+                    <td class="text-warning">${(app.network_percent || 0).toFixed(2)}%</td>
                     <td>${app.unique_ips || 0}</td>
                     <td class="small text-muted">${(app.top_hostnames || []).join(', ') || '-'}</td>
                     <td class="small text-muted">${app.last_seen || 'N/A'}</td>
