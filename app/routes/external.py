@@ -9,7 +9,7 @@ from flask import Blueprint, render_template, jsonify, current_app
 from flask_login import login_required
 
 from app import db
-from app.models import Alert
+from app.models import Alert, FirewallLog
 
 external_bp = Blueprint('external', __name__)
 
@@ -17,6 +17,32 @@ external_bp = Blueprint('external', __name__)
 def _get_mikrotik():
     """Returnează instanța MikrotikClient atașată aplicației (sau None)."""
     return getattr(current_app, 'mikrotik_client', None)
+
+
+def _get_syslog_firewall_logs(limit=50) -> list:
+    """Returnează ultimele log-uri firewall stocate de serverul syslog intern."""
+    try:
+        entries = FirewallLog.query.order_by(
+            FirewallLog.timestamp.desc()
+        ).limit(limit).all()
+        return [
+            {
+                'time': e.timestamp.strftime('%b/%d %H:%M:%S'),
+                'topics': 'firewall',
+                'message': e.raw_message or '',
+                'src_ip': e.src_ip,
+                'dst_ip': e.dst_ip,
+                'src_port': e.src_port,
+                'dst_port': e.dst_port,
+                'protocol': e.protocol,
+                'action': e.action,
+                'source': 'syslog',
+            }
+            for e in entries
+        ]
+    except Exception as e:
+        print(f"[external] Eroare la citirea FirewallLog: {e}")
+        return []
 
 
 # ------------------------------------------------------------------
@@ -48,6 +74,9 @@ def index():
     if connected:
         try:
             firewall_logs = mikrotik.get_firewall_log(limit=50)
+            # Marcăm log-urile API cu sursa
+            for entry in firewall_logs:
+                entry.setdefault('source', 'api')
         except Exception as e:
             print(f"[external.index] Eroare get_firewall_log: {e}")
 
@@ -77,6 +106,12 @@ def index():
     free_mem = router_health.get('free_memory', 0)
     total_mem = router_health.get('total_memory', 1)
     ram_free_pct = round(free_mem / total_mem * 100, 1) if total_mem else 0
+
+    # Combinăm log-urile din API cu cele din serverul syslog intern
+    syslog_logs = _get_syslog_firewall_logs(limit=50)
+    # Adăugăm syslog logs la cele din API și limităm la 50 (syslog-urile sunt deja
+    # sortate descrescător după timestamp; le adăugăm după log-urile API)
+    firewall_logs = (firewall_logs + syslog_logs)[:50]
 
     # Alerte externe din DB (ultimele 20 cu prefix external_ sau router_)
     from sqlalchemy import or_
@@ -110,15 +145,20 @@ def index():
 @external_bp.route('/api/external/firewall-log')
 @login_required
 def firewall_log():
-    """API: ultimele log-uri firewall."""
+    """API: ultimele log-uri firewall (din RouterOS API și serverul syslog intern)."""
     mikrotik = _get_mikrotik()
-    if mikrotik is None or not mikrotik.is_connected():
-        return jsonify([])
-    try:
-        return jsonify(mikrotik.get_firewall_log(limit=50))
-    except Exception as e:
-        print(f"[external.firewall_log] Eroare: {e}")
-        return jsonify([])
+    api_logs = []
+    if mikrotik is not None and mikrotik.is_connected():
+        try:
+            api_logs = mikrotik.get_firewall_log(limit=50)
+            for entry in api_logs:
+                entry.setdefault('source', 'api')
+        except Exception as e:
+            print(f"[external.firewall_log] Eroare get_firewall_log: {e}")
+
+    syslog_logs = _get_syslog_firewall_logs(limit=50)
+    combined = (api_logs + syslog_logs)[:50]
+    return jsonify(combined)
 
 
 # ------------------------------------------------------------------

@@ -27,7 +27,7 @@ def init_database():
                 email='admin@scoala.ro',
                 role='admin'
             )
-            admin.set_password('admin123')
+            admin.set_password('Admin123')
             db.session.add(admin)
 
             # Adăugăm și un utilizator monitor pentru demonstrație
@@ -49,7 +49,7 @@ def init_database():
 
             db.session.commit()
             print("✓ Utilizatori creați:")
-            print("  - admin / admin123 (Administrator)")
+            print("  - admin / Admin123 (Administrator)")
             print("  - monitor / monitor123 (Monitor)")
         else:
             print("✓ Utilizatorul admin există deja.")

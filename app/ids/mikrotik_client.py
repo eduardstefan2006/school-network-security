@@ -619,3 +619,37 @@ class MikrotikClient:
         except Exception as e:
             print(f"[MikroTik] Eroare get_address_list_entries({list_name}): {e}")
             return []
+
+    def configure_remote_syslog(self, remote_ip: str, remote_port: int = 514) -> bool:
+        """Configurează acțiunea de logging remote pe RouterOS pentru a trimite
+        log-uri syslog către serverul aplicației.
+
+        Endpoint RouterOS: /system/logging/action
+        Setează acțiunea 'remote' (index implicit 3) cu adresa IP și portul UDP
+        al serverului syslog intern al aplicației.
+
+        Returnează True dacă configurația a reușit, False altfel.
+        """
+        if not self.is_connected():
+            return False
+        try:
+            actions = list(self._connection('/system/logging/action/print'))
+            remote_id = None
+            for action in actions:
+                if action.get('type') == 'remote' or action.get('name') == 'remote':
+                    remote_id = action.get('.id')
+                    break
+            if remote_id is None:
+                print("[MikroTik] Nu s-a găsit acțiunea 'remote' în /system/logging/action.")
+                return False
+            self._connection('/system/logging/action/set', **{
+                '.id': remote_id,
+                'remote': remote_ip,
+                'remote-port': str(remote_port),
+                'bsd-syslog': 'yes',
+            })
+            print(f"[MikroTik] Syslog remote configurat: {remote_ip}:{remote_port}")
+            return True
+        except Exception as e:
+            print(f"[MikroTik] Eroare configure_remote_syslog: {e}")
+            return False

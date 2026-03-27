@@ -4,6 +4,8 @@ Rute pentru pagina de setări a aplicației (doar admin).
 import os
 import json
 import sys
+import signal
+import threading
 import logging
 import ipaddress
 import hashlib
@@ -15,7 +17,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 
 from app import db
-from app.models import Alert
+from app.models import Alert, SecurityLog
 
 settings_bp = Blueprint('settings', __name__)
 logger = logging.getLogger(__name__)
@@ -528,3 +530,250 @@ def test_mikrotik_connection():
     except Exception as e:
         logger.warning('[MikroTik Settings] Test conexiune eșuat: %s', e)
         return jsonify({'error': f'Eroare la testarea conexiunii: {e}'}), 500
+
+
+# =============================================================================
+# API Service & System Management
+# =============================================================================
+
+# Lock and flag to prevent concurrent stop-and-install operations
+_install_lock = threading.Lock()
+_install_in_progress = False
+
+def _log_service_action(event_type: str, message: str, ip: str):
+    """Înregistrează o acțiune de serviciu/sistem în SecurityLog."""
+    try:
+        log = SecurityLog(
+            event_type=event_type,
+            source_ip=ip,
+            message=message,
+            severity='warning',
+        )
+        db.session.add(log)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.warning('[Service] Eroare la logarea acțiunii %s: %s', event_type, exc)
+
+
+@settings_bp.route('/api/service/install', methods=['POST'])
+@login_required
+def service_install():
+    """Instalează aplicația ca serviciu systemd."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    from app.utils import create_systemd_service
+    success, message = create_systemd_service()
+    ip = request.remote_addr or 'unknown'
+    _log_service_action('service_installed', f'[{current_user.username}] {message}', ip)
+
+    if success:
+        return jsonify({'success': True, 'message': message})
+    return jsonify({'error': message}), 500
+
+
+@settings_bp.route('/api/service/stop-and-install', methods=['POST'])
+@login_required
+def service_stop_and_install():
+    """Oprește Flask graceful, instalează și pornește serviciul systemd.
+
+    Flow:
+    1. Validare admin + mutex (previne instalări concurente)
+    2. Log service_install_started în SecurityLog
+    3. Thread de fundal: creare fișier serviciu, daemon-reload, enable
+    4. Setează flag-file /tmp/.schoolsec_start_service
+    5. Trimite SIGTERM procesului curent → SIGTERM handler pornește serviciul
+    """
+    global _install_in_progress
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    with _install_lock:
+        if _install_in_progress:
+            return jsonify({'error': 'Instalarea este deja în curs.'}), 409
+        _install_in_progress = True
+
+    ip = request.remote_addr or 'unknown'
+    username = current_user.username
+    app = current_app._get_current_object()
+
+    _log_service_action(
+        'service_install_started',
+        f'[{username}] Instalare serviciu inițiată – aplicația se va opri graceful.',
+        ip,
+    )
+
+    def _do_install():
+        global _install_in_progress
+        import time
+        time.sleep(1.0)  # Allow HTTP response to be sent first
+
+        try:
+            from app.utils import create_systemd_service
+            success, message = create_systemd_service()
+
+            if not success:
+                logger.error('[Service] Instalare eșuată: %s', message)
+                with app.app_context():
+                    _log_service_action(
+                        'service_install_failed',
+                        f'[{username}] {message}',
+                        ip,
+                    )
+                return
+
+            logger.info('[Service] Fișier serviciu creat, se pregătește oprirea Flask.')
+            with app.app_context():
+                _log_service_action(
+                    'service_install_completed',
+                    f'[{username}] Fișier serviciu instalat. Se oprește Flask pentru preluare systemd.',
+                    ip,
+                )
+
+            # Create flag file (mode 0o600) so the SIGTERM handler knows to start the service
+            flag_path = '/tmp/.schoolsec_start_service'
+            try:
+                fd = os.open(flag_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, 'w') as fh:
+                    fh.write('start')
+            except OSError as exc:
+                logger.warning('[Service] Nu s-a putut crea flag-ul de pornire: %s', exc)
+
+            logger.warning('[Service] Trimit SIGTERM procesului Flask (PID %s).', os.getpid())
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        except Exception as exc:
+            logger.error('[Service] Eroare neașteptată în _do_install: %s', exc)
+            with app.app_context():
+                _log_service_action(
+                    'service_install_failed',
+                    f'[{username}] Eroare neașteptată: {exc}',
+                    ip,
+                )
+        finally:
+            _install_in_progress = False
+
+    t = threading.Thread(target=_do_install, daemon=True, name='service-installer')
+    t.start()
+
+    return jsonify({
+        'success': True,
+        'message': 'Instalarea serviciului a fost inițiată. Aplicația se va opri pentru a permite systemd să preia controlul.',
+    })
+
+
+@settings_bp.route('/api/service/restart', methods=['POST'])
+@login_required
+def service_restart():
+    """Repornește serviciul systemd."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    from app.utils import manage_service
+    success, message = manage_service('restart')
+    ip = request.remote_addr or 'unknown'
+    _log_service_action('service_restarted', f'[{current_user.username}] {message}', ip)
+
+    if success:
+        return jsonify({'success': True, 'message': message})
+    return jsonify({'error': message}), 500
+
+
+@settings_bp.route('/api/service/stop', methods=['POST'])
+@login_required
+def service_stop():
+    """Oprește serviciul systemd."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    from app.utils import manage_service
+    success, message = manage_service('stop')
+    ip = request.remote_addr or 'unknown'
+    _log_service_action('service_stopped', f'[{current_user.username}] {message}', ip)
+
+    if success:
+        return jsonify({'success': True, 'message': message})
+    return jsonify({'error': message}), 500
+
+
+@settings_bp.route('/api/service/status', methods=['GET'])
+@login_required
+def service_status():
+    """Returnează statusul curent al serviciului systemd."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    from app.utils import get_service_status
+    status = get_service_status()
+    return jsonify(status)
+
+
+@settings_bp.route('/api/service/logs', methods=['GET'])
+@login_required
+def service_logs():
+    """Returnează ultimele 20 de linii din jurnalul serviciului."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    from app.utils import get_service_logs
+    success, logs = get_service_logs(lines=20)
+    if success:
+        return jsonify({'success': True, 'logs': logs})
+    return jsonify({'error': logs}), 500
+
+
+@settings_bp.route('/api/system/restart-app', methods=['POST'])
+@login_required
+def system_restart_app():
+    """Repornește procesul Flask (înlocuiește procesul curent cu os.execv)."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    import threading
+    ip = request.remote_addr or 'unknown'
+    _log_service_action('app_restarted', f'[{current_user.username}] Aplicația Flask a fost repornită.', ip)
+    logger.warning('[System] Repornire aplicație Flask inițiată de %s.', current_user.username)
+
+    def _do_restart():
+        import time
+        import os
+        time.sleep(1)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    t = threading.Thread(target=_do_restart, daemon=True)
+    t.start()
+    return jsonify({'success': True, 'message': 'Aplicația Flask va reporni în câteva secunde.'})
+
+
+@settings_bp.route('/api/system/restart', methods=['POST'])
+@login_required
+def system_restart():
+    """Repornește sistemul (reboot). Necesită confirmarea explicită în body."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    data = request.get_json(silent=True) or {}
+    if not data.get('confirmed'):
+        return jsonify({'error': 'Confirmarea este necesară pentru repornirea sistemului.'}), 400
+
+    from app.utils import restart_system
+    ip = request.remote_addr or 'unknown'
+    _log_service_action('system_restarted', f'[{current_user.username}] Sistem restartat.', ip)
+
+    success, message = restart_system()
+    if success:
+        return jsonify({'success': True, 'message': message})
+    return jsonify({'error': message}), 500
+
+
+@settings_bp.route('/api/system/uptime', methods=['GET'])
+@login_required
+def system_uptime():
+    """Returnează uptime-ul sistemului și data ultimului boot."""
+    if not current_user.is_admin():
+        return jsonify({'error': 'Acces interzis.'}), 403
+
+    from app.utils import get_system_uptime
+    return jsonify(get_system_uptime())
+

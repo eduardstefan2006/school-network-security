@@ -286,6 +286,168 @@
         </div>
     </div>
 </div>
+
+<!-- Secțiunea 5: System & Service Management -->
+<div class="card schoolsec-card border-secondary mb-4">
+    <div class="card-header border-secondary">
+        <h5 class="mb-0"><i class="bi bi-tools me-2 text-danger"></i>Gestionare Sistem &amp; Serviciu</h5>
+    </div>
+    <div class="card-body">
+
+        <!-- Status serviciu + uptime -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h6 class="text-muted mb-2"><i class="bi bi-activity me-1"></i>Status Serviciu Systemd</h6>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span id="serviceStatusBadge" class="badge bg-secondary">
+                        <span id="serviceStatusIcon">⏳</span>
+                        <span id="serviceStatusText" class="ms-1">Se verifică...</span>
+                    </span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRefreshStatus" title="Actualizează statusul">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-muted mb-2"><i class="bi bi-clock me-1"></i>Uptime Sistem</h6>
+                <div>
+                    <span class="text-info" id="systemUptimeStr">—</span><br>
+                    <small class="text-muted">Pornit la: <span id="systemBootTime">—</span></small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Acțiuni serviciu -->
+        <h6 class="text-muted mb-2"><i class="bi bi-gear me-1"></i>Acțiuni Serviciu</h6>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button type="button" class="btn btn-sm btn-primary" id="btnStopAndInstallService"
+                    data-bs-toggle="modal" data-bs-target="#modalInstallServiceConfirm">
+                <i class="bi bi-power me-1"></i>Stop &amp; Instalează ca Serviciu Systemd
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-warning" id="btnRestartService">
+                <i class="bi bi-arrow-repeat me-1"></i>Restart Serviciu
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="btnStopService">
+                <i class="bi bi-stop-circle me-1"></i>Stop Serviciu
+            </button>
+        </div>
+        <span id="serviceActionResult" class="small d-block mb-3"></span>
+
+        <!-- Acțiuni sistem -->
+        <h6 class="text-muted mb-2"><i class="bi bi-power me-1"></i>Acțiuni Sistem</h6>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button type="button" class="btn btn-sm btn-outline-warning" id="btnRestartApp">
+                <i class="bi bi-arrow-repeat me-1"></i>Restart Aplicație Flask
+            </button>
+            <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#modalRebootConfirm">
+                <i class="bi bi-bootstrap-reboot me-1"></i>Restart Sistem (Reboot)
+            </button>
+        </div>
+        <div class="alert alert-warning py-2 mb-3">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Restart-ul aplicației sau al sistemului va <strong>deconecta toți utilizatorii</strong> activi.
+        </div>
+        <span id="systemActionResult" class="small d-block mb-3"></span>
+
+        <!-- Logs serviciu -->
+        <h6 class="text-muted mb-2"><i class="bi bi-journal-text me-1"></i>Logs Serviciu (ultimele 20 linii)</h6>
+        <div class="d-flex gap-2 mb-2">
+            <button type="button" class="btn btn-sm btn-outline-info" id="btnLoadLogs">
+                <i class="bi bi-arrow-down-circle me-1"></i>Încarcă Logs
+            </button>
+            <div class="form-check form-switch align-self-center ms-2">
+                <input class="form-check-input" type="checkbox" id="autoRefreshLogs">
+                <label class="form-check-label text-muted small" for="autoRefreshLogs">Auto-refresh (5s)</label>
+            </div>
+        </div>
+        <pre id="serviceLogsBox"
+             class="bg-black text-success p-3 rounded small"
+             style="max-height: 300px; overflow-y: auto; white-space: pre-wrap; display: none;">(apasă „Încarcă Logs" pentru a vizualiza)</pre>
+        <span id="logsErrorMsg" class="small text-danger"></span>
+    </div>
+</div>
+
+<!-- Modal confirmare reboot sistem -->
+<div class="modal fade" id="modalRebootConfirm" tabindex="-1" aria-labelledby="modalRebootConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-light border-danger">
+            <div class="modal-header border-danger">
+                <h5 class="modal-title text-danger" id="modalRebootConfirmLabel">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>Confirmare Restart Sistem
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Ești sigur că vrei să <strong>repornești sistemul</strong>?</p>
+                <p class="text-warning mb-0"><i class="bi bi-exclamation-circle me-1"></i>Această acțiune va deconecta toți utilizatorii și va opri temporar aplicația.</p>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                <button type="button" class="btn btn-danger" id="btnConfirmReboot">
+                    <i class="bi bi-bootstrap-reboot me-1"></i>Da, Repornește Sistemul
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal confirmare Stop & Instalează Serviciu -->
+<div class="modal fade" id="modalInstallServiceConfirm" tabindex="-1" aria-labelledby="modalInstallServiceConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-light border-warning">
+            <div class="modal-header border-warning">
+                <h5 class="modal-title text-warning" id="modalInstallServiceConfirmLabel">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>Atenție! Aplicația se va opri
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Aplicația Flask se va opri pentru a permite instalarea serviciului systemd.</p>
+                <p class="text-danger"><i class="bi bi-people-fill me-1"></i><strong>Toți utilizatorii conectați vor fi deconectați.</strong></p>
+                <p class="text-info mb-0"><i class="bi bi-info-circle me-1"></i>După instalare, serviciul va porni automat și pagina se va reîncărca.</p>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                <button type="button" class="btn btn-warning text-dark fw-semibold" id="btnConfirmInstallService">
+                    <i class="bi bi-power me-1"></i>Continuă
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal progres instalare serviciu -->
+<div class="modal fade" id="modalInstallServiceProgress" tabindex="-1" aria-labelledby="modalInstallServiceProgressLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-light border-info">
+            <div class="modal-header border-info">
+                <h5 class="modal-title text-info" id="modalInstallServiceProgressLabel">
+                    <i class="bi bi-gear-wide-connected me-2"></i>Instalare Serviciu Systemd
+                </h5>
+            </div>
+            <div class="modal-body text-center py-4">
+                <div id="installProgressBody">
+                    <div class="spinner-border text-info mb-3" role="status">
+                        <span class="visually-hidden">Se instalează...</span>
+                    </div>
+                    <p class="mb-1 fs-5">Se instalează serviciul... ⏳</p>
+                    <p class="text-muted small">Aplicația se va reporni automat prin systemd.</p>
+                </div>
+                <div id="installSuccessBody" style="display:none;">
+                    <div class="text-success fs-1 mb-3">✅</div>
+                    <p class="mb-1 fs-5 text-success fw-semibold">Serviciu instalat cu succes!</p>
+                    <p class="text-muted small" id="installReloadCountdown">Pagina se va reîncărca în 5 secunde...</p>
+                </div>
+                <div id="installErrorBody" style="display:none;">
+                    <div class="text-danger fs-1 mb-3">❌</div>
+                    <p class="mb-1 fs-5 text-danger fw-semibold">Instalare eșuată</p>
+                    <p class="text-muted small" id="installErrorMsg"></p>
+                    <button type="button" class="btn btn-sm btn-secondary mt-2" data-bs-dismiss="modal">Închide</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -623,6 +785,320 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
     }
+
+    // =========================================================================
+    // System & Service Management
+    // =========================================================================
+
+    const MESSAGE_TIMEOUT = 6000;
+
+    function showServiceResult(msg, isSuccess) {
+        const el = document.getElementById('serviceActionResult');
+        if (!el) return;
+        const cls = isSuccess ? 'text-success' : 'text-danger';
+        const icon = isSuccess ? 'bi-check-circle' : 'bi-x-circle';
+        el.innerHTML = '<span class="' + cls + '"><i class="bi ' + icon + ' me-1"></i>' + msg + '</span>';
+        setTimeout(() => { el.textContent = ''; }, MESSAGE_TIMEOUT);
+    }
+
+    function showSystemResult(msg, isSuccess) {
+        const el = document.getElementById('systemActionResult');
+        if (!el) return;
+        const cls = isSuccess ? 'text-success' : 'text-danger';
+        const icon = isSuccess ? 'bi-check-circle' : 'bi-x-circle';
+        el.innerHTML = '<span class="' + cls + '"><i class="bi ' + icon + ' me-1"></i>' + msg + '</span>';
+        setTimeout(() => { el.textContent = ''; }, MESSAGE_TIMEOUT);
+    }
+
+    // Fetch service status
+    function fetchServiceStatus() {
+        fetch('/api/service/status')
+            .then(r => r.json())
+            .then(data => {
+                const badge = document.getElementById('serviceStatusBadge');
+                const icon = document.getElementById('serviceStatusIcon');
+                const text = document.getElementById('serviceStatusText');
+                if (!badge) return;
+                if (data.active) {
+                    badge.className = 'badge bg-success';
+                    icon.textContent = '✅';
+                    text.textContent = 'Activ';
+                } else {
+                    badge.className = 'badge bg-danger';
+                    icon.textContent = '❌';
+                    text.textContent = data.status || 'Inactiv';
+                }
+            })
+            .catch(() => {
+                const text = document.getElementById('serviceStatusText');
+                if (text) text.textContent = 'Eroare la verificare';
+            });
+    }
+
+    // Fetch system uptime
+    function fetchUptime() {
+        fetch('/api/system/uptime')
+            .then(r => r.json())
+            .then(data => {
+                const uStr = document.getElementById('systemUptimeStr');
+                const bTime = document.getElementById('systemBootTime');
+                if (uStr) uStr.textContent = data.uptime_str || 'N/A';
+                if (bTime) bTime.textContent = data.boot_time || 'N/A';
+            })
+            .catch(() => {});
+    }
+
+    // Initial load
+    fetchServiceStatus();
+    fetchUptime();
+
+    // Polling status every 5 seconds
+    setInterval(fetchServiceStatus, 5000);
+
+    // Refresh status button
+    const btnRefreshStatus = document.getElementById('btnRefreshStatus');
+    if (btnRefreshStatus) {
+        btnRefreshStatus.addEventListener('click', function () {
+            fetchServiceStatus();
+            fetchUptime();
+        });
+    }
+
+    // Stop & Install service – new auto-flow with graceful shutdown
+    const btnConfirmInstallService = document.getElementById('btnConfirmInstallService');
+    if (btnConfirmInstallService) {
+        btnConfirmInstallService.addEventListener('click', function () {
+            // Hide confirmation modal, show progress modal
+            const confirmModal = bootstrap.Modal.getInstance(document.getElementById('modalInstallServiceConfirm'));
+            if (confirmModal) confirmModal.hide();
+
+            const progressModal = new bootstrap.Modal(document.getElementById('modalInstallServiceProgress'), {
+                backdrop: 'static', keyboard: false
+            });
+            document.getElementById('installProgressBody').style.display = '';
+            document.getElementById('installSuccessBody').style.display = 'none';
+            document.getElementById('installErrorBody').style.display = 'none';
+            progressModal.show();
+
+            btnConfirmInstallService.disabled = true;
+
+            // Call stop-and-install endpoint
+            fetch('/api/service/stop-and-install', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    if (!d.success) {
+                        _showInstallError(d.error || 'Eroare necunoscută la inițierea instalării.');
+                        btnConfirmInstallService.disabled = false;
+                        return;
+                    }
+                    // Start polling for service status
+                    _pollServiceActive(progressModal);
+                })
+                .catch(err => {
+                    // If the request itself fails (app already shutting down), still poll
+                    _pollServiceActive(progressModal);
+                    btnConfirmInstallService.disabled = false;
+                });
+        });
+    }
+
+    /**
+     * Poll /api/service/status every 2 seconds until the service is active.
+     * Handles connection errors gracefully (app may be temporarily offline).
+     */
+    function _pollServiceActive(progressModal) {
+        const MAX_WAIT_MS = 120000; // 2 minutes timeout
+        const POLL_INTERVAL_MS = 2000;
+        let elapsed = 0;
+        let consecutiveErrors = 0;
+
+        function _doPoll() {
+            fetch('/api/service/status')
+                .then(r => r.json())
+                .then(data => {
+                    consecutiveErrors = 0;
+                    if (data.active) {
+                        _showInstallSuccess(progressModal);
+                    } else {
+                        elapsed += POLL_INTERVAL_MS;
+                        if (elapsed >= MAX_WAIT_MS) {
+                            _showInstallError('Timeout: serviciul nu a devenit activ în 2 minute.');
+                        } else {
+                            setTimeout(_doPoll, POLL_INTERVAL_MS);
+                        }
+                    }
+                })
+                .catch(() => {
+                    // Connection refused / app is shutting down — retry with exponential backoff
+                    consecutiveErrors++;
+                    const backoff = Math.min(POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors - 1), 8000);
+                    elapsed += backoff;
+                    if (elapsed >= MAX_WAIT_MS) {
+                        _showInstallError('Timeout: nu s-a putut recontacta aplicația după oprire.');
+                    } else {
+                        setTimeout(_doPoll, backoff);
+                    }
+                });
+        }
+
+        setTimeout(_doPoll, POLL_INTERVAL_MS);
+    }
+
+    function _showInstallSuccess(progressModal) {
+        document.getElementById('installProgressBody').style.display = 'none';
+        document.getElementById('installErrorBody').style.display = 'none';
+        document.getElementById('installSuccessBody').style.display = '';
+
+        let seconds = 5;
+        const countdownEl = document.getElementById('installReloadCountdown');
+        function _tick() {
+            if (countdownEl) countdownEl.textContent = `Pagina se va reîncărca în ${seconds} secunde...`;
+            if (seconds <= 0) {
+                window.location.reload();
+            } else {
+                seconds--;
+                setTimeout(_tick, 1000);
+            }
+        }
+        _tick();
+    }
+
+    function _showInstallError(msg) {
+        document.getElementById('installProgressBody').style.display = 'none';
+        document.getElementById('installSuccessBody').style.display = 'none';
+        document.getElementById('installErrorBody').style.display = '';
+        const errEl = document.getElementById('installErrorMsg');
+        if (errEl) errEl.textContent = msg;
+    }
+
+    // Restart service
+    const btnRestartService = document.getElementById('btnRestartService');
+    if (btnRestartService) {
+        btnRestartService.addEventListener('click', function () {
+            btnRestartService.disabled = true;
+            btnRestartService.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se repornește...';
+            fetch('/api/service/restart', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    showServiceResult(d.success ? d.message : (d.error || 'Eroare necunoscută'), !!d.success);
+                    if (d.success) fetchServiceStatus();
+                })
+                .catch(() => showServiceResult('Eroare de rețea.', false))
+                .finally(() => {
+                    btnRestartService.disabled = false;
+                    btnRestartService.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Restart Serviciu';
+                });
+        });
+    }
+
+    // Stop service
+    const btnStopService = document.getElementById('btnStopService');
+    if (btnStopService) {
+        btnStopService.addEventListener('click', function () {
+            btnStopService.disabled = true;
+            btnStopService.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se oprește...';
+            fetch('/api/service/stop', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    showServiceResult(d.success ? d.message : (d.error || 'Eroare necunoscută'), !!d.success);
+                    if (d.success) fetchServiceStatus();
+                })
+                .catch(() => showServiceResult('Eroare de rețea.', false))
+                .finally(() => {
+                    btnStopService.disabled = false;
+                    btnStopService.innerHTML = '<i class="bi bi-stop-circle me-1"></i>Stop Serviciu';
+                });
+        });
+    }
+
+    // Restart Flask app
+    const btnRestartApp = document.getElementById('btnRestartApp');
+    if (btnRestartApp) {
+        btnRestartApp.addEventListener('click', function () {
+            btnRestartApp.disabled = true;
+            btnRestartApp.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se repornește...';
+            fetch('/api/system/restart-app', { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    showSystemResult(d.success ? d.message : (d.error || 'Eroare necunoscută'), !!d.success);
+                })
+                .catch(() => showSystemResult('Eroare de rețea.', false))
+                .finally(() => {
+                    btnRestartApp.disabled = false;
+                    btnRestartApp.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Restart Aplicație Flask';
+                });
+        });
+    }
+
+    // Confirm reboot
+    const btnConfirmReboot = document.getElementById('btnConfirmReboot');
+    if (btnConfirmReboot) {
+        btnConfirmReboot.addEventListener('click', function () {
+            btnConfirmReboot.disabled = true;
+            btnConfirmReboot.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se repornește sistemul...';
+            fetch('/api/system/restart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirmed: true }),
+            })
+            .then(r => r.json())
+            .then(d => {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('modalRebootConfirm'));
+                if (modal) modal.hide();
+                showSystemResult(d.success ? d.message : (d.error || 'Eroare necunoscută'), !!d.success);
+            })
+            .catch(() => showSystemResult('Eroare de rețea.', false))
+            .finally(() => {
+                btnConfirmReboot.disabled = false;
+                btnConfirmReboot.innerHTML = '<i class="bi bi-bootstrap-reboot me-1"></i>Da, Repornește Sistemul';
+            });
+        });
+    }
+
+    // Load logs
+    let autoRefreshInterval = null;
+
+    function loadLogs() {
+        const logsBox = document.getElementById('serviceLogsBox');
+        const errMsg = document.getElementById('logsErrorMsg');
+        if (!logsBox) return;
+        fetch('/api/service/logs')
+            .then(r => r.json())
+            .then(d => {
+                if (d.success) {
+                    logsBox.style.display = 'block';
+                    logsBox.textContent = d.logs;
+                    logsBox.scrollTop = logsBox.scrollHeight;
+                    if (errMsg) errMsg.textContent = '';
+                } else {
+                    if (errMsg) errMsg.textContent = d.error || 'Eroare la obținerea log-urilor.';
+                }
+            })
+            .catch(() => {
+                if (errMsg) errMsg.textContent = 'Eroare de rețea.';
+            });
+    }
+
+    const btnLoadLogs = document.getElementById('btnLoadLogs');
+    if (btnLoadLogs) {
+        btnLoadLogs.addEventListener('click', loadLogs);
+    }
+
+    const autoRefreshToggle = document.getElementById('autoRefreshLogs');
+    if (autoRefreshToggle) {
+        autoRefreshToggle.addEventListener('change', function () {
+            if (this.checked) {
+                loadLogs();
+                autoRefreshInterval = setInterval(loadLogs, 5000);
+            } else {
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
+        });
+    }
+
 });
 </script>
 {% endblock %}

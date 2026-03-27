@@ -26,6 +26,21 @@ setup_bp = Blueprint('setup', __name__)
 logger = logging.getLogger(__name__)
 
 
+def _get_app_ip() -> str:
+    """Detectează adresa IP a aplicației vizibilă în rețeaua locală."""
+    try:
+        # Deschidem un socket UDP dummy pentru a determina interfața de ieșire
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(('8.8.8.8', 53))
+            return s.getsockname()[0]
+    except Exception:
+        pass
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except Exception:
+        return '127.0.0.1'
+
+
 def is_setup_complete() -> bool:
     """Returnează True dacă setup-ul inițial a fost finalizat."""
     try:
@@ -145,7 +160,24 @@ def save_config():
     except Exception as e:
         logger.warning('[Setup] Reîncărcare client eșuată: %s', e)
 
-    return jsonify({'success': True, 'message': 'Configurație salvată.'})
+    # Configurăm automat syslog remote pe RouterOS
+    syslog_configured = False
+    app_ip = _get_app_ip()
+    syslog_port = current_app.config.get('SYSLOG_PORT', 514)
+    try:
+        mikrotik_client = getattr(current_app, 'mikrotik_client', None)
+        if mikrotik_client is not None and mikrotik_client.is_connected():
+            syslog_configured = mikrotik_client.configure_remote_syslog(app_ip, syslog_port)
+    except Exception as e:
+        logger.warning('[Setup] Configurare syslog RouterOS eșuată: %s', e)
+
+    return jsonify({
+        'success': True,
+        'message': 'Configurație salvată.',
+        'syslog_configured': syslog_configured,
+        'app_ip': app_ip,
+        'syslog_port': syslog_port,
+    })
 
 
 @setup_bp.route('/api/setup/start-discovery', methods=['POST'])
@@ -244,6 +276,26 @@ def detect_interfaces():
     return jsonify({'interfaces': interfaces})
 
 
+@setup_bp.route('/api/setup/syslog-info', methods=['GET'])
+def syslog_info():
+    """Returnează informații despre configurarea syslog pentru RouterOS.
+
+    Include adresa IP a aplicației detectată automat și comenzile RouterOS
+    necesare pentru a trimite log-urile firewall la serverul syslog intern.
+    """
+    app_ip = _get_app_ip()
+    syslog_port = current_app.config.get('SYSLOG_PORT', 514)
+    commands = (
+        f"/system logging action\n"
+        f"set [find name=remote] remote={app_ip} remote-port={syslog_port} bsd-syslog=yes"
+    )
+    return jsonify({
+        'app_ip': app_ip,
+        'syslog_port': syslog_port,
+        'routeros_commands': commands,
+    })
+
+
 @setup_bp.route('/api/setup/test-telegram', methods=['POST'])
 def test_telegram():
     """Testează notificarea Telegram cu credențialele furnizate."""
@@ -286,14 +338,8 @@ def initialize():
 
     # ─── Step 1: Basic Config ──────────────────────────────────────────────────
     admin_username = data.get('admin_username', 'admin').strip() or 'admin'
-    admin_password = data.get('admin_password', '').strip()
     app_name = data.get('app_name', 'SchoolSec').strip() or 'SchoolSec'
     app_port = data.get('app_port', 5000)
-
-    if not admin_password:
-        return jsonify({'error': 'Parola administratorului este obligatorie.'}), 400
-    if len(admin_password) < 8:
-        return jsonify({'error': 'Parola trebuie să aibă cel puțin 8 caractere.'}), 400
 
     # ─── Step 2: Network Config ────────────────────────────────────────────────
     sniffer_mode = data.get('sniffer_mode', 'simulated')
@@ -324,11 +370,13 @@ def initialize():
         # 1. Creare / actualizare utilizator admin
         admin_user = User.query.filter_by(username=admin_username).first()
         if admin_user is None:
+            # Utilizatorul nu există – îl creăm cu parola implicită Admin123
             admin_user = User(username=admin_username, email=f'{admin_username}@schoolsec.local', role='admin')
+            admin_user.set_password('Admin123')
             db.session.add(admin_user)
         else:
             admin_user.role = 'admin'
-        admin_user.set_password(admin_password)
+            # Nu modificăm parola existentă – utilizatorul o poate schimba din Setări
 
         # 2. Salvare configurație rețea în NetworkConfig
         def _set_config(key, value):
