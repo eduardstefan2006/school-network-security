@@ -195,11 +195,11 @@ class MikrotikClient:
             # (fără ele, adăugarea în address-list nu produce blocare efectivă).
             self._ensure_schoolsec_ip_drop_rules()
 
-            self._connection('/ip/firewall/address-list/add', **{
+            tuple(self._connection('/ip/firewall/address-list/add', **{
                 'list': 'schoolsec-blocked',
                 'address': ip_address,
                 'comment': comment,
-            })
+            }))
             print(f"[MikroTik] IP {ip_address} adăugat în schoolsec-blocked.")
             return True
         except Exception as e:
@@ -230,12 +230,12 @@ class MikrotikClient:
             if chain in existing_chains:
                 continue
             try:
-                self._connection('/ip/firewall/filter/add', **{
+                tuple(self._connection('/ip/firewall/filter/add', **{
                     'chain': chain,
                     'src-address-list': 'schoolsec-blocked',
                     'action': 'drop',
                     'comment': 'SchoolSec auto drop blocked IPs',
-                })
+                }))
                 print(f"[MikroTik] Regulă auto-adăugată: drop {chain} src-address-list=schoolsec-blocked")
             except Exception as e:
                 print(f"[MikroTik] Eroare la adăugarea regulii schoolsec-blocked ({chain}): {e}")
@@ -256,9 +256,9 @@ class MikrotikClient:
                 print(f"[MikroTik] IP {ip_address} nu a fost găsit în schoolsec-blocked.")
                 return False
             for entry in entries:
-                self._connection('/ip/firewall/address-list/remove', **{
+                tuple(self._connection('/ip/firewall/address-list/remove', **{
                     '.id': entry['.id'],
-                })
+                }))
             print(f"[MikroTik] IP {ip_address} eliminat din schoolsec-blocked.")
             return True
         except Exception as e:
@@ -404,13 +404,13 @@ class MikrotikClient:
         success = True
         for chain in ('forward', 'input'):
             try:
-                self._connection('/interface/bridge/filter/add', **{
+                tuple(self._connection('/interface/bridge/filter/add', **{
                     'chain': chain,
                     'in-bridge': 'RETEA',
                     'src-mac-address': src_mac,
                     'action': 'drop',
                     'comment': comment,
-                })
+                }))
                 print(f"[MikroTik] Regulă bridge filter adăugată: chain={chain} src-mac={mac_upper}")
             except Exception as e:
                 print(f"[MikroTik] Eroare block_mac_on_router({mac_upper}, chain={chain}): {e}")
@@ -434,9 +434,9 @@ class MikrotikClient:
             }))
             for entry in entries:
                 try:
-                    self._connection('/interface/bridge/filter/remove', **{
+                    tuple(self._connection('/interface/bridge/filter/remove', **{
                         '.id': entry['.id'],
-                    })
+                    }))
                     removed += 1
                 except Exception as e:
                     print(f"[MikroTik] Eroare la eliminarea regulii bridge filter {entry.get('.id')}: {e}")
@@ -528,12 +528,12 @@ class MikrotikClient:
             # Adaugă static DHCP lease cu block-access=yes
             if server:
                 try:
-                    self._connection('/ip/dhcp-server/lease/add', **{
+                    tuple(self._connection('/ip/dhcp-server/lease/add', **{
                         'mac-address': mac,
                         'server': server,
                         'block-access': 'yes',
                         'comment': full_comment,
-                    })
+                    }))
                     print(f"[MikroTik] DHCP lease blocat pentru MAC {mac} pe server {server} (hostname={hostname})")
                     success = True
                 except Exception as e:
@@ -566,9 +566,9 @@ class MikrotikClient:
                 comment = item.get('comment', '')
                 if 'SchoolSec' in comment and hostname_lower in comment.lower():
                     try:
-                        self._connection('/ip/dhcp-server/lease/remove', **{
+                        tuple(self._connection('/ip/dhcp-server/lease/remove', **{
                             '.id': item['.id'],
-                        })
+                        }))
                         removed += 1
                     except Exception as e:
                         print(f"[MikroTik] Eroare eliminare DHCP lease {item.get('.id')}: {e}")
@@ -581,9 +581,9 @@ class MikrotikClient:
                 comment = item.get('comment', '')
                 if 'SchoolSec' in comment and hostname_lower in comment.lower():
                     try:
-                        self._connection('/interface/bridge/filter/remove', **{
+                        tuple(self._connection('/interface/bridge/filter/remove', **{
                             '.id': item['.id'],
-                        })
+                        }))
                         removed += 1
                     except Exception as e:
                         print(f"[MikroTik] Eroare eliminare bridge filter {item.get('.id')}: {e}")
@@ -642,12 +642,12 @@ class MikrotikClient:
             if remote_id is None:
                 print("[MikroTik] Nu s-a găsit acțiunea 'remote' în /system/logging/action.")
                 return False
-            self._connection('/system/logging/action/set', **{
+            tuple(self._connection('/system/logging/action/set', **{
                 '.id': remote_id,
                 'remote': remote_ip,
                 'remote-port': str(remote_port),
                 'bsd-syslog': 'yes',
-            })
+            }))
             print(f"[MikroTik] Syslog remote configurat: {remote_ip}:{remote_port}")
             return True
         except Exception as e:
