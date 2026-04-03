@@ -77,6 +77,23 @@ class MikrotikClient:
         """Returnează True dacă conexiunea este activă."""
         return self._connection is not None
 
+    def ensure_connected(self) -> bool:
+        """Asigură că există o conexiune activă și funcțională cu routerul.
+
+        Testează conexiunea cu un apel ușor și reconectează automat dacă
+        aceasta a expirat sau a fost întreruptă (de exemplu, după un timeout
+        de inactivitate RouterOS).
+        Returnează True dacă conexiunea este activă după apel, False altfel.
+        """
+        if self._connection is None:
+            return self.connect()
+        try:
+            list(self._connection('/system/resource/print'))
+            return True
+        except Exception:
+            self._connection = None
+            return self.connect()
+
     # ------------------------------------------------------------------
     # Date RouterOS
     # ------------------------------------------------------------------
@@ -245,7 +262,7 @@ class MikrotikClient:
 
         Returnează True dacă reușit, False dacă eroare.
         """
-        if not self.is_connected():
+        if not self.ensure_connected():
             return False
         try:
             entries = list(self._connection('/ip/firewall/address-list/print', **{
@@ -423,7 +440,7 @@ class MikrotikClient:
         Endpoint RouterOS: /interface/bridge/filter/print + /remove
         Returnează True dacă cel puțin o regulă a fost eliminată, False altfel.
         """
-        if not self.is_connected():
+        if not self.ensure_connected():
             return False
         mac_upper = mac_address.upper()
         src_mac = f'{mac_upper}/FF:FF:FF:FF:FF:FF'
@@ -554,7 +571,7 @@ class MikrotikClient:
         - Reguli bridge filter cu comentariu conținând hostname-ul și 'SchoolSec'
         Returnează True dacă cel puțin o regulă a fost eliminată.
         """
-        if not self.is_connected():
+        if not self.ensure_connected():
             return False
 
         hostname_lower = hostname.lower()

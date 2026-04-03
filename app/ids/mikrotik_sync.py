@@ -226,6 +226,22 @@ def _run_sync(app, mikrotik_client):
             if mikrotik_client.block_hostname_on_router(hostname, comment='SchoolSec auto-sync blocked hostname'):
                 hn_ok += 1
 
+        # ------------------------------------------------------------------
+        # 3b. Curățare blocări orfane pe router (deblocate în aplicație dar
+        #     rămase pe router din cauza unor erori de comunicație anterioare)
+        # ------------------------------------------------------------------
+        active_ip_set = {(e.ip_address or '').strip() for e in active_ips}
+        for orphan_ip in router_ip_set:
+            if orphan_ip and orphan_ip not in active_ip_set:
+                mikrotik_client.unblock_ip_on_router(orphan_ip)
+                print(f"[MikroTik Sync] IP orfan eliminat din router: {orphan_ip}")
+
+        active_mac_set = {(e.mac_address or '').strip().upper() for e in active_macs}
+        for orphan_mac in router_mac_set:
+            if orphan_mac and orphan_mac not in active_mac_set:
+                mikrotik_client.unblock_mac_on_router(orphan_mac)
+                print("[MikroTik Sync] MAC orfan eliminat din router.")
+
         # Logăm doar când există diferențe (sincronizare incompletă)
         if ip_ok != len(active_ips) or mac_ok != len(active_macs) or hn_ok != len(active_hostnames):
             db.session.add(SecurityLog(

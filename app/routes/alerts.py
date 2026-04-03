@@ -263,19 +263,26 @@ def unblock_ip(ip_id):
 
     # Dacă MikroTik este configurat, deblochează și pe router
     mikrotik = getattr(current_app, 'mikrotik_client', None)
-    if mikrotik and mikrotik.is_connected():
+    router_suffix = ''
+    if mikrotik and mikrotik.ensure_connected():
         if associated_mac:
             mikrotik.unblock_mac_on_router(associated_mac.mac_address)
         if associated_hostname:
             mikrotik.unblock_hostname_on_router(associated_hostname.hostname)
-        mikrotik.unblock_ip_on_router(blocked.ip_address)
+        router_ok = mikrotik.unblock_ip_on_router(blocked.ip_address)
+        if router_ok:
+            router_suffix = ' (și pe routerul MikroTik)'
+        else:
+            flash(f'IP-ul {blocked.ip_address} a fost deblocat local, dar nu a putut fi deblocat pe router (nu a fost găsit sau eroare).', 'warning')
+    else:
+        flash('MikroTik nu este conectat: deblocarea s-a făcut doar local în aplicație.', 'warning')
 
     if associated_mac:
-        flash(f'IP-ul {blocked.ip_address} și MAC-ul {associated_mac.mac_address} au fost deblocate.', 'success')
+        flash(f'IP-ul {blocked.ip_address} și MAC-ul {associated_mac.mac_address} au fost deblocate{router_suffix}.', 'success')
     elif associated_hostname:
-        flash(f'IP-ul {blocked.ip_address} și hostname-ul {associated_hostname.hostname} au fost deblocate.', 'success')
+        flash(f'IP-ul {blocked.ip_address} și hostname-ul {associated_hostname.hostname} au fost deblocate{router_suffix}.', 'success')
     else:
-        flash(f'IP-ul {blocked.ip_address} a fost deblocat.', 'success')
+        flash(f'IP-ul {blocked.ip_address} a fost deblocat{router_suffix}.', 'success')
     return redirect(url_for('alerts.blocked_devices'))
 
 
@@ -300,10 +307,14 @@ def unblock_mac(mac_id):
 
     # Dacă MikroTik este configurat, deblochează și pe router
     mikrotik = getattr(current_app, 'mikrotik_client', None)
-    if mikrotik and mikrotik.is_connected():
-        mikrotik.unblock_mac_on_router(blocked.mac_address)
-
-    flash(f'MAC-ul {blocked.mac_address} a fost deblocat.', 'success')
+    if mikrotik and mikrotik.ensure_connected():
+        router_ok = mikrotik.unblock_mac_on_router(blocked.mac_address)
+        if router_ok:
+            flash(f'MAC-ul {blocked.mac_address} a fost deblocat cu succes (și pe routerul MikroTik).', 'success')
+        else:
+            flash(f'MAC-ul {blocked.mac_address} a fost deblocat local, dar nu a putut fi deblocat pe router.', 'warning')
+    else:
+        flash(f'MAC-ul {blocked.mac_address} a fost deblocat local (MikroTik nu este conectat).', 'warning')
     return redirect(url_for('alerts.blocked_devices', _anchor='macs'))
 
 
@@ -328,10 +339,14 @@ def unblock_hostname(hostname_id):
 
     # Dacă MikroTik este configurat, deblochează și pe router
     mikrotik = getattr(current_app, 'mikrotik_client', None)
-    if mikrotik and mikrotik.is_connected():
-        mikrotik.unblock_hostname_on_router(blocked.hostname)
-
-    flash(f'Hostname-ul {blocked.hostname} a fost deblocat.', 'success')
+    if mikrotik and mikrotik.ensure_connected():
+        router_ok = mikrotik.unblock_hostname_on_router(blocked.hostname)
+        if router_ok:
+            flash(f'Hostname-ul {blocked.hostname} a fost deblocat cu succes (și pe routerul MikroTik).', 'success')
+        else:
+            flash(f'Hostname-ul {blocked.hostname} a fost deblocat local, dar nu a putut fi deblocat pe router.', 'warning')
+    else:
+        flash(f'Hostname-ul {blocked.hostname} a fost deblocat local (MikroTik nu este conectat).', 'warning')
     return redirect(url_for('alerts.blocked_devices', _anchor='hostnames'))
 
 
