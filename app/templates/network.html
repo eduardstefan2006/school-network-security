@@ -46,38 +46,38 @@
     </div>
 </div>
 
-<!-- Rând 2: Badge-uri pe tipuri de dispozitive -->
+<!-- Rând 2: Badge-uri pe tipuri de dispozitive (clickabile pentru filtrare) -->
 <div class="card schoolsec-card border-secondary mb-4">
     <div class="card-body py-2">
         <div class="d-flex flex-wrap gap-2 align-items-center">
             <small class="text-muted me-2">Tipuri:</small>
-            <span class="badge bg-primary" id="type-router">
+            <button class="badge bg-primary type-filter-btn" id="type-router" data-type="router" aria-pressed="false">
                 🖧 Routere <span class="ms-1">{{ type_counts.get('router', 0) }}</span>
-            </span>
-            <span class="badge bg-info text-dark" id="type-switch">
+            </button>
+            <button class="badge bg-info text-dark type-filter-btn" id="type-switch" data-type="switch" aria-pressed="false">
                 🔌 Switch-uri <span class="ms-1">{{ type_counts.get('switch', 0) }}</span>
-            </span>
-            <span class="badge bg-purple" style="background-color:#6f42c1" id="type-ap">
+            </button>
+            <button class="badge type-filter-btn" id="type-ap" data-type="ap" aria-pressed="false" style="background-color:#6f42c1;">
                 📡 Access Points <span class="ms-1">{{ type_counts.get('ap', 0) }}</span>
-            </span>
-            <span class="badge bg-warning text-dark" id="type-camera">
+            </button>
+            <button class="badge bg-warning text-dark type-filter-btn" id="type-camera" data-type="camera" aria-pressed="false">
                 📹 Camere <span class="ms-1">{{ type_counts.get('camera', 0) }}</span>
-            </span>
-            <span class="badge bg-success" id="type-server">
+            </button>
+            <button class="badge bg-success type-filter-btn" id="type-server" data-type="server" aria-pressed="false">
                 🖥️ Servere <span class="ms-1">{{ type_counts.get('server', 0) }}</span>
-            </span>
-            <span class="badge bg-light text-dark" id="type-client">
+            </button>
+            <button class="badge bg-light text-dark type-filter-btn" id="type-client" data-type="client" aria-pressed="false">
                 💻 Clienți <span class="ms-1">{{ type_counts.get('client', 0) }}</span>
-            </span>
-            <span class="badge bg-warning text-dark" id="type-printer">
+            </button>
+            <button class="badge bg-warning text-dark type-filter-btn" id="type-printer" data-type="printer" aria-pressed="false">
                 🖨️ Imprimante <span class="ms-1">{{ type_counts.get('printer', 0) }}</span>
-            </span>
-            <span class="badge bg-danger" id="type-mobile">
+            </button>
+            <button class="badge bg-danger type-filter-btn" id="type-mobile" data-type="mobile" aria-pressed="false">
                 📱 Mobile <span class="ms-1">{{ type_counts.get('mobile', 0) }}</span>
-            </span>
-            <span class="badge bg-secondary" id="type-unknown">
+            </button>
+            <button class="badge bg-secondary type-filter-btn" id="type-unknown" data-type="unknown" aria-pressed="false">
                 ❓ Necunoscute <span class="ms-1">{{ type_counts.get('unknown', 0) }}</span>
-            </span>
+            </button>
         </div>
     </div>
 </div>
@@ -342,11 +342,18 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+.type-filter-btn {
+    border: none;
+    cursor: pointer;
+}
+</style>
 <script>
 // ============================================================
 // Filtrare și căutare client-side
 // ============================================================
 let currentFilter = 'all';
+let currentTypeFilter = null;
 
 function applyFilters() {
     const searchVal = document.getElementById('search-input').value.toLowerCase().trim();
@@ -375,7 +382,11 @@ function applyFilters() {
         else if (currentFilter === 'unknown') matchFilter = !isKnown;
         else if (currentFilter === 'infra') matchFilter = isKnown;
 
-        if (matchSearch && matchFilter) {
+        // Filtru de tip dispozitiv
+        let matchType = true;
+        if (currentTypeFilter) matchType = type === currentTypeFilter;
+
+        if (matchSearch && matchFilter && matchType) {
             row.style.display = '';
             visible++;
         } else {
@@ -394,6 +405,28 @@ document.querySelectorAll('#filter-buttons button').forEach(btn => {
         document.querySelectorAll('#filter-buttons button').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         currentFilter = this.dataset.filter;
+        applyFilters();
+    });
+});
+
+// Filtrare după tip dispozitiv
+document.querySelectorAll('.type-filter-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const type = this.dataset.type;
+        if (currentTypeFilter === type) {
+            currentTypeFilter = null;
+            document.querySelectorAll('.type-filter-btn').forEach(b => {
+                b.style.opacity = '1';
+                b.setAttribute('aria-pressed', 'false');
+            });
+        } else {
+            currentTypeFilter = type;
+            document.querySelectorAll('.type-filter-btn').forEach(b => {
+                const active = b.dataset.type === type;
+                b.style.opacity = active ? '1' : '0.5';
+                b.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+        }
         applyFilters();
     });
 });
