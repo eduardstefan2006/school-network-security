@@ -5,14 +5,15 @@ import hmac
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
 from app.models import User, SecurityLog
-from app import db
-from app.utils import validate_password
+from app import db, limiter
+from app.utils import validate_password, validate_username
 
 # Creăm blueprint-ul pentru autentificare
 auth_bp = Blueprint('auth', __name__)
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", methods=["POST"])
 def login():
     """Pagina de autentificare."""
     # Dacă utilizatorul este deja autentificat, redirecționăm la dashboard
@@ -20,9 +21,16 @@ def login():
         return redirect(url_for('dashboard.index'))
 
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
+        username_raw = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         remember = request.form.get('remember', False) == 'on'
+
+        # Validare format username (anti SQL injection / XSS)
+        valid, result = validate_username(username_raw)
+        if not valid:
+            flash(result, 'danger')
+            return render_template('login.html')
+        username = result  # username escapt HTML
 
         # Căutăm utilizatorul în baza de date
         user = User.query.filter_by(username=username).first()
@@ -33,6 +41,7 @@ def login():
             # Salvăm log-ul de autentificare reușită
             log = SecurityLog(
                 event_type='user_login',
+                user_id=user.id,
                 source_ip=request.remote_addr,
                 message=f"Autentificare reușită pentru utilizatorul: {username}",
                 severity='info'
@@ -50,7 +59,7 @@ def login():
             log = SecurityLog(
                 event_type='login_failed',
                 source_ip=request.remote_addr,
-                message=f"Autentificare eșuată pentru utilizatorul: {username}",
+                message=f"Autentificare eșuată pentru utilizatorul: {username_raw[:20]}",
                 severity='warning'
             )
             db.session.add(log)
@@ -97,6 +106,7 @@ def change_own_password():
         try:
             log = SecurityLog(
                 event_type='password_changed',
+                user_id=current_user.id,
                 source_ip=request.remote_addr,
                 message=f'Utilizatorul {current_user.username} și-a schimbat parola.',
                 severity='info'
@@ -117,10 +127,12 @@ def change_own_password():
 def logout():
     """Deconectarea utilizatorului."""
     username = current_user.username
+    user_id = current_user.id
 
     # Salvăm log-ul de deconectare
     log = SecurityLog(
         event_type='user_logout',
+        user_id=user_id,
         source_ip=request.remote_addr,
         message=f"Utilizatorul {username} s-a deconectat.",
         severity='info'

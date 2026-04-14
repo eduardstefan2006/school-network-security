@@ -17,6 +17,7 @@
 
                 <!-- Formularul de login -->
                 <form method="POST" action="{{ url_for('auth.login') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                         <label for="username" class="form-label text-light">
                             <i class="bi bi-person me-1"></i>Nume utilizator

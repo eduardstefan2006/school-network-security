@@ -102,6 +102,8 @@ class SecurityLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     # Tipul evenimentului: packet_captured, alert_generated, user_login, etc.
     event_type = db.Column(db.String(50), nullable=False)
+    # ID-ul utilizatorului care a generat evenimentul (nullable pentru evenimente de sistem)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     # IP-ul sursă
     source_ip = db.Column(db.String(45), nullable=True)
     # IP-ul destinație

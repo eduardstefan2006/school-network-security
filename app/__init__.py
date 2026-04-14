@@ -7,6 +7,9 @@ from datetime import datetime, timezone, timedelta
 from flask import Flask, request as flask_request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 
 try:
     from zoneinfo import ZoneInfo
@@ -19,6 +22,10 @@ except ImportError:
 # Instanțele extensiilor (fără a fi legate de aplicație)
 db = SQLAlchemy()
 login_manager = LoginManager()
+# Rate limiter: protecție anti brute-force (implicit 200/zi, 50/oră)
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
+# Protecție CSRF pentru toate formularele POST
+csrf = CSRFProtect()
 
 
 def _run_migrations(app):
@@ -43,6 +50,16 @@ def _run_migrations(app):
                 ))
                 conn.commit()
                 print("[DB] Migrare: coloana 'type_locked' adăugată în network_devices.")
+
+            # Verificăm și adăugăm coloana user_id în security_logs
+            result = conn.execute(text("PRAGMA table_info(security_logs)"))
+            log_cols = [row[1] for row in result]
+            if 'user_id' not in log_cols:
+                conn.execute(text(
+                    "ALTER TABLE security_logs ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL"
+                ))
+                conn.commit()
+                print("[DB] Migrare: coloana 'user_id' adăugată în security_logs.")
     except Exception as e:
         print(f"[DB] Eroare la migrare automată: {e}")
 
@@ -199,6 +216,10 @@ def create_app(config_name=None):
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Trebuie să te autentifici pentru a accesa această pagină.'
     login_manager.login_message_category = 'warning'
+    # Inițializare rate limiter (anti brute-force)
+    limiter.init_app(app)
+    # Inițializare protecție CSRF pentru toate formularele
+    csrf.init_app(app)
 
     # Înregistrarea blueprint-urilor (modulelor de rute)
     from app.routes.auth import auth_bp
@@ -306,5 +327,16 @@ def create_app(config_name=None):
             "frame-ancestors 'none'"
         )
         return response
+
+    @app.errorhandler(429)
+    def ratelimit_error(e):
+        """Răspuns pentru depășirea limitei de rată (rate limiting)."""
+        from flask import jsonify, render_template as _render
+        retry_after = getattr(e, 'retry_after', 60)
+        if flask_request.accept_mimetypes.accept_json and \
+                not flask_request.accept_mimetypes.accept_html:
+            return jsonify(error='Prea multe cereri. Încercați din nou mai târziu.',
+                           retry_after=retry_after), 429
+        return _render('login.html', rate_limit_error=True, retry_after=retry_after), 429
 
     return app
