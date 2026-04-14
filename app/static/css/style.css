@@ -84,7 +84,7 @@ body {
 }
 
 /* =====================================================================
-   Navbar
+   Navbar — stiluri de bază (detalii în navbar.css)
    ===================================================================== */
 .navbar-brand {
     font-size: 1.1rem;
@@ -239,7 +239,7 @@ footer {
 }
 
 /* =====================================================================
-   Responsivitate
+   Responsivitate — detalii complete în responsive.css
    ===================================================================== */
 @media (max-width: 768px) {
     .navbar-brand {

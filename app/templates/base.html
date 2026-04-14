@@ -10,111 +10,167 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <!-- CSS personalizat -->
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/navbar.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/responsive.css') }}" rel="stylesheet">
 </head>
 <body class="text-light" style="background-color: var(--color-bg);">
 
 <!-- Bara de navigare -->
 {% if current_user.is_authenticated %}
-<nav class="navbar navbar-expand-lg navbar-dark border-bottom" style="background-color: #12182a;">
+<nav class="navbar navbar-expand-lg navbar-dark border-bottom schoolsec-navbar" aria-label="Navigare principală">
     <div class="container-fluid">
         <a class="navbar-brand fw-bold text-success" href="{{ url_for('dashboard.index') }}">
-            <i class="bi bi-shield-lock-fill me-2"></i>
-            SchoolSec
+            <i class="bi bi-shield-lock-fill me-2"></i>SchoolSec
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain"
+                aria-controls="navbarMain" aria-expanded="false" aria-label="Deschide meniul">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarMain">
             <ul class="navbar-nav me-auto">
+
+                <!-- Dashboard -->
                 <li class="nav-item">
                     <a class="nav-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}"
                        href="{{ url_for('dashboard.index') }}">
                         <i class="bi bi-speedometer2 me-1"></i>Dashboard
                     </a>
                 </li>
+
+                <!-- Alerte -->
                 <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint and 'alerts' in request.endpoint %}active{% endif %}"
+                    <a class="nav-link {% if request.endpoint == 'alerts.index' %}active{% endif %}"
                        href="{{ url_for('alerts.index') }}">
                         <i class="bi bi-exclamation-triangle me-1"></i>Alerte
-                        {% set active_count = namespace(n=0) %}
                         {% if active_alerts_count is defined %}
                             <span class="badge bg-danger ms-1">{{ active_alerts_count }}</span>
                         {% endif %}
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint in ('statistics.index', 'statistics.api_statistics') %}active{% endif %}"
-                       href="{{ url_for('statistics.index') }}">
-                        <i class="bi bi-graph-up me-1"></i>Statistici
+
+                <!-- Rețea dropdown -->
+                {% set retea_active = request.endpoint and (
+                    'network' in request.endpoint or
+                    request.endpoint in ('statistics.index', 'statistics.api_statistics') or
+                    request.endpoint == 'statistics.anomaly_detection' or
+                    request.endpoint == 'alerts.blocked_devices'
+                ) %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if retea_active %}active{% endif %}"
+                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-diagram-3 me-1"></i>Rețea
                     </a>
+                    <ul class="dropdown-menu dropdown-menu-dark schoolsec-dropdown">
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint and 'network' in request.endpoint %}active{% endif %}"
+                               href="{{ url_for('network.index') }}">
+                                <i class="bi bi-hdd-network me-2"></i>Dispozitive
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint in ('statistics.index', 'statistics.api_statistics') %}active{% endif %}"
+                               href="{{ url_for('statistics.index') }}">
+                                <i class="bi bi-graph-up me-2"></i>Statistici
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint == 'statistics.anomaly_detection' %}active{% endif %}"
+                               href="{{ url_for('statistics.anomaly_detection') }}">
+                                <i class="bi bi-cpu me-2"></i>Anomalii ML
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint == 'alerts.blocked_devices' %}active{% endif %}"
+                               href="{{ url_for('alerts.blocked_devices') }}">
+                                <i class="bi bi-shield-lock me-2"></i>Blocări
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint == 'statistics.app_usage' %}active{% endif %}"
-                       href="{{ url_for('statistics.app_usage') }}">
-                        <i class="bi bi-window-stack me-1"></i>Aplicații
+
+                <!-- Rapoarte dropdown -->
+                {% set rapoarte_active = request.endpoint and (
+                    'reports' in request.endpoint or
+                    request.endpoint == 'statistics.app_usage'
+                ) %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if rapoarte_active %}active{% endif %}"
+                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-file-earmark-bar-graph me-1"></i>Rapoarte
                     </a>
+                    <ul class="dropdown-menu dropdown-menu-dark schoolsec-dropdown">
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint == 'statistics.app_usage' %}active{% endif %}"
+                               href="{{ url_for('statistics.app_usage') }}">
+                                <i class="bi bi-window-stack me-2"></i>Trafic per Aplicație
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint and 'reports' in request.endpoint %}active{% endif %}"
+                               href="{{ url_for('reports.index') }}">
+                                <i class="bi bi-file-earmark-pdf me-2"></i>Raport Securitate
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint and 'reports' in request.endpoint %}active{% endif %}"
-                       href="{{ url_for('reports.index') }}">
-                        <i class="bi bi-file-earmark-pdf me-1"></i>Rapoarte
+
+                <!-- Admin dropdown (vizibil pentru toți, conținut filtrat) -->
+                {% set admin_active = request.endpoint and (
+                    'external' in request.endpoint or
+                    request.endpoint == 'dashboard.logs' or
+                    'users' in request.endpoint or
+                    'settings' in request.endpoint
+                ) %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if admin_active %}active{% endif %}"
+                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-gear me-1"></i>Admin
                     </a>
+                    <ul class="dropdown-menu dropdown-menu-dark schoolsec-dropdown">
+                        {% if current_user.is_admin() %}
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint and 'settings' in request.endpoint %}active{% endif %}"
+                               href="{{ url_for('settings.index') }}">
+                                <i class="bi bi-sliders me-2"></i>Setări
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint and 'users' in request.endpoint %}active{% endif %}"
+                               href="{{ url_for('users.index') }}">
+                                <i class="bi bi-people me-2"></i>Utilizatori
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        {% endif %}
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint == 'dashboard.logs' %}active{% endif %}"
+                               href="{{ url_for('dashboard.logs') }}">
+                                <i class="bi bi-journal-text me-2"></i>Loguri Securitate
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint and 'external' in request.endpoint %}active{% endif %}"
+                               href="{{ url_for('external.index') }}">
+                                <i class="bi bi-globe me-2"></i>Securitate Externă
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint and 'network' in request.endpoint %}active{% endif %}"
-                       href="{{ url_for('network.index') }}">
-                        <i class="bi bi-diagram-3 me-1"></i>Hartă Rețea
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint == 'alerts.blocked_devices' %}active{% endif %}"
-                       href="{{ url_for('alerts.blocked_devices') }}">
-                        <i class="bi bi-shield-lock me-1"></i>Blocări
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint == 'statistics.anomaly_detection' %}active{% endif %}"
-                       href="{{ url_for('statistics.anomaly_detection') }}">
-                        <i class="bi bi-cpu me-1"></i>Anomalii ML
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint and 'external' in request.endpoint %}active{% endif %}"
-                       href="{{ url_for('external.index') }}">
-                        <i class="bi bi-globe me-1"></i>Securitate Externă
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint == 'dashboard.logs' %}active{% endif %}"
-                       href="{{ url_for('dashboard.logs') }}">
-                        <i class="bi bi-journal-text me-1"></i>Loguri
-                    </a>
-                </li>
-                {% if current_user.is_admin() %}
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint and 'users' in request.endpoint %}active{% endif %}"
-                       href="{{ url_for('users.index') }}">
-                        <i class="bi bi-people me-1"></i>Utilizatori
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint and 'settings' in request.endpoint %}active{% endif %}"
-                       href="{{ url_for('settings.index') }}">
-                        <i class="bi bi-gear me-1"></i>Setări
-                    </a>
-                </li>
-                {% endif %}
+
             </ul>
+
+            <!-- User menu (right side) -->
             <ul class="navbar-nav">
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                       aria-expanded="false" aria-label="Meniu utilizator">
                         <i class="bi bi-person-circle me-1"></i>
                         {{ current_user.username }}
                         <span class="badge {% if current_user.is_admin() %}bg-danger{% else %}bg-secondary{% endif %} ms-1">
                             {{ current_user.role }}
                         </span>
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                    <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end schoolsec-dropdown">
                         <li><a class="dropdown-item" href="{{ url_for('auth.change_own_password') }}">
                             <i class="bi bi-key me-2"></i>Schimbă Parola
                         </a></li>

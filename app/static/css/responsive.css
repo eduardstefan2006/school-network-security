@@ -1,0 +1,101 @@
+/* =====================================================================
+   SchoolSec - Responsive Styles
+   Breakpoints:
+     Desktop  > 1024px : full horizontal navbar
+     Tablet   768-1024px : compact navbar, hamburger trigger
+     Mobile   < 768px  : collapsed hamburger menu
+   ===================================================================== */
+
+/* ── Tablet (768px – 1024px) ─────────────────────────────────────── */
+@media (max-width: 1024px) {
+    .schoolsec-navbar .nav-link {
+        font-size: 0.85rem;
+        padding: 0.45rem 0.55rem;
+    }
+
+    .schoolsec-navbar .navbar-brand {
+        font-size: 1rem;
+    }
+}
+
+/* ── Mobile (< 768px) ────────────────────────────────────────────── */
+@media (max-width: 767.98px) {
+    /* Reduce navbar height on mobile */
+    .schoolsec-navbar {
+        height: auto;
+        min-height: 50px;
+    }
+
+    /* Expanded mobile menu */
+    .schoolsec-navbar .navbar-collapse {
+        background-color: #12182a;
+        border-top: 1px solid #3d4a5c;
+        padding: 0.5rem 0 0.75rem;
+        margin-top: 4px;
+    }
+
+    .schoolsec-navbar .nav-link {
+        font-size: 0.9rem;
+        padding: 0.55rem 1rem;
+        border-bottom: none !important;
+    }
+
+    .schoolsec-navbar .nav-link.active {
+        color: #3fb950 !important;
+        border-left: 3px solid #3fb950;
+        padding-left: calc(1rem - 3px);
+        border-bottom: none !important;
+    }
+
+    /* Dropdowns become full-width on mobile */
+    .schoolsec-dropdown {
+        min-width: unset;
+        width: 100%;
+        border: none !important;
+        border-radius: 0;
+        box-shadow: none;
+        background-color: #0e1424 !important;
+        padding-left: 1rem;
+    }
+
+    .schoolsec-dropdown .dropdown-item {
+        padding: 0.5rem 0.75rem;
+    }
+
+    /* Active item in mobile dropdown */
+    .schoolsec-dropdown .dropdown-item.active {
+        border-left: 3px solid #3fb950;
+        padding-left: calc(0.75rem - 3px);
+    }
+
+    /* Responsive tables */
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Compact cards on mobile */
+    .card {
+        margin-bottom: 0.75rem;
+    }
+
+    /* Responsive grid helpers */
+    h2 {
+        font-size: 1.3rem;
+    }
+
+    h3 {
+        font-size: 1.1rem;
+    }
+}
+
+/* ── Small mobile (< 480px) ──────────────────────────────────────── */
+@media (max-width: 479.98px) {
+    .schoolsec-navbar .navbar-brand {
+        font-size: 0.95rem;
+    }
+
+    .card-body {
+        padding: 0.75rem;
+    }
+}
