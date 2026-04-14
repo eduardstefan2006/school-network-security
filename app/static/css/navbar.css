@@ -1,0 +1,83 @@
+/* =====================================================================
+   SchoolSec - Navbar Styles
+   ===================================================================== */
+
+/* Main navbar */
+.schoolsec-navbar {
+    background-color: #12182a !important;
+    height: 60px;
+    padding-top: 0;
+    padding-bottom: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.schoolsec-navbar .navbar-brand {
+    font-size: 1.1rem;
+    letter-spacing: 0.5px;
+    color: #3fb950 !important;
+}
+
+/* Nav links in navbar */
+.schoolsec-navbar .nav-link {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+    color: #c5cdd8 !important;
+    transition: color 0.2s ease;
+    white-space: nowrap;
+}
+
+.schoolsec-navbar .nav-link:hover,
+.schoolsec-navbar .nav-link:focus {
+    color: #3fb950 !important;
+}
+
+.schoolsec-navbar .nav-link.active {
+    color: #3fb950 !important;
+    border-bottom: 2px solid #3fb950;
+}
+
+.schoolsec-navbar .nav-link.dropdown-toggle.active {
+    border-bottom: 2px solid #3fb950;
+}
+
+/* Dropdown menus */
+.schoolsec-dropdown {
+    background-color: #1e2840 !important;
+    border: 1px solid #3d4a5c !important;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    min-width: 200px;
+    padding: 0.4rem 0;
+}
+
+.schoolsec-dropdown .dropdown-item {
+    color: #c5cdd8 !important;
+    font-size: 0.88rem;
+    padding: 0.5rem 1rem;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.schoolsec-dropdown .dropdown-item:hover,
+.schoolsec-dropdown .dropdown-item:focus {
+    background-color: rgba(63, 185, 80, 0.12) !important;
+    color: #3fb950 !important;
+}
+
+.schoolsec-dropdown .dropdown-item.active {
+    background-color: rgba(63, 185, 80, 0.18) !important;
+    color: #3fb950 !important;
+}
+
+.schoolsec-dropdown .dropdown-divider {
+    border-color: #3d4a5c;
+}
+
+/* Navbar toggler (hamburger) */
+.schoolsec-navbar .navbar-toggler {
+    border-color: #3d4a5c;
+    padding: 0.3rem 0.6rem;
+}
+
+.schoolsec-navbar .navbar-toggler:focus {
+    box-shadow: 0 0 0 2px rgba(63, 185, 80, 0.4);
+}
