@@ -30,13 +30,6 @@
     <span class="text-info">Sniffer start: {{ health_status.sniffer_start_time or 'N/A' }}</span>
 </div>
 
-<!-- Disk Status Widget -->
-<div class="row mb-4">
-    <div class="col-md-4">
-        {% include 'components/disk_status.html' %}
-    </div>
-</div>
-
 <!-- Carduri statistici principale -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">
@@ -252,6 +245,18 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- Monitoring Section (Bottom) -->
+<div class="row g-3 mt-5 pt-4 border-top border-dark">
+    <div class="col-12">
+        <h5 class="text-muted mb-3">
+            <i class="bi bi-activity"></i> System Monitoring
+        </h5>
+    </div>
+    <div class="col-md-6">
+        {% include 'components/disk_status.html' %}
     </div>
 </div>
 
