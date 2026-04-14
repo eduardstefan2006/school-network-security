@@ -59,7 +59,7 @@ def login():
             log = SecurityLog(
                 event_type='login_failed',
                 source_ip=request.remote_addr,
-                message=f"Autentificare eșuată pentru utilizatorul: {username_raw[:20]}",
+                message=f"Autentificare eșuată pentru utilizatorul: {username}",
                 severity='warning'
             )
             db.session.add(log)

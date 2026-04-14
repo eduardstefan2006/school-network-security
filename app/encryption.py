@@ -1,7 +1,9 @@
 """
 Utilitare de criptare/decriptare pentru date sensibile (ex: credențiale MikroTik).
 
-Folosește algoritmul Fernet (AES-128-CBC + HMAC-SHA256) din librăria `cryptography`.
+Folosește algoritmul Fernet din librăria `cryptography`.
+Fernet folosește AES-128-CBC cu padding PKCS7 și HMAC-SHA256 pentru autentificare,
+plus un timestamp intern pentru validarea TTL.
 Cheia Fernet este derivată din SECRET_KEY al aplicației folosind SHA-256.
 """
 import base64

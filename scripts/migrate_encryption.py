@@ -41,8 +41,15 @@ def migrate_mikrotik_password():
             decrypt_value(cfg.password_encrypted, secret_key)
             print('[Migrare] Parola este deja criptată cu Fernet. Nu este nevoie de migrare.')
             return
-        except (ValueError, Exception):
-            pass  # Nu este token Fernet valid → presupunem text plain
+        except ValueError:
+            # Nu este un token Fernet valid → presupunem text plain
+            import logging as _logging
+            _logging.debug('[Migrare] Parola nu este token Fernet (ValueError) – se tratează ca text plain.')
+        except Exception as exc:
+            # Eroare neașteptată la tentativa de decriptare
+            import logging as _logging
+            _logging.debug('[Migrare] Excepție la tentativa de decriptare (%s: %s) – se tratează ca text plain.',
+                           type(exc).__name__, exc)
 
         # Criptăm parola plain text
         plain_password = cfg.password_encrypted
