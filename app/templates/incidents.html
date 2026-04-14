@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Incidente de Securitate - SchoolSec{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h2 class="text-danger"><i class="bi bi-shield-exclamation me-2"></i>Incidente de Securitate</h2>
+        <p class="text-muted small mb-0">Tickete create automat pentru amenințările critice detectate de sistem.</p>
+    </div>
+    <div class="col-auto d-flex gap-2 flex-wrap align-items-center">
+        <span class="badge bg-danger fs-6">{{ counts.open }} Deschise</span>
+        <span class="badge bg-warning text-dark fs-6">{{ counts.investigating }} În investigare</span>
+        <span class="badge bg-success fs-6">{{ counts.resolved }} Rezolvate</span>
+    </div>
+</div>
+
+<!-- Filtre status -->
+<div class="mb-3 d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('response.incidents') }}"
+       class="btn btn-sm {% if not status_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        Toate
+    </a>
+    <a href="{{ url_for('response.incidents', status='open') }}"
+       class="btn btn-sm {% if status_filter == 'open' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+        <i class="bi bi-exclamation-circle me-1"></i>Deschise
+    </a>
+    <a href="{{ url_for('response.incidents', status='investigating') }}"
+       class="btn btn-sm {% if status_filter == 'investigating' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+        <i class="bi bi-search me-1"></i>În investigare
+    </a>
+    <a href="{{ url_for('response.incidents', status='resolved') }}"
+       class="btn btn-sm {% if status_filter == 'resolved' %}btn-success{% else %}btn-outline-success{% endif %}">
+        <i class="bi bi-check-circle me-1"></i>Rezolvate
+    </a>
+</div>
+
+{% if incidents %}
+<div class="table-responsive">
+    <table class="table table-dark table-hover align-middle">
+        <thead class="table-secondary text-dark">
+            <tr>
+                <th scope="col">#ID</th>
+                <th scope="col">IP Sursă</th>
+                <th scope="col">Tip Amenințare</th>
+                <th scope="col">Severitate</th>
+                <th scope="col">Scor Anomalie</th>
+                <th scope="col">Status</th>
+                <th scope="col">Creat La</th>
+                {% if current_user.is_admin() %}
+                <th scope="col">Acțiuni</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for incident in incidents %}
+            <tr>
+                <td><span class="badge bg-secondary">#{{ incident.id }}</span></td>
+                <td>
+                    <code class="text-warning">{{ incident.source_ip }}</code>
+                </td>
+                <td>
+                    <span class="badge bg-dark border border-secondary">{{ incident.threat_type }}</span>
+                </td>
+                <td>
+                    {% if incident.severity == 'critical' %}
+                        <span class="badge bg-danger">🔴 CRITIC</span>
+                    {% elif incident.severity == 'high' %}
+                        <span class="badge bg-warning text-dark">🟠 ÎNALT</span>
+                    {% elif incident.severity == 'medium' %}
+                        <span class="badge bg-info text-dark">🟡 MEDIU</span>
+                    {% else %}
+                        <span class="badge bg-secondary">🟢 SCĂZUT</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="progress" style="width: 80px; height: 18px;" title="{{ '%.1f'|format(incident.anomaly_score) }}/100">
+                        <div class="progress-bar
+                            {% if incident.anomaly_score >= 80 %}bg-danger
+                            {% elif incident.anomaly_score >= 60 %}bg-warning
+                            {% elif incident.anomaly_score >= 40 %}bg-info
+                            {% else %}bg-success{% endif %}"
+                            style="width: {{ incident.anomaly_score }}%;">
+                            {{ '%.0f'|format(incident.anomaly_score) }}
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    {% if incident.status == 'open' %}
+                        <span class="badge bg-danger">Deschis</span>
+                    {% elif incident.status == 'investigating' %}
+                        <span class="badge bg-warning text-dark">Investigare</span>
+                    {% else %}
+                        <span class="badge bg-success">Rezolvat</span>
+                    {% endif %}
+                </td>
+                <td class="text-muted small">{{ (incident.created_at|to_local).strftime('%d.%m.%Y %H:%M') if incident.created_at else '-' }}</td>
+                {% if current_user.is_admin() %}
+                <td>
+                    <div class="d-flex gap-1 flex-wrap">
+                        <!-- Detalii -->
+                        <button class="btn btn-sm btn-outline-info" type="button"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#desc-{{ incident.id }}"
+                                title="Detalii incident">
+                            <i class="bi bi-info-circle"></i>
+                        </button>
+                        <!-- Marchează ca "În investigare" -->
+                        {% if incident.status == 'open' %}
+                        <button class="btn btn-sm btn-outline-warning incident-status-btn"
+                                data-incident-id="{{ incident.id }}"
+                                data-new-status="investigating"
+                                title="Marchează ca investigare">
+                            <i class="bi bi-search"></i>
+                        </button>
+                        {% endif %}
+                        <!-- Marchează ca rezolvat -->
+                        {% if incident.status != 'resolved' %}
+                        <button class="btn btn-sm btn-outline-success incident-status-btn"
+                                data-incident-id="{{ incident.id }}"
+                                data-new-status="resolved"
+                                title="Marchează ca rezolvat">
+                            <i class="bi bi-check-circle"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                    <!-- Detalii colapsabile -->
+                    <div class="collapse mt-2" id="desc-{{ incident.id }}">
+                        <div class="card card-body bg-dark border-secondary small text-light" style="max-width: 350px;">
+                            {{ incident.description or 'Fără descriere.' }}
+                            {% if incident.resolved_at %}
+                            <hr class="border-secondary my-1">
+                            <span class="text-success">Rezolvat: {{ (incident.resolved_at|to_local).strftime('%d.%m.%Y %H:%M') }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-secondary text-center py-5">
+    <i class="bi bi-shield-check fs-1 d-block mb-3 text-success"></i>
+    <h5>Niciun incident găsit</h5>
+    <p class="text-muted mb-0">Nu există incidente
+        {% if status_filter %}cu statusul „{{ status_filter }}"{% endif %}
+        în sistem.
+    </p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.incident-status-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var incidentId = this.dataset.incidentId;
+        var newStatus = this.dataset.newStatus;
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrfToken = csrfMeta ? csrfMeta.content : '';
+
+        fetch('/api/incidents/' + incidentId + '/status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({status: newStatus}),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Eroare: ' + (data.error || 'Status necunoscut'));
+            }
+        })
+        .catch(function(err) {
+            alert('Eroare de rețea: ' + err);
+        });
+    });
+});
+</script>
+{% endblock %}

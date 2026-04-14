@@ -82,6 +82,10 @@ def _run_migrations(app):
                 ))
                 conn.commit()
                 print("[DB] Migrare: coloana 'is_ml_generated' adăugată în alerts.")
+
+            # Migrare Faza 3: tabele noi create prin db.create_all() la pornire.
+            # Verificăm că tabelele există (create_all le creează automat dacă lipsesc).
+            # Nicio coloană suplimentară nu trebuie adăugată manual.
     except Exception as e:
         print(f"[DB] Eroare la migrare automată: {e}")
 
@@ -256,6 +260,7 @@ def create_app(config_name=None):
     from app.routes.mikrotik import mikrotik_bp
     from app.routes.external import external_bp
     from app.routes.setup import setup_bp
+    from app.routes.response import response_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -269,6 +274,7 @@ def create_app(config_name=None):
     app.register_blueprint(mikrotik_bp)
     app.register_blueprint(external_bp)
     app.register_blueprint(setup_bp)
+    app.register_blueprint(response_bp)
 
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():

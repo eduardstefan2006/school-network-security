@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}Istoric Răspunsuri Automate - SchoolSec{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h2 class="text-info"><i class="bi bi-journal-code me-2"></i>Istoric Răspunsuri Automate</h2>
+        <p class="text-muted small mb-0">Audit trail complet al acțiunilor de blocare generate automat de sistem.</p>
+    </div>
+</div>
+
+<!-- Filtre status -->
+<div class="mb-3 d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('response.response_history') }}"
+       class="btn btn-sm {% if not status_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+        Toate
+    </a>
+    <a href="{{ url_for('response.response_history', status='active') }}"
+       class="btn btn-sm {% if status_filter == 'active' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+        <i class="bi bi-lock me-1"></i>Active
+    </a>
+    <a href="{{ url_for('response.response_history', status='reverted') }}"
+       class="btn btn-sm {% if status_filter == 'reverted' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>Anulate
+    </a>
+    <a href="{{ url_for('response.response_history', status='expired') }}"
+       class="btn btn-sm {% if status_filter == 'expired' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+        <i class="bi bi-clock-history me-1"></i>Expirate
+    </a>
+</div>
+
+{% if actions.items %}
+<div class="table-responsive">
+    <table class="table table-dark table-hover align-middle">
+        <thead class="table-secondary text-dark">
+            <tr>
+                <th scope="col">Timp</th>
+                <th scope="col">IP Sursă</th>
+                <th scope="col">Acțiune</th>
+                <th scope="col">Țintă Blocată</th>
+                <th scope="col">Severitate</th>
+                <th scope="col">Scor</th>
+                <th scope="col">Status</th>
+                <th scope="col">Expiră La</th>
+                <th scope="col">Feedback</th>
+                {% if current_user.is_admin() %}
+                <th scope="col">Override</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for action in actions.items %}
+            {% set feedback = feedback_map.get(action.id) %}
+            <tr>
+                <td class="text-muted small">
+                    {{ (action.created_at|to_local).strftime('%d.%m %H:%M') if action.created_at else '-' }}
+                </td>
+                <td>
+                    <code class="text-warning">{{ action.source_ip }}</code>
+                </td>
+                <td>
+                    {% if action.action_type == 'block_ip' %}
+                        <span class="badge bg-danger"><i class="bi bi-shield-x me-1"></i>Blocat IP</span>
+                    {% elif action.action_type == 'block_mac' %}
+                        <span class="badge bg-warning text-dark"><i class="bi bi-hdd-network me-1"></i>Blocat MAC</span>
+                    {% elif action.action_type == 'block_hostname' %}
+                        <span class="badge bg-info text-dark"><i class="bi bi-pc me-1"></i>Blocat Hostname</span>
+                    {% else %}
+                        <span class="badge bg-secondary">{{ action.action_type }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <code class="text-light small">{{ action.target or '-' }}</code>
+                </td>
+                <td>
+                    {% if action.severity_level == 'critical' %}
+                        <span class="badge bg-danger">CRITIC</span>
+                    {% elif action.severity_level == 'high' %}
+                        <span class="badge bg-warning text-dark">ÎNALT</span>
+                    {% elif action.severity_level == 'medium' %}
+                        <span class="badge bg-info text-dark">MEDIU</span>
+                    {% else %}
+                        <span class="badge bg-secondary">SCĂZUT</span>
+                    {% endif %}
+                </td>
+                <td class="text-center">
+                    <span class="badge {% if action.anomaly_score >= 80 %}bg-danger{% elif action.anomaly_score >= 60 %}bg-warning text-dark{% elif action.anomaly_score >= 40 %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+                        {{ '%.0f'|format(action.anomaly_score) }}
+                    </span>
+                </td>
+                <td>
+                    {% if action.status == 'active' %}
+                        <span class="badge bg-danger">Activ</span>
+                    {% elif action.status == 'reverted' %}
+                        <span class="badge bg-warning text-dark">Anulat</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Expirat</span>
+                    {% endif %}
+                </td>
+                <td class="text-muted small">
+                    {% if action.expires_at %}
+                        {{ (action.expires_at|to_local).strftime('%d.%m %H:%M') }}
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td>
+                    {% if feedback %}
+                        {% if feedback.feedback_type == 'confirmed' %}
+                            <span class="badge bg-success" title="{{ feedback.comment or '' }}">✅ Confirmat</span>
+                        {% elif feedback.feedback_type == 'false_positive' %}
+                            <span class="badge bg-danger" title="{{ feedback.comment or '' }}">❌ Fals Pozitiv</span>
+                        {% elif feedback.feedback_type == 'partial' %}
+                            <span class="badge bg-warning text-dark" title="{{ feedback.comment or '' }}">⚠️ Parțial</span>
+                        {% endif %}
+                    {% elif action.alert_id %}
+                        <a href="{{ url_for('response.feedback_form', alert_id=action.alert_id) }}"
+                           class="btn btn-sm btn-outline-info" title="Trimite feedback">
+                            <i class="bi bi-chat-dots"></i>
+                        </a>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                {% if current_user.is_admin() %}
+                <td>
+                    {% if action.status == 'active' %}
+                    <button class="btn btn-sm btn-outline-warning override-btn"
+                            data-action-id="{{ action.id }}"
+                            title="Anulează acțiunea și deblochează">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                    {% else %}
+                    <span class="text-muted small">—</span>
+                    {% endif %}
+                </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Paginare -->
+{% if actions.pages > 1 %}
+<nav aria-label="Paginare istoric răspunsuri">
+    <ul class="pagination pagination-sm justify-content-center">
+        {% if actions.has_prev %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('response.response_history', page=actions.prev_num, status=status_filter) }}">
+                &laquo; Anterior
+            </a>
+        </li>
+        {% endif %}
+        {% for p in actions.iter_pages() %}
+            {% if p %}
+            <li class="page-item {% if p == actions.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('response.response_history', page=p, status=status_filter) }}">{{ p }}</a>
+            </li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+        {% endfor %}
+        {% if actions.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('response.response_history', page=actions.next_num, status=status_filter) }}">
+                Următor &raquo;
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="alert alert-secondary text-center py-5">
+    <i class="bi bi-journal-x fs-1 d-block mb-3 text-muted"></i>
+    <h5>Niciun răspuns automat înregistrat</h5>
+    <p class="text-muted mb-0">
+        Acțiunile de răspuns automat vor apărea aici când sistemul detectează amenințări cu scor ≥ 40.
+    </p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.override-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        if (!confirm('Ești sigur că vrei să anulezi această acțiune de blocare?')) return;
+
+        var actionId = this.dataset.actionId;
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrfToken = csrfMeta ? csrfMeta.content : '';
+
+        fetch('/api/response/override/' + actionId, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Eroare: ' + (data.error || 'Status necunoscut'));
+            }
+        })
+        .catch(function(err) {
+            alert('Eroare de rețea: ' + err);
+        });
+    });
+});
+</script>
+{% endblock %}

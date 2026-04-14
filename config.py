@@ -130,6 +130,18 @@ class Config:
     # Intervalul minim între două evaluări ML per IP (secunde)
     ML_SCORING_INTERVAL_SECONDS = int(os.environ.get('ML_SCORING_INTERVAL_SECONDS', 60))
 
+    # -------------------------------------------------------------------------
+    # Configurare Faza 3: Autonomous Response Agent
+    # -------------------------------------------------------------------------
+    # Activează/dezactivează complet sistemul de răspuns autonom
+    RESPONSE_ENABLED = os.environ.get('RESPONSE_ENABLED', 'true').lower() == 'true'
+    # Scorul minim de anomalie pentru activarea răspunsului autonom
+    RESPONSE_MIN_SCORE = float(os.environ.get('RESPONSE_MIN_SCORE', 40.0))
+    # Praguri de escaladare (valorile implicite sunt cele din ESCALATION_RULES)
+    RESPONSE_MEDIUM_THRESHOLD = float(os.environ.get('RESPONSE_MEDIUM_THRESHOLD', 40.0))
+    RESPONSE_HIGH_THRESHOLD = float(os.environ.get('RESPONSE_HIGH_THRESHOLD', 60.0))
+    RESPONSE_CRITICAL_THRESHOLD = float(os.environ.get('RESPONSE_CRITICAL_THRESHOLD', 80.0))
+
 
 class DevelopmentConfig(Config):
     """Configurare pentru dezvoltare."""

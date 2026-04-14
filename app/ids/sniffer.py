@@ -2082,6 +2082,28 @@ def start_sniffer(app):
                     # Trimitem notificare Telegram (non-blocant)
                     from app.notifications.telegram import send_alert_notification
                     send_alert_notification(alert_data, app.config)
+
+                    # Faza 3: Răspuns autonom dacă scorul de anomalie depășește pragul
+                    anomaly_score = alert_data.get('anomaly_score')
+                    min_score = app.config.get('RESPONSE_MIN_SCORE', 40.0)
+                    if (app.config.get('RESPONSE_ENABLED', True)
+                            and anomaly_score is not None
+                            and anomaly_score >= min_score):
+                        try:
+                            from app.response.orchestrator import orchestrator
+                            orchestrator.handle_threat(
+                                anomaly_score=anomaly_score,
+                                source_ip=alert_data['source_ip'],
+                                alert_data={
+                                    'alert_id': alert.id,
+                                    'alert_type': alert_data['alert_type'],
+                                    'message': alert_data['message'],
+                                    'timestamp': alert_data.get('timestamp'),
+                                    'anomaly_score': anomaly_score,
+                                },
+                            )
+                        except Exception as orch_exc:
+                            logger.warning('[IDS] Eroare orchestrator răspuns: %s', orch_exc)
                 except Exception as e:
                     print(f"[IDS] Eroare la salvarea alertei: {e}")
                     db.session.rollback()
