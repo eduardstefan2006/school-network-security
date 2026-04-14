@@ -545,3 +545,109 @@ class MLTrainingData(db.Model):
 
     def __repr__(self):
         return f'<MLTrainingData {self.source_ip} at {self.timestamp}>'
+
+
+# =============================================================================
+# Modele Faza 3: Autonomous Response Agent
+# =============================================================================
+
+class ResponseFeedback(db.Model):
+    """Feedback al administratorilor pentru răspunsurile automate ale sistemului."""
+    __tablename__ = 'response_feedback'
+
+    id = db.Column(db.Integer, primary_key=True)
+    alert_id = db.Column(db.Integer, db.ForeignKey('alerts.id'), nullable=False)
+    # confirmed | false_positive | partial
+    feedback_type = db.Column(db.String(20), nullable=False)
+    comment = db.Column(db.Text, nullable=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    alert = db.relationship('Alert', backref='feedbacks', lazy=True)
+    admin = db.relationship('User', backref='feedbacks', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'alert_id': self.alert_id,
+            'feedback_type': self.feedback_type,
+            'comment': self.comment,
+            'admin_id': self.admin_id,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+        }
+
+    def __repr__(self):
+        return f'<ResponseFeedback alert={self.alert_id} type={self.feedback_type}>'
+
+
+class ResponseAction(db.Model):
+    """Audit trail pentru toate acțiunile de răspuns automat."""
+    __tablename__ = 'response_actions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    alert_id = db.Column(db.Integer, db.ForeignKey('alerts.id'), nullable=True)
+    source_ip = db.Column(db.String(45), nullable=False)
+    # block_ip | block_mac | block_hostname
+    action_type = db.Column(db.String(50), nullable=False)
+    # IP, MAC sau hostname blocat
+    target = db.Column(db.String(255), nullable=True)
+    # low | medium | high | critical
+    severity_level = db.Column(db.String(20), nullable=False)
+    anomaly_score = db.Column(db.Float, nullable=False)
+    # active | reverted | expired
+    status = db.Column(db.String(20), default='active', nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    # Momentul la care blocarea expiră automat
+    expires_at = db.Column(db.DateTime, nullable=True)
+
+    alert = db.relationship('Alert', backref='response_actions', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'alert_id': self.alert_id,
+            'source_ip': self.source_ip,
+            'action_type': self.action_type,
+            'target': self.target,
+            'severity_level': self.severity_level,
+            'anomaly_score': self.anomaly_score,
+            'status': self.status,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'expires_at': self.expires_at.strftime('%Y-%m-%d %H:%M:%S') if self.expires_at else None,
+        }
+
+    def __repr__(self):
+        return f'<ResponseAction {self.action_type} {self.target} [{self.status}]>'
+
+
+class IncidentTicket(db.Model):
+    """Tickete de incident create automat pentru amenințările critice."""
+    __tablename__ = 'incident_tickets'
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_ip = db.Column(db.String(45), nullable=False)
+    threat_type = db.Column(db.String(100), nullable=False)
+    # low | medium | high | critical
+    severity = db.Column(db.String(20), nullable=False)
+    anomaly_score = db.Column(db.Float, nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    # open | investigating | resolved
+    status = db.Column(db.String(20), default='open', nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'source_ip': self.source_ip,
+            'threat_type': self.threat_type,
+            'severity': self.severity,
+            'anomaly_score': self.anomaly_score,
+            'description': self.description,
+            'status': self.status,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'resolved_at': self.resolved_at.strftime('%Y-%m-%d %H:%M:%S') if self.resolved_at else None,
+        }
+
+    def __repr__(self):
+        return f'<IncidentTicket {self.source_ip} [{self.status}]>'

@@ -120,7 +120,9 @@
                     'external' in request.endpoint or
                     request.endpoint == 'dashboard.logs' or
                     'users' in request.endpoint or
-                    'settings' in request.endpoint
+                    'settings' in request.endpoint or
+                    'response' in request.endpoint or
+                    request.endpoint == 'response.incidents'
                 ) %}
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle {% if admin_active %}active{% endif %}"
@@ -155,6 +157,21 @@
                                 <i class="bi bi-globe me-2"></i>Securitate Externă
                             </a>
                         </li>
+                        {% if current_user.is_admin() %}
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint == 'response.incidents' %}active{% endif %}"
+                               href="{{ url_for('response.incidents') }}">
+                                <i class="bi bi-shield-exclamation me-2"></i>Incidente
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint and 'response_history' in request.endpoint %}active{% endif %}"
+                               href="{{ url_for('response.response_history') }}">
+                                <i class="bi bi-journal-code me-2"></i>Răspunsuri Auto
+                            </a>
+                        </li>
+                        {% endif %}
                     </ul>
                 </li>
 
