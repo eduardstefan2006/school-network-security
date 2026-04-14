@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from app.models import User, SecurityLog
 from app import db
-from app.utils import validate_password
+from app.utils import validate_password, validate_username, audit_log
 from functools import wraps
 
 users_bp = Blueprint('users', __name__)
@@ -34,17 +34,24 @@ def index():
 @users_bp.route('/users/add', methods=['GET', 'POST'])
 @login_required
 @admin_required
+@audit_log('user_created', 'info')
 def add_user():
     """Adaugă un utilizator nou."""
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
+        username_raw = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '')
         role = request.form.get('role', 'monitor')
 
-        # Validare
-        if not username or not password:
-            flash('Numele de utilizator și parola sunt obligatorii.', 'danger')
+        # Validare format username (anti XSS)
+        valid_u, result_u = validate_username(username_raw)
+        if not valid_u:
+            flash(result_u, 'danger')
+            return render_template('users.html', users=User.query.all())
+        username = result_u
+
+        if not password:
+            flash('Parola este obligatorie.', 'danger')
             return render_template('users.html', users=User.query.all())
 
         valid, error_msg = validate_password(password)
@@ -65,6 +72,7 @@ def add_user():
         # Salvăm log
         log = SecurityLog(
             event_type='user_created',
+            user_id=current_user.id,
             source_ip=request.remote_addr,
             message=f'Utilizator nou creat: {username} (rol: {role}) de {current_user.username}',
             severity='info'
@@ -81,6 +89,7 @@ def add_user():
 @users_bp.route('/users/<int:user_id>/toggle', methods=['POST'])
 @login_required
 @admin_required
+@audit_log('user_toggled', 'warning')
 def toggle_user(user_id):
     """Activează/dezactivează un utilizator."""
     user = User.query.get_or_404(user_id)
@@ -101,6 +110,7 @@ def toggle_user(user_id):
 @users_bp.route('/users/<int:user_id>/delete', methods=['POST'])
 @login_required
 @admin_required
+@audit_log('user_deleted', 'critical')
 def delete_user(user_id):
     """Șterge un utilizator."""
     user = User.query.get_or_404(user_id)
@@ -116,9 +126,10 @@ def delete_user(user_id):
     # Salvăm log
     log = SecurityLog(
         event_type='user_deleted',
+        user_id=current_user.id,
         source_ip=request.remote_addr,
         message=f'Utilizator șters: {username} de {current_user.username}',
-        severity='warning'
+        severity='critical'
     )
     db.session.add(log)
     db.session.commit()
@@ -130,6 +141,7 @@ def delete_user(user_id):
 @users_bp.route('/users/<int:user_id>/change-password', methods=['POST'])
 @login_required
 @admin_required
+@audit_log('admin_password_changed', 'warning')
 def change_password(user_id):
     """Schimbă parola unui utilizator."""
     user = User.query.get_or_404(user_id)

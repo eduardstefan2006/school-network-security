@@ -8,14 +8,49 @@ import time
 import subprocess
 import logging
 from datetime import datetime, timezone
+from functools import wraps
+
+from flask import request
+from flask_login import current_user
+from markupsafe import escape
 
 logger = logging.getLogger(__name__)
 
 # Lungimea minimă acceptată pentru parole
 MIN_PASSWORD_LENGTH = 8
 
+# Lungimea minimă/maximă acceptată pentru username-uri
+MIN_USERNAME_LENGTH = 3
+MAX_USERNAME_LENGTH = 20
+
+# Pattern pentru username valid: litere, cifre, underscore, cratimă
+_USERNAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
+
 # Numele serviciului systemd
 SERVICE_NAME = 'schoolsec'
+
+
+def validate_username(username: str):
+    """Validează formatul unui username.
+
+    Cerințe:
+      - Minim 3 caractere, maxim 20
+      - Numai litere (a-z, A-Z), cifre (0-9), underscore (_) sau cratimă (-)
+      - Protecție anti-XSS prin escapare HTML
+
+    Returnează (True, username_escaped) dacă valid sau
+    (False, mesaj_eroare) dacă nu îndeplinește cerințele.
+    """
+    if not username:
+        return False, 'Numele de utilizator este obligatoriu.'
+    if len(username) < MIN_USERNAME_LENGTH or len(username) > MAX_USERNAME_LENGTH:
+        return False, (
+            f'Numele de utilizator trebuie să aibă între '
+            f'{MIN_USERNAME_LENGTH} și {MAX_USERNAME_LENGTH} caractere.'
+        )
+    if not _USERNAME_RE.match(username):
+        return False, 'Numele de utilizator poate conține numai litere, cifre, _ sau -.'
+    return True, str(escape(username))
 
 
 def validate_password(password):
@@ -40,6 +75,48 @@ def validate_password(password):
     if not re.search(r'\d', password):
         return False, 'Parola trebuie să conțină cel puțin o cifră.'
     return True, ''
+
+
+def audit_log(event_type: str, severity: str = 'info'):
+    """Decorator care înregistrează automat acțiunile administrative în SecurityLog.
+
+    Evenimentul se înregistrează numai pentru request-uri de scriere (POST, PUT, DELETE, PATCH),
+    nu și pentru GET-uri.
+
+    Utilizare::
+
+        @admin_bp.route('/delete-user/<int:id>', methods=['POST'])
+        @audit_log('user_deleted', 'critical')
+        def delete_user(id):
+            ...
+
+    :param event_type: Tipul evenimentului (ex: 'user_deleted', 'config_changed').
+    :param severity: Severitatea log-ului: 'info', 'warning', 'error', 'critical'.
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # Înregistrăm doar acțiunile de scriere, nu request-urile GET
+            if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+                from app import db
+                from app.models import SecurityLog
+                try:
+                    user_id = current_user.id if current_user.is_authenticated else None
+                    username = current_user.username if current_user.is_authenticated else 'system'
+                    log = SecurityLog(
+                        event_type=event_type,
+                        user_id=user_id,
+                        source_ip=request.remote_addr,
+                        message=f'Acțiune: {event_type} executată de {username}',
+                        severity=severity,
+                    )
+                    db.session.add(log)
+                    db.session.commit()
+                except Exception as exc:
+                    logger.warning('[AuditLog] Eroare la înregistrarea acțiunii %s: %s', event_type, exc)
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 
 # =============================================================================

@@ -19,6 +19,10 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True   # Cookie-ul de sesiune nu e accesibil din JavaScript
     SESSION_COOKIE_SAMESITE = 'Lax'  # Protecție CSRF de bază
 
+    # Protecție CSRF (Flask-WTF)
+    WTF_CSRF_ENABLED = True
+    WTF_CSRF_TIME_LIMIT = 3600  # Token CSRF expiră după 1 oră
+
     # Calea spre fișierele certificat SSL/TLS (opțional, pentru HTTPS)
     SSL_CERT = os.environ.get('SSL_CERT', '')   # ex: cert.pem
     SSL_KEY = os.environ.get('SSL_KEY', '')     # ex: key.pem
