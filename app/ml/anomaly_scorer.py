@@ -92,7 +92,9 @@ class AnomalyScorer:
         # Scalăm la 0-100
         anomaly_score = min(100.0, max(0.0, combined * 100.0))
 
-        # Confidence: mai mare dacă modelele ML sunt disponibile
+        # Confidence: mai mare dacă modelele ML sunt disponibile și antrenate.
+        # 0.9 = ambele modele (IF + LOF) sunt active → încredere ridicată
+        # 0.4 = doar baseline statistic → încredere scăzută (fără suficiente date de antrenare)
         confidence = 0.9 if anomaly_models.is_trained else 0.4
 
         # Salvăm în istoricul scorurilor

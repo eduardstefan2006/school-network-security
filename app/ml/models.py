@@ -98,7 +98,7 @@ class AnomalyModels:
 
             # Isolation Forest
             # contamination=0.1: Estimăm că ~10% din traficul colectat poate fi anormal.
-            # Valoarea poate fi ajustată prin config (ML_ISOLATION_FOREST_CONTAMINATION).
+            # Această valoare este fixată la 0.1 (nu este configurabilă).
             # O valoare mai mică → mai puțini falși pozitivi, dar mai multe anomalii ratate.
             iso_forest = IsolationForest(
                 n_estimators=100,

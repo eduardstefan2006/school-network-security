@@ -8,7 +8,8 @@ import time
 from collections import defaultdict
 
 # Valoarea maximă pentru varianța porturilor (cap pentru normalizare)
-_PORT_VARIANCE_CAP = 1_000_000_000  # 1e9 — porturile maxime sunt 65535, varianța nu poate depăși ~10^9
+# Varianța maximă teoretică: (65535 - 0)^2 / 4 ≈ 1.07e9 (distribuție uniformă pe [0, 65535])
+_PORT_VARIANCE_CAP = 1_073_676_289  # = 65535^2 // 4 + 1 — plafonul teoretic al varianței porturilor
 # Valoarea maximă pentru raportul SYN/ACK (protecție împotriva valorilor infinite)
 _SYN_ACK_RATIO_CAP = 100.0  # Un IP legitim nu trimite mai mult de 100 SYN per ACK
 

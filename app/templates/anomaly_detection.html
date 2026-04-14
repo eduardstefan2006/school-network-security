@@ -302,7 +302,7 @@ function updateTimeline(timeline) {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: ctx => `Scor: ${ctx.raw.toFixed(1)} — IP: ${timeline[ctx.dataIndex]?.ip || ''}`
+                        label: ctx => `Scor: ${ctx.raw.toFixed(1)}`
                     }
                 }
             },

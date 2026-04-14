@@ -451,9 +451,10 @@ class IntrusionDetector:
         if not cfg.get('ML_ENABLED', True):
             return
 
-        # Cooldown per IP: nu evaluăm mai des de 60s
+        # Cooldown per IP: nu evaluăm mai des decât intervalul configurat
+        scoring_interval = cfg.get('ML_SCORING_INTERVAL_SECONDS', 60)
         last_check = self._ml_alert_cooldown.get(src_ip, 0)
-        if current_time - last_check < 60:
+        if current_time - last_check < scoring_interval:
             return
         self._ml_alert_cooldown[src_ip] = current_time
 

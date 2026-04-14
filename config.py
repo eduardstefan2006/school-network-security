@@ -114,9 +114,10 @@ class Config:
     # -------------------------------------------------------------------------
     # Activează/dezactivează complet modulul ML
     ML_ENABLED = os.environ.get('ML_ENABLED', 'true').lower() == 'true'
-    # Pragul scorului Isolation Forest (0-100) peste care se generează alertă ML
+    # Pragul scorului Isolation Forest (fracție 0-1, înmulțit cu 100 în cod)
+    # Exemplu: 0.6 → alertă generată când scorul depășește 60/100
     ML_ISOLATION_FOREST_THRESHOLD = float(os.environ.get('ML_ISOLATION_FOREST_THRESHOLD', 0.6))
-    # Pragul scorului LOF (0-100) — folosit intern în combinarea scorurilor
+    # Pragul scorului LOF (fracție 0-1) — folosit intern în combinarea scorurilor
     ML_LOF_THRESHOLD = float(os.environ.get('ML_LOF_THRESHOLD', 0.65))
     # Activează/dezactivează Autoencoder (necesită TensorFlow)
     ML_AUTOENCODER_ENABLED = os.environ.get('ML_AUTOENCODER_ENABLED', 'false').lower() == 'true'
@@ -126,6 +127,8 @@ class Config:
     ML_MODEL_RETRAIN_HOURS = int(os.environ.get('ML_MODEL_RETRAIN_HOURS', 24))
     # Numărul minim de puncte de date înainte de a începe scoring-ul
     ML_MIN_DATA_POINTS = int(os.environ.get('ML_MIN_DATA_POINTS', 100))
+    # Intervalul minim între două evaluări ML per IP (secunde)
+    ML_SCORING_INTERVAL_SECONDS = int(os.environ.get('ML_SCORING_INTERVAL_SECONDS', 60))
 
 
 class DevelopmentConfig(Config):
