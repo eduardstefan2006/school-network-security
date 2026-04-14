@@ -137,11 +137,17 @@ const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute
 
 function showAlert(message, type) {
     const zone = document.getElementById('alertZone');
-    zone.innerHTML = `
-        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>`;
+    const wrapper = document.createElement('div');
+    wrapper.className = `alert alert-${type} alert-dismissible fade show`;
+    wrapper.setAttribute('role', 'alert');
+    wrapper.textContent = message;
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn-close';
+    closeBtn.setAttribute('data-bs-dismiss', 'alert');
+    wrapper.appendChild(closeBtn);
+    zone.innerHTML = '';
+    zone.appendChild(wrapper);
 }
 
 function loadWhitelist() {
@@ -167,21 +173,56 @@ function loadWhitelist() {
                 : '<span class="badge bg-danger">Inactiv</span>';
             const addedDate = new Date(entry.created_at).toLocaleDateString('ro-RO');
 
+            // Build row with static structure only — user data set via textContent/dataset
             row.innerHTML = `
-                <td><code class="text-success">${entry.ip_address}</code></td>
-                <td>${entry.hostname || '<span class="text-muted">-</span>'}</td>
-                <td><span class="badge bg-info text-dark">${entry.service_type}</span></td>
-                <td class="text-muted small">${entry.description || '-'}</td>
+                <td><code class="text-success js-ip"></code></td>
+                <td class="js-hostname"></td>
+                <td><span class="badge bg-info text-dark js-svctype"></span></td>
+                <td class="text-muted small js-desc"></td>
                 <td>${statusBadge}</td>
                 <td><small class="text-muted">${addedDate}</small></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-warning me-1" onclick="editEntry(${entry.id}, '${entry.hostname || ''}', '${entry.description || ''}', ${entry.is_active})">
+                    <button class="btn btn-sm btn-outline-warning me-1 btn-edit"
+                            data-id=""
+                            data-hostname=""
+                            data-description=""
+                            data-active="${entry.is_active}">
                         <i class="bi bi-pencil"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteEntry(${entry.id}, '${entry.ip_address}')">
+                    <button class="btn btn-sm btn-outline-danger btn-delete"
+                            data-id=""
+                            data-ip="">
                         <i class="bi bi-trash"></i>
                     </button>
                 </td>`;
+
+            // Safely set user-supplied text via textContent
+            row.querySelector('.js-ip').textContent = entry.ip_address;
+            row.querySelector('.js-hostname').textContent = entry.hostname || '';
+            row.querySelector('.js-svctype').textContent = entry.service_type;
+            row.querySelector('.js-desc').textContent = entry.description || '';
+
+            // Use dataset to avoid XSS — set values after innerHTML
+            const editBtn = row.querySelector('.btn-edit');
+            editBtn.dataset.id = entry.id;
+            editBtn.dataset.hostname = entry.hostname || '';
+            editBtn.dataset.description = entry.description || '';
+
+            const deleteBtn = row.querySelector('.btn-delete');
+            deleteBtn.dataset.id = entry.id;
+            deleteBtn.dataset.ip = entry.ip_address;
+
+            editBtn.addEventListener('click', function() {
+                editEntry(
+                    this.dataset.id,
+                    this.dataset.hostname,
+                    this.dataset.description,
+                    this.dataset.active === 'true',
+                );
+            });
+            deleteBtn.addEventListener('click', function() {
+                deleteEntry(this.dataset.id, this.dataset.ip);
+            });
             tbody.appendChild(row);
         });
     })
