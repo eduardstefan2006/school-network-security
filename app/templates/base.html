@@ -138,12 +138,6 @@
                             </a>
                         </li>
                         <li>
-                            <a class="dropdown-item {% if request.endpoint == 'statistics.anomaly_detection' %}active{% endif %}"
-                               href="{{ url_for('statistics.anomaly_detection') }}">
-                                <i class="bi bi-cpu me-2"></i>Modele ML
-                            </a>
-                        </li>
-                        <li>
                             <a class="dropdown-item {% if request.endpoint and 'external' in request.endpoint %}active{% endif %}"
                                href="{{ url_for('external.index') }}">
                                 <i class="bi bi-globe me-2"></i>Securitate Externă
@@ -152,7 +146,7 @@
                         <li>
                             <a class="dropdown-item {% if request.endpoint == 'statistics.export_app_usage_csv' %}active{% endif %}"
                                href="{{ url_for('statistics.export_app_usage_csv') }}">
-                                <i class="bi bi-download me-2"></i>Export
+                                <i class="bi bi-download me-2"></i>Export Trafic Aplicații
                             </a>
                         </li>
                     </ul>
