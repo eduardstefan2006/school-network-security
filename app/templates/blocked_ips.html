@@ -84,6 +84,7 @@ document.getElementById('searchIP').addEventListener('keyup', function() {
                             <form method="POST"
                                   action="{{ url_for('alerts.unblock_ip', ip_id=ip.id) }}"
                                   class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-sm btn-outline-success"
                                         title="Deblochează IP-ul"
                                         onclick="return confirm('Ești sigur că vrei să deblochezi IP-ul {{ ip.ip_address }}?')">

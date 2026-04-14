@@ -43,6 +43,7 @@
             <div class="modal-footer border-secondary">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
                 <form method="POST" action="{{ url_for('alerts.resolve_all') }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-success">
                         <i class="bi bi-check-all me-1"></i>Rezolvă Toate
                     </button>
@@ -67,6 +68,7 @@
             <div class="modal-footer border-secondary">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
                 <form method="POST" action="{{ url_for('alerts.dismiss_all') }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-secondary">
                         <i class="bi bi-x-circle me-1"></i>Respinge Toate
                     </button>
@@ -91,6 +93,7 @@
             <div class="modal-footer border-secondary">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
                 <form method="POST" action="{{ url_for('alerts.delete_resolved') }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger">
                         <i class="bi bi-trash me-1"></i>Șterge Definitiv
                     </button>
@@ -241,6 +244,7 @@
                             <div class="btn-group btn-group-sm">
                                 <form method="POST" action="{{ url_for('alerts.resolve_alert', alert_id=alert.id) }}"
                                       class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-sm btn-outline-success"
                                             title="Marchează ca rezolvată">
                                         <i class="bi bi-check"></i>
@@ -248,6 +252,7 @@
                                 </form>
                                 <form method="POST" action="{{ url_for('alerts.dismiss_alert', alert_id=alert.id) }}"
                                       class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-sm btn-outline-secondary"
                                             title="Respinge (fals pozitiv)">
                                         <i class="bi bi-x"></i>
@@ -256,6 +261,7 @@
                                 {% if not alert.is_blocked %}
                                 <form method="POST" action="{{ url_for('alerts.block_ip', alert_id=alert.id) }}"
                                       class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-sm btn-outline-danger"
                                             title="Blochează IP-ul"
                                             onclick="return confirm('Ești sigur că vrei să blochezi IP-ul {{ alert.source_ip }}?')">

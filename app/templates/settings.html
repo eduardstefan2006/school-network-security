@@ -454,6 +454,8 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
     // Toggle Telegram
     const btnToggle = document.getElementById('btnToggleTelegram');
     const toggleResult = document.getElementById('telegramToggleResult');
@@ -463,7 +465,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btnToggle.disabled = true;
             btnToggle.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se procesează...';
             toggleResult.textContent = '';
-            fetch('/api/settings/telegram/toggle', { method: 'POST' })
+            fetch('/api/settings/telegram/toggle', { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
@@ -521,7 +523,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btnTest.disabled = true;
             btnTest.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se trimite...';
             telegramResult.textContent = '';
-            fetch('/api/telegram/test', { method: 'POST' })
+            fetch('/api/telegram/test', { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
@@ -561,7 +563,7 @@ document.addEventListener('DOMContentLoaded', function () {
             whitelistMsg.textContent = '';
             fetch('/api/settings/whitelist/add', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({ ip, description })
             })
             .then(r => r.json())
@@ -589,7 +591,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!confirm('Ești sigur că vrei să elimini IP-ul ' + escapeHtml(ip) + ' din lista albă?')) return;
         fetch('/api/settings/whitelist/remove', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
             body: JSON.stringify({ ip })
         })
         .then(r => r.json())
@@ -730,7 +732,7 @@ document.addEventListener('DOMContentLoaded', function () {
             mikrotikResult.textContent = '';
             fetch('/api/settings/mikrotik/test', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify(data),
             })
             .then(r => r.json())
@@ -761,7 +763,7 @@ document.addEventListener('DOMContentLoaded', function () {
             mikrotikResult.textContent = '';
             fetch('/api/settings/mikrotik', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify(data),
             })
             .then(r => r.json())
@@ -883,7 +885,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btnConfirmInstallService.disabled = true;
 
             // Call stop-and-install endpoint
-            fetch('/api/service/stop-and-install', { method: 'POST' })
+            fetch('/api/service/stop-and-install', { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
                 .then(r => r.json())
                 .then(d => {
                     if (!d.success) {
@@ -977,7 +979,7 @@ document.addEventListener('DOMContentLoaded', function () {
         btnRestartService.addEventListener('click', function () {
             btnRestartService.disabled = true;
             btnRestartService.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se repornește...';
-            fetch('/api/service/restart', { method: 'POST' })
+            fetch('/api/service/restart', { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
                 .then(r => r.json())
                 .then(d => {
                     showServiceResult(d.success ? d.message : (d.error || 'Eroare necunoscută'), !!d.success);
@@ -997,7 +999,7 @@ document.addEventListener('DOMContentLoaded', function () {
         btnStopService.addEventListener('click', function () {
             btnStopService.disabled = true;
             btnStopService.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se oprește...';
-            fetch('/api/service/stop', { method: 'POST' })
+            fetch('/api/service/stop', { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
                 .then(r => r.json())
                 .then(d => {
                     showServiceResult(d.success ? d.message : (d.error || 'Eroare necunoscută'), !!d.success);
@@ -1017,7 +1019,7 @@ document.addEventListener('DOMContentLoaded', function () {
         btnRestartApp.addEventListener('click', function () {
             btnRestartApp.disabled = true;
             btnRestartApp.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se repornește...';
-            fetch('/api/system/restart-app', { method: 'POST' })
+            fetch('/api/system/restart-app', { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
                 .then(r => r.json())
                 .then(d => {
                     showSystemResult(d.success ? d.message : (d.error || 'Eroare necunoscută'), !!d.success);
@@ -1038,7 +1040,7 @@ document.addEventListener('DOMContentLoaded', function () {
             btnConfirmReboot.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Se repornește sistemul...';
             fetch('/api/system/restart', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({ confirmed: true }),
             })
             .then(r => r.json())

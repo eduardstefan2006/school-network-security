@@ -18,6 +18,7 @@
             </div>
             <div class="card-body">
                 <form id="reportForm" method="POST" action="{{ url_for('reports.generate') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-4">
                         <label class="form-label text-muted small text-uppercase fw-semibold mb-2">
                             Perioadă raport

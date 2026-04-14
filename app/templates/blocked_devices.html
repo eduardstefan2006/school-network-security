@@ -89,6 +89,7 @@
     {% if current_user.is_admin() %}
     <div class="col-auto">
         <form method="POST" action="{{ url_for('alerts.sync_blocked_to_router') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit"
                     class="btn btn-sm btn-outline-info"
                     title="Retry sincronizare blocări active pe router">
@@ -235,6 +236,7 @@
                                     <form method="POST"
                                           action="{{ url_for('alerts.unblock_ip', ip_id=ip.id) }}"
                                           class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-sm btn-outline-success"
                                                 title="Deblochează IP-ul"
                                                 onclick="return confirm('Ești sigur că vrei să deblochezi IP-ul {{ ip.ip_address }}?')">
@@ -370,6 +372,7 @@
                                     <form method="POST"
                                           action="{{ url_for('alerts.unblock_mac', mac_id=mac.id) }}"
                                           class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-sm btn-outline-success"
                                                 title="Deblochează MAC-ul"
                                                 onclick="return confirm('Ești sigur că vrei să deblochezi MAC-ul {{ mac.mac_address }}?')">
@@ -534,6 +537,7 @@
                                     <form method="POST"
                                           action="{{ url_for('alerts.unblock_hostname', hostname_id=hn.id) }}"
                                           class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-sm btn-outline-success"
                                                 title="Deblochează hostname-ul"
                                                 onclick="return confirm('Ești sigur că vrei să deblochezi hostname-ul {{ hn.hostname }}?')">
