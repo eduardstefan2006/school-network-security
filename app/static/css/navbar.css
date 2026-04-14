@@ -12,6 +12,19 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
+/* Ensure the inner container uses full width with flex layout */
+.schoolsec-navbar .container-fluid {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Center nav menu takes available space in the middle */
+.schoolsec-navbar .navbar-collapse .navbar-nav.mx-auto {
+    justify-content: center;
+    flex: 1 1 auto;
+}
+
 .schoolsec-navbar .navbar-brand {
     font-size: 1.1rem;
     letter-spacing: 0.5px;
