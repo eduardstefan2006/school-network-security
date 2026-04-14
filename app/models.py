@@ -72,6 +72,12 @@ class Alert(db.Model):
     timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     # IP-ul a fost blocat?
     is_blocked = db.Column(db.Boolean, default=False)
+    # Scorul de anomalie ML (0-100); None dacă alerta este generată de reguli statice
+    anomaly_score = db.Column(db.Float, nullable=True)
+    # Nivelul de încredere al modelului ML (0-1)
+    model_confidence = db.Column(db.Float, nullable=True)
+    # True dacă alerta a fost generată de ML, False dacă de regulile statice
+    is_ml_generated = db.Column(db.Boolean, default=False, nullable=False)
 
     def to_dict(self):
         """Convertește alerta în dicționar pentru API JSON."""
@@ -85,7 +91,10 @@ class Alert(db.Model):
             'severity': self.severity,
             'status': self.status,
             'timestamp': self.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'is_blocked': self.is_blocked
+            'is_blocked': self.is_blocked,
+            'anomaly_score': self.anomaly_score,
+            'model_confidence': self.model_confidence,
+            'is_ml_generated': self.is_ml_generated,
         }
 
     def __repr__(self):
@@ -485,3 +494,54 @@ class PacketStat(db.Model):
 
     def __repr__(self):
         return f'<PacketStat {self.protocol}: {self.count} packets>'
+
+
+# =============================================================================
+# Model Date Antrenare ML
+# =============================================================================
+class MLTrainingData(db.Model):
+    """Date de antrenare pentru modelele ML de detectare a anomaliilor.
+
+    Stochează vectorii de caracteristici extrase periodic per IP sursă,
+    utilizați pentru antrenarea modelelor Isolation Forest și LOF.
+    """
+    __tablename__ = 'ml_training_data'
+
+    id = db.Column(db.Integer, primary_key=True)
+    # Timestamp-ul colectării
+    timestamp = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+    # IP-ul sursă monitorizat
+    source_ip = db.Column(db.String(45), nullable=False, index=True)
+    # Vectorul de caracteristici serializat ca JSON
+    feature_vector = db.Column(db.Text, nullable=False)
+    # Etichetă: True = trafic de atac (setat de admin sau de regulile IDS)
+    is_attack = db.Column(db.Boolean, default=False, nullable=False)
+    # Predicția modelului (scor de anomalie 0-100, null dacă nu a fost evaluat)
+    model_prediction = db.Column(db.Float, nullable=True)
+    # Nivelul de încredere al predicției (0-1)
+    confidence = db.Column(db.Float, nullable=True)
+    # Data creării (pentru curățare periodică)
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def to_dict(self):
+        """Convertește înregistrarea în dicționar pentru API JSON."""
+        return {
+            'id': self.id,
+            'timestamp': self.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'source_ip': self.source_ip,
+            'is_attack': self.is_attack,
+            'model_prediction': self.model_prediction,
+            'confidence': self.confidence,
+        }
+
+    def __repr__(self):
+        return f'<MLTrainingData {self.source_ip} at {self.timestamp}>'

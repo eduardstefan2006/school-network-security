@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+
+{% block title %}Detectare Anomalii ML – SchoolSec{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <h4 class="text-light mb-0">
+        <i class="bi bi-cpu me-2 text-success"></i>Detectare Anomalii ML
+    </h4>
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge" id="ml-status-badge" style="font-size:0.85rem;">Verificare...</span>
+        <button class="btn btn-sm btn-outline-secondary text-light" onclick="loadData()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Actualizare
+        </button>
+    </div>
+</div>
+
+<!-- Rând 1 — Carduri sumar ML -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card schoolsec-card border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">Alerte ML (24h)</div>
+                <div class="fs-3 fw-bold text-warning" id="card-ml-alerts">—</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card schoolsec-card border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">Scor mediu anomalie</div>
+                <div class="fs-3 fw-bold text-info" id="card-avg-score">—</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card schoolsec-card border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">Eșantioane antrenare</div>
+                <div class="fs-3 fw-bold text-light" id="card-training-samples">—</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card schoolsec-card border-secondary text-center h-100">
+            <div class="card-body py-3">
+                <div class="text-muted small mb-1">Date colectate (24h)</div>
+                <div class="fs-3 fw-bold text-light" id="card-training-24h">—</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rând 2 — Top anomalii live + grafic tendințe -->
+<div class="row g-3 mb-4">
+    <!-- Top 20 IP-uri cu anomalii active -->
+    <div class="col-lg-6">
+        <div class="card schoolsec-card border-secondary h-100">
+            <div class="card-header bg-transparent border-secondary d-flex align-items-center justify-content-between">
+                <span class="text-light fw-semibold">
+                    <i class="bi bi-activity me-1 text-warning"></i>Scoruri Anomalie Live (Top 20)
+                </span>
+                <small class="text-muted" id="live-update-time">—</small>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-dark table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th class="px-3">IP Sursă</th>
+                                <th>Scor</th>
+                                <th>Nivel</th>
+                                <th>Ultima activitate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="top-anomalies-body">
+                            <tr><td colspan="4" class="text-center text-muted py-3">Se încarcă...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grafic tendințe anomalii 24h -->
+    <div class="col-lg-6">
+        <div class="card schoolsec-card border-secondary h-100">
+            <div class="card-header bg-transparent border-secondary">
+                <span class="text-light fw-semibold">
+                    <i class="bi bi-graph-up-arrow me-1 text-info"></i>Tendințe Anomalii (24h)
+                </span>
+            </div>
+            <div class="card-body">
+                <canvas id="anomaly-timeline-chart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rând 3 — Distribuție severitate + Info modele -->
+<div class="row g-3 mb-4">
+    <!-- Distribuție pe severitate -->
+    <div class="col-md-5">
+        <div class="card schoolsec-card border-secondary h-100">
+            <div class="card-header bg-transparent border-secondary">
+                <span class="text-light fw-semibold">
+                    <i class="bi bi-pie-chart me-1 text-success"></i>Distribuție Severitate ML
+                </span>
+            </div>
+            <div class="card-body d-flex align-items-center justify-content-center">
+                <canvas id="severity-chart" height="180" style="max-width:280px;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info modele ML -->
+    <div class="col-md-7">
+        <div class="card schoolsec-card border-secondary h-100">
+            <div class="card-header bg-transparent border-secondary">
+                <span class="text-light fw-semibold">
+                    <i class="bi bi-info-circle me-1 text-primary"></i>Informații Modele ML
+                </span>
+            </div>
+            <div class="card-body">
+                <table class="table table-dark table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <td class="text-muted">scikit-learn disponibil</td>
+                            <td id="info-sklearn">—</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Modele antrenate</td>
+                            <td id="info-trained">—</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Eșantioane antrenare</td>
+                            <td id="info-samples">—</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">IP-uri monitorizate activ</td>
+                            <td id="info-active-ips">—</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <hr class="border-secondary my-3">
+
+                <!-- Scala scorurilor -->
+                <div class="small">
+                    <div class="fw-semibold text-light mb-2">Scala de scoruri anomalie (0–100):</div>
+                    <div class="d-flex flex-column gap-1">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-success" style="width:70px;">0 – 20</span>
+                            <span class="text-muted">Normal</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-info text-dark" style="width:70px;">20 – 40</span>
+                            <span class="text-muted">Ușor anormal</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-warning text-dark" style="width:70px;">40 – 60</span>
+                            <span class="text-muted">Suspect</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge" style="width:70px;background:#f78166;">60 – 80</span>
+                            <span class="text-muted">Înalt suspect</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-danger" style="width:70px;">80 – 100</span>
+                            <span class="text-muted">Anomalie critică</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Script -->
+<script>
+let timelineChart = null;
+let severityChart = null;
+
+function scoreBadge(score) {
+    if (score < 20)  return '<span class="badge bg-success">Normal</span>';
+    if (score < 40)  return '<span class="badge bg-info text-dark">Ușor anormal</span>';
+    if (score < 60)  return '<span class="badge bg-warning text-dark">Suspect</span>';
+    if (score < 80)  return '<span class="badge" style="background:#f78166;">Înalt suspect</span>';
+    return '<span class="badge bg-danger">Anomalie critică</span>';
+}
+
+function scoreBar(score) {
+    const color = score < 20 ? '#2ea043' : score < 40 ? '#0dcaf0' : score < 60 ? '#ffc107' : score < 80 ? '#f78166' : '#da3633';
+    return `<div class="d-flex align-items-center gap-2">
+        <div style="width:60px;background:#1e2738;border-radius:4px;height:8px;overflow:hidden;">
+            <div style="width:${score}%;height:100%;background:${color};border-radius:4px;"></div>
+        </div>
+        <span class="small text-light">${score}</span>
+    </div>`;
+}
+
+function loadData() {
+    Promise.all([
+        fetch('/api/anomaly-detection/status').then(r => r.json()),
+        fetch('/api/anomaly-detection/metrics').then(r => r.json()),
+    ]).then(([status, metrics]) => {
+        updateStatus(status);
+        updateMetrics(metrics);
+        updateTopAnomalies(status.top_anomalies || []);
+        updateTimeline(metrics.timeline || []);
+        updateSeverityChart(metrics.by_severity || {});
+    }).catch(err => {
+        console.error('Eroare la încărcarea datelor ML:', err);
+    });
+}
+
+function updateStatus(data) {
+    const badge = document.getElementById('ml-status-badge');
+    if (!data.ml_enabled) {
+        badge.textContent = 'ML dezactivat';
+        badge.className = 'badge bg-secondary';
+    } else if (!data.sklearn_available) {
+        badge.textContent = 'scikit-learn lipsă';
+        badge.className = 'badge bg-warning text-dark';
+    } else if (!data.models_trained) {
+        badge.textContent = 'Colectare date...';
+        badge.className = 'badge bg-info text-dark';
+    } else {
+        badge.textContent = 'ML activ';
+        badge.className = 'badge bg-success';
+    }
+
+    document.getElementById('info-sklearn').innerHTML = data.sklearn_available
+        ? '<span class="badge bg-success">Da</span>'
+        : '<span class="badge bg-danger">Nu (pip install scikit-learn)</span>';
+    document.getElementById('info-trained').innerHTML = data.models_trained
+        ? '<span class="badge bg-success">Da</span>'
+        : '<span class="badge bg-warning text-dark">În curs de antrenare...</span>';
+    document.getElementById('info-samples').textContent = data.training_samples || 0;
+    document.getElementById('info-active-ips').textContent = (data.top_anomalies || []).length;
+}
+
+function updateMetrics(data) {
+    document.getElementById('card-ml-alerts').textContent = data.ml_alerts_24h || 0;
+    document.getElementById('card-avg-score').textContent =
+        data.avg_anomaly_score != null ? data.avg_anomaly_score.toFixed(1) : '—';
+    document.getElementById('card-training-samples').textContent = data.training_samples || 0;
+    document.getElementById('card-training-24h').textContent = data.training_records_24h || 0;
+}
+
+function updateTopAnomalies(anomalies) {
+    const tbody = document.getElementById('top-anomalies-body');
+    const now = new Date();
+    document.getElementById('live-update-time').textContent =
+        'Actualizat: ' + now.toLocaleTimeString('ro-RO');
+
+    if (!anomalies.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">' +
+            'Nu există anomalii active în prezent.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = anomalies.map(item => `
+        <tr>
+            <td class="px-3 font-monospace small text-light">${item.ip}</td>
+            <td>${scoreBar(item.score)}</td>
+            <td>${scoreBadge(item.score)}</td>
+            <td class="text-muted small">${item.last_seen}</td>
+        </tr>
+    `).join('');
+}
+
+function updateTimeline(timeline) {
+    const labels = timeline.map(t => t.timestamp);
+    const scores = timeline.map(t => t.score);
+
+    if (timelineChart) {
+        timelineChart.data.labels = labels;
+        timelineChart.data.datasets[0].data = scores;
+        timelineChart.update();
+        return;
+    }
+
+    const ctx = document.getElementById('anomaly-timeline-chart').getContext('2d');
+    timelineChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Scor anomalie',
+                data: scores,
+                borderColor: '#ffc107',
+                backgroundColor: 'rgba(255,193,7,0.08)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => `Scor: ${ctx.raw.toFixed(1)}`
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { color: '#8b949e', maxTicksLimit: 10 }, grid: { color: '#1e2738' } },
+                y: {
+                    min: 0, max: 100,
+                    ticks: { color: '#8b949e' },
+                    grid: { color: '#1e2738' },
+                }
+            }
+        }
+    });
+}
+
+function updateSeverityChart(bySeverity) {
+    const labels = ['Critice', 'Înalte', 'Medii', 'Scăzute'];
+    const data   = [bySeverity.critical || 0, bySeverity.high || 0,
+                    bySeverity.medium || 0,   bySeverity.low  || 0];
+    const colors = ['#da3633', '#f78166', '#ffc107', '#2ea043'];
+
+    if (severityChart) {
+        severityChart.data.datasets[0].data = data;
+        severityChart.update();
+        return;
+    }
+
+    const ctx = document.getElementById('severity-chart').getContext('2d');
+    severityChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels,
+            datasets: [{ data, backgroundColor: colors, borderWidth: 0 }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#8b949e', padding: 12, font: { size: 11 } }
+                }
+            }
+        }
+    });
+}
+
+// Încărcăm datele la pornire și la fiecare 30 de secunde
+loadData();
+setInterval(loadData, 30000);
+</script>
+{% endblock %}

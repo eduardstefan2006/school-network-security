@@ -60,6 +60,28 @@ def _run_migrations(app):
                 ))
                 conn.commit()
                 print("[DB] Migrare: coloana 'user_id' adăugată în security_logs.")
+
+            # Migrare câmpuri ML în tabela alerts
+            result = conn.execute(text("PRAGMA table_info(alerts)"))
+            alert_cols = [row[1] for row in result]
+            if 'anomaly_score' not in alert_cols:
+                conn.execute(text(
+                    "ALTER TABLE alerts ADD COLUMN anomaly_score FLOAT DEFAULT NULL"
+                ))
+                conn.commit()
+                print("[DB] Migrare: coloana 'anomaly_score' adăugată în alerts.")
+            if 'model_confidence' not in alert_cols:
+                conn.execute(text(
+                    "ALTER TABLE alerts ADD COLUMN model_confidence FLOAT DEFAULT NULL"
+                ))
+                conn.commit()
+                print("[DB] Migrare: coloana 'model_confidence' adăugată în alerts.")
+            if 'is_ml_generated' not in alert_cols:
+                conn.execute(text(
+                    "ALTER TABLE alerts ADD COLUMN is_ml_generated BOOLEAN DEFAULT 0"
+                ))
+                conn.commit()
+                print("[DB] Migrare: coloana 'is_ml_generated' adăugată în alerts.")
     except Exception as e:
         print(f"[DB] Eroare la migrare automată: {e}")
 
@@ -262,6 +284,12 @@ def create_app(config_name=None):
     # Pornire server syslog UDP – primește log-uri firewall de la RouterOS
     from app.ids.syslog_server import start_syslog_server
     start_syslog_server(app)
+
+    # Pornire thread ML de antrenare (detectare anomalii bazată pe ML)
+    if app.config.get('ML_ENABLED', True):
+        from app.ml.trainer import start_ml_trainer
+        retrain_hours = app.config.get('ML_MODEL_RETRAIN_HOURS', 24)
+        start_ml_trainer(app, retrain_interval=retrain_hours * 3600)
 
     @app.template_filter('to_local')
     def to_local_filter(dt):

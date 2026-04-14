@@ -15,6 +15,16 @@ from app.ids.rules import (
 
 logger = logging.getLogger(__name__)
 
+# Import ML modules (lazy – evită erori la pornire dacă scikit-learn lipsește)
+try:
+    from app.ml.data_collector import data_collector as _ml_data_collector
+    from app.ml.anomaly_scorer import anomaly_scorer as _ml_anomaly_scorer
+    from app.ml.models import anomaly_models as _ml_anomaly_models
+    _ML_AVAILABLE = True
+except (ImportError, ModuleNotFoundError) as _ml_import_err:  # pragma: no cover
+    _ML_AVAILABLE = False
+    logger.debug("[IDS] Module ML indisponibile: %s", _ml_import_err)
+
 # Lungimea maximă a unui query DNS afișat în mesajele de alertă
 _DNS_QUERY_MAX_DISPLAY_LEN = 80
 # Mulțimile de caractere hex/base64 folosite la detectarea DNS tunneling
@@ -101,6 +111,10 @@ class IntrusionDetector:
         self._auto_block_cooldown = {}
         # Callback pentru salvarea alertelor
         self._alert_callbacks = []
+        # Cooldown pentru alertele ML (ip -> last_alert_time)
+        self._ml_alert_cooldown = {}
+        # Timestamp ultimei evaluări ML (secunde)
+        self._last_ml_score_time = 0.0
 
     def add_alert_callback(self, callback):
         """Adaugă un callback care este apelat când se generează o alertă."""
@@ -349,6 +363,11 @@ class IntrusionDetector:
 
         current_time = time.time()
 
+        # --- Colectare date ML (fără impact pe performanță) ---
+        if _ML_AVAILABLE and src_ip:
+            packet_info.setdefault('timestamp', current_time)
+            _ml_data_collector.add_packet(packet_info)
+
         # Verificăm dacă un MAC blocat continuă să trimită trafic
         if src_mac and self._is_blocked_mac(src_mac):
             last_alert = self._blocked_mac_alert_cooldown.get(src_mac, 0)
@@ -412,6 +431,80 @@ class IntrusionDetector:
         # Verificăm SYN flood (conexiuni TCP brute)
         if SYN_FLOOD_RULES['enabled'] and dst_port and protocol == 'TCP':
             self._check_syn_flood(src_ip, dst_ip, dst_port, current_time)
+
+        # --- Evaluare ML periodică (o dată la 60s) ---
+        if _ML_AVAILABLE and src_ip:
+            self._maybe_check_ml_anomaly(src_ip, current_time)
+
+    def _maybe_check_ml_anomaly(self, src_ip: str, current_time: float) -> None:
+        """Evaluează scorul de anomalie ML pentru un IP (o dată la 60 secunde per IP).
+
+        Dacă scorul depășește pragul configurat, generează o alertă ML.
+        Regulile statice existente rămân active ca validare secundară.
+        """
+        try:
+            from flask import current_app
+            cfg = current_app.config
+        except Exception:
+            return
+
+        if not cfg.get('ML_ENABLED', True):
+            return
+
+        # Cooldown per IP: nu evaluăm mai des decât intervalul configurat
+        scoring_interval = cfg.get('ML_SCORING_INTERVAL_SECONDS', 60)
+        last_check = self._ml_alert_cooldown.get(src_ip, 0)
+        if current_time - last_check < scoring_interval:
+            return
+        self._ml_alert_cooldown[src_ip] = current_time
+
+        try:
+            score, confidence = _ml_anomaly_scorer.score_ip(
+                src_ip, _ml_data_collector, _ml_anomaly_models
+            )
+        except Exception as exc:
+            logger.debug("[IDS ML] Eroare scoring IP %s: %s", src_ip, exc)
+            return
+
+        threshold = cfg.get('ML_ISOLATION_FOREST_THRESHOLD', 0.6) * 100
+
+        if score >= threshold:
+            from app.ml.anomaly_scorer import AnomalyScorer
+            severity = AnomalyScorer.score_severity(score)
+            label = AnomalyScorer.score_label(score)
+            self._fire_ml_alert(
+                source_ip=src_ip,
+                anomaly_score=score,
+                confidence=confidence,
+                severity=severity,
+                label=label,
+            )
+
+    def _fire_ml_alert(self, source_ip: str, anomaly_score: float,
+                       confidence: float, severity: str, label: str) -> None:
+        """Generează o alertă bazată pe scorul ML al unui IP."""
+        message = (
+            f"Anomalie ML detectată pentru {source_ip}: scor {anomaly_score:.1f}/100 "
+            f"({label}). Confidență model: {confidence * 100:.0f}%."
+        )
+        alert_data = {
+            'alert_type': 'ml_anomaly',
+            'source_ip': source_ip,
+            'destination_ip': None,
+            'port': None,
+            'message': message,
+            'severity': severity,
+            'timestamp': datetime.now(timezone.utc),
+            'anomaly_score': anomaly_score,
+            'model_confidence': confidence,
+            'is_ml_generated': True,
+        }
+        for callback in self._alert_callbacks:
+            try:
+                callback(alert_data)
+            except Exception as exc:
+                logger.debug("[IDS ML] Eroare callback alertă: %s", exc)
+        self._maybe_auto_block(source_ip, severity, 'ml_anomaly', message)
 
     def _check_port_scan(self, src_ip, dst_ip, dst_port, current_time):
         """Detectează scanarea porturilor."""

@@ -43,7 +43,7 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint and 'statistics' in request.endpoint %}active{% endif %}"
+                    <a class="nav-link {% if request.endpoint in ('statistics.index', 'statistics.api_statistics') %}active{% endif %}"
                        href="{{ url_for('statistics.index') }}">
                         <i class="bi bi-graph-up me-1"></i>Statistici
                     </a>
@@ -70,6 +70,12 @@
                     <a class="nav-link {% if request.endpoint == 'alerts.blocked_devices' %}active{% endif %}"
                        href="{{ url_for('alerts.blocked_devices') }}">
                         <i class="bi bi-shield-lock me-1"></i>Blocări
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'statistics.anomaly_detection' %}active{% endif %}"
+                       href="{{ url_for('statistics.anomaly_detection') }}">
+                        <i class="bi bi-cpu me-1"></i>Anomalii ML
                     </a>
                 </li>
                 <li class="nav-item">
