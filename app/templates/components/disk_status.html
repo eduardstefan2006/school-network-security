@@ -1,6 +1,11 @@
 <!-- Widget monitorizare spațiu disc – include în dashboard -->
 <div class="disk-monitor-widget">
-    <h3><i class="fas fa-database"></i> Disk Status</h3>
+    <div class="disk-widget-header">
+        <h3><i class="fas fa-database"></i> Disk Status</h3>
+        <span class="disk-widget-refresh" id="diskRefresh" title="Refresh">
+            <i class="fas fa-sync-alt"></i>
+        </span>
+    </div>
 
     <div class="disk-bar-container">
         <div class="disk-bar">
@@ -30,6 +35,21 @@
             <i class="fas fa-circle"></i> Healthy
         </span>
     </div>
+
+    <div class="disk-breakdown">
+        <div class="breakdown-item">
+            <span class="breakdown-label"><i class="fas fa-folder"></i> App Directory</span>
+            <span class="breakdown-value" id="diskApp">-- GB</span>
+        </div>
+        <div class="breakdown-item">
+            <span class="breakdown-label"><i class="fas fa-file-alt"></i> Logs</span>
+            <span class="breakdown-value" id="diskLogs">-- GB</span>
+        </div>
+        <div class="breakdown-item">
+            <span class="breakdown-label"><i class="fas fa-save"></i> Backups</span>
+            <span class="breakdown-value" id="diskBackups">-- GB</span>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -39,6 +59,32 @@
     border-radius: 6px;
     padding: 20px;
     margin: 10px 0;
+}
+
+.disk-widget-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+}
+
+.disk-widget-header h3 {
+    color: #00ff88;
+    font-size: 16px;
+    margin: 0;
+}
+
+.disk-widget-refresh {
+    cursor: pointer;
+    color: #888;
+    transition: color 0.2s ease, transform 0.3s ease;
+}
+
+.disk-widget-refresh:hover {
+    color: #00ff88;
+    transform: rotate(180deg);
 }
 
 .disk-bar-container {
@@ -113,6 +159,33 @@
     0%, 100% { opacity: 1; }
     50%       { opacity: 0.7; }
 }
+
+.disk-breakdown {
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(0, 255, 136, 0.2);
+}
+
+.breakdown-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    font-size: 12px;
+}
+
+.breakdown-label {
+    color: #aaa;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.breakdown-value {
+    color: #00ff88;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+}
 </style>
 
 <script>
@@ -156,6 +229,20 @@ function updateDiskStatus() {
             var el = document.getElementById('diskStatus');
             el.className = 'status-indicator status-' + statusClass;
             el.innerHTML = '<i class="fas fa-circle"></i> ' + label;
+
+            // Actualizare breakdown directoare
+            var dirs = data.status;
+            if (dirs) {
+                if (dirs.app && dirs.app.size_gb != null) {
+                    document.getElementById('diskApp').textContent = dirs.app.size_gb.toFixed(1) + ' GB';
+                }
+                if (dirs.logs && dirs.logs.size_gb != null) {
+                    document.getElementById('diskLogs').textContent = dirs.logs.size_gb.toFixed(1) + ' GB';
+                }
+                if (dirs.backups && dirs.backups.size_gb != null) {
+                    document.getElementById('diskBackups').textContent = dirs.backups.size_gb.toFixed(1) + ' GB';
+                }
+            }
         })
         .catch(function(err) {
             console.error('Disk status fetch error:', err);
@@ -165,4 +252,12 @@ function updateDiskStatus() {
 // Actualizare la fiecare 30 de secunde
 setInterval(updateDiskStatus, 30000);
 updateDiskStatus();
+
+// Buton refresh manual
+var refreshBtn = document.getElementById('diskRefresh');
+if (refreshBtn) {
+    refreshBtn.addEventListener('click', function() {
+        updateDiskStatus();
+    });
+}
 </script>
