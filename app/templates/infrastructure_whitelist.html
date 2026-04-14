@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Listă Albă Infrastructură - SchoolSec{% endblock %}
+
+{% block content %}
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h2 class="text-success"><i class="bi bi-shield-check me-2"></i>Listă Albă Infrastructură</h2>
+        <small class="text-muted">Gestionarea IP-urilor de infrastructură care nu vor fi niciodată blocate</small>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-outline-success btn-sm" onclick="initDefaults()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Inițializează Implicite
+        </button>
+    </div>
+</div>
+
+<!-- Alert zone -->
+<div id="alertZone"></div>
+
+<!-- Formular adăugare -->
+<div class="card schoolsec-card border-success mb-4">
+    <div class="card-header text-success fw-bold">
+        <i class="bi bi-plus-circle me-2"></i>Adaugă IP Infrastructură
+    </div>
+    <div class="card-body">
+        <form id="addWhitelistForm" class="row g-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-md-3">
+                <label for="ip_address" class="form-label text-success">Adresă IP</label>
+                <input type="text" class="form-control" id="ip_address"
+                       placeholder="192.168.2.40" required>
+            </div>
+            <div class="col-md-3">
+                <label for="hostname" class="form-label text-success">Hostname</label>
+                <input type="text" class="form-control" id="hostname"
+                       placeholder="proxmox-host">
+            </div>
+            <div class="col-md-3">
+                <label for="service_type" class="form-label text-success">Tip Serviciu</label>
+                <select class="form-select" id="service_type" required>
+                    <option value="">-- Selectează --</option>
+                    <option value="hypervisor">Hypervisor (Proxmox/VMware)</option>
+                    <option value="gateway">Gateway/Router</option>
+                    <option value="security-system">Sistem Securitate</option>
+                    <option value="dns">Server DNS</option>
+                    <option value="ntp">Server NTP</option>
+                    <option value="management">Sistem Management</option>
+                    <option value="backup">Sistem Backup</option>
+                    <option value="other">Altul</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="description" class="form-label text-success">Descriere</label>
+                <input type="text" class="form-control" id="description"
+                       placeholder="Descriere serviciu">
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-save me-1"></i>Adaugă în Lista Albă
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tabelul cu intrările existente -->
+<div class="card schoolsec-card border-secondary">
+    <div class="card-header text-success fw-bold">
+        <i class="bi bi-list-check me-2"></i>Infrastructură Whitelistată
+        <span class="badge bg-success ms-2" id="countBadge">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-dark table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Adresă IP</th>
+                        <th>Hostname</th>
+                        <th>Tip Serviciu</th>
+                        <th>Descriere</th>
+                        <th>Status</th>
+                        <th>Adăugat</th>
+                        <th>Acțiuni</th>
+                    </tr>
+                </thead>
+                <tbody id="whitelistTable">
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-3">
+                            <div class="spinner-border spinner-border-sm text-success me-2" role="status"></div>
+                            Se încarcă...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal editare -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light border-success">
+            <div class="modal-header border-success">
+                <h5 class="modal-title text-success" id="editModalLabel">
+                    <i class="bi bi-pencil me-2"></i>Editează Intrare
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="mb-3">
+                    <label class="form-label text-success">Hostname</label>
+                    <input type="text" class="form-control" id="editHostname">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-success">Descriere</label>
+                    <input type="text" class="form-control" id="editDescription">
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="editIsActive">
+                    <label class="form-check-label text-success" for="editIsActive">Activ</label>
+                </div>
+            </div>
+            <div class="modal-footer border-success">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                <button type="button" class="btn btn-success" onclick="saveEdit()">
+                    <i class="bi bi-save me-1"></i>Salvează
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+function showAlert(message, type) {
+    const zone = document.getElementById('alertZone');
+    zone.innerHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>`;
+}
+
+function loadWhitelist() {
+    fetch('/api/infrastructure/whitelist', {
+        headers: {'X-CSRFToken': csrfToken}
+    })
+    .then(r => r.json())
+    .then(data => {
+        const tbody = document.getElementById('whitelistTable');
+        const countBadge = document.getElementById('countBadge');
+        tbody.innerHTML = '';
+        countBadge.textContent = data.count || 0;
+
+        if (!data.whitelist || data.whitelist.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Nu există intrări în lista albă.</td></tr>';
+            return;
+        }
+
+        data.whitelist.forEach(entry => {
+            const row = document.createElement('tr');
+            const statusBadge = entry.is_active
+                ? '<span class="badge bg-success">Activ</span>'
+                : '<span class="badge bg-danger">Inactiv</span>';
+            const addedDate = new Date(entry.created_at).toLocaleDateString('ro-RO');
+
+            row.innerHTML = `
+                <td><code class="text-success">${entry.ip_address}</code></td>
+                <td>${entry.hostname || '<span class="text-muted">-</span>'}</td>
+                <td><span class="badge bg-info text-dark">${entry.service_type}</span></td>
+                <td class="text-muted small">${entry.description || '-'}</td>
+                <td>${statusBadge}</td>
+                <td><small class="text-muted">${addedDate}</small></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-warning me-1" onclick="editEntry(${entry.id}, '${entry.hostname || ''}', '${entry.description || ''}', ${entry.is_active})">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteEntry(${entry.id}, '${entry.ip_address}')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>`;
+            tbody.appendChild(row);
+        });
+    })
+    .catch(err => {
+        document.getElementById('whitelistTable').innerHTML =
+            '<tr><td colspan="7" class="text-center text-danger py-3">Eroare la încărcarea datelor.</td></tr>';
+    });
+}
+
+document.getElementById('addWhitelistForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const data = {
+        ip_address: document.getElementById('ip_address').value.trim(),
+        hostname: document.getElementById('hostname').value.trim() || null,
+        service_type: document.getElementById('service_type').value,
+        description: document.getElementById('description').value.trim() || null,
+    };
+
+    fetch('/api/infrastructure/whitelist', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify(data),
+    })
+    .then(r => r.json().then(body => ({ status: r.status, body })))
+    .then(({ status, body }) => {
+        if (status === 201) {
+            showAlert('✅ IP adăugat cu succes în lista albă!', 'success');
+            this.reset();
+            loadWhitelist();
+        } else {
+            showAlert('❌ Eroare: ' + (body.error || 'Eroare necunoscută'), 'danger');
+        }
+    })
+    .catch(() => showAlert('❌ Eroare de rețea.', 'danger'));
+});
+
+function editEntry(id, hostname, description, isActive) {
+    document.getElementById('editId').value = id;
+    document.getElementById('editHostname').value = hostname;
+    document.getElementById('editDescription').value = description;
+    document.getElementById('editIsActive').checked = isActive;
+    new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+function saveEdit() {
+    const id = document.getElementById('editId').value;
+    const data = {
+        hostname: document.getElementById('editHostname').value.trim() || null,
+        description: document.getElementById('editDescription').value.trim() || null,
+        is_active: document.getElementById('editIsActive').checked,
+    };
+
+    fetch(`/api/infrastructure/whitelist/${id}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify(data),
+    })
+    .then(r => r.json().then(body => ({ status: r.status, body })))
+    .then(({ status, body }) => {
+        bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+        if (status === 200) {
+            showAlert('✅ Intrare actualizată cu succes!', 'success');
+            loadWhitelist();
+        } else {
+            showAlert('❌ Eroare: ' + (body.error || 'Eroare necunoscută'), 'danger');
+        }
+    })
+    .catch(() => showAlert('❌ Eroare de rețea.', 'danger'));
+}
+
+function deleteEntry(id, ip) {
+    if (!confirm(`Elimini IP-ul ${ip} din lista albă?\nAcesta ar putea fi blocat din nou de sistem.`)) return;
+
+    fetch(`/api/infrastructure/whitelist/${id}`, {
+        method: 'DELETE',
+        headers: {'X-CSRFToken': csrfToken},
+    })
+    .then(r => r.json().then(body => ({ status: r.status, body })))
+    .then(({ status, body }) => {
+        if (status === 200) {
+            showAlert('✅ IP eliminat din lista albă.', 'warning');
+            loadWhitelist();
+        } else {
+            showAlert('❌ Eroare: ' + (body.error || 'Eroare necunoscută'), 'danger');
+        }
+    })
+    .catch(() => showAlert('❌ Eroare de rețea.', 'danger'));
+}
+
+function initDefaults() {
+    if (!confirm('Adaugă IP-urile implicite de infrastructură (Proxmox, Gateway, SchoolSec VM)?')) return;
+
+    fetch('/api/infrastructure/init-defaults', {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrfToken},
+    })
+    .then(r => r.json().then(body => ({ status: r.status, body })))
+    .then(({ status, body }) => {
+        if (status === 200) {
+            showAlert(`✅ ${body.added} intrări adăugate, ${body.skipped} deja existente.`, 'success');
+            loadWhitelist();
+        } else {
+            showAlert('❌ Eroare: ' + (body.error || 'Eroare necunoscută'), 'danger');
+        }
+    })
+    .catch(() => showAlert('❌ Eroare de rețea.', 'danger'));
+}
+
+// Încarcă datele la pornire
+loadWhitelist();
+</script>
+{% endblock %}

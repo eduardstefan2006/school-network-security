@@ -47,8 +47,21 @@ class ResponseBlocker:
             from app.models import (
                 BlockedIP, BlockedMAC, BlockedHostname,
                 NetworkDevice, SecurityLog, ResponseAction,
+                InfrastructureWhitelist,
             )
             from flask import current_app
+
+            # Verificăm lista albă de infrastructură ÎNAINTE de orice blocare
+            if current_app.config.get('INFRASTRUCTURE_WHITELIST_ENABLED', True):
+                whitelisted = InfrastructureWhitelist.query.filter_by(
+                    ip_address=source_ip, is_active=True
+                ).first()
+                if whitelisted:
+                    logger.warning(
+                        '[Blocker] Blocare REFUZATĂ pentru IP de infrastructură %s (%s)',
+                        source_ip, whitelisted.service_type,
+                    )
+                    return result
 
             alert_type = alert_data.get('alert_type', 'response_block')
             alert_id = alert_data.get('alert_id')

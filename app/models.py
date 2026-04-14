@@ -682,3 +682,43 @@ class SystemNotification(db.Model):
 
     def __repr__(self):
         return f'<SystemNotification [{self.level}] at {self.created_at}>'
+
+
+# =============================================================================
+# Model Listă Albă Infrastructură
+# =============================================================================
+class InfrastructureWhitelist(db.Model):
+    """
+    IP-uri/servicii de infrastructură care NU trebuie NICIODATĂ blocate.
+    Acestea sunt servicii interne de încredere precum Proxmox, gateway-uri, etc.
+    """
+    __tablename__ = 'infrastructure_whitelist'
+
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(45), unique=True, nullable=False, index=True)
+    hostname = db.Column(db.String(255), nullable=True)
+    # proxmox, gateway, dns, ntp, security-system, management, backup, etc.
+    service_type = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    creator = db.relationship('User', backref='infrastructure_entries', lazy=True)
+
+    def __repr__(self):
+        return f'<InfrastructureWhitelist {self.ip_address} ({self.service_type})>'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'ip_address': self.ip_address,
+            'hostname': self.hostname,
+            'service_type': self.service_type,
+            'description': self.description,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+        }

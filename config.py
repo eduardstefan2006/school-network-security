@@ -35,6 +35,9 @@ class Config:
     # Directorul pentru loguri
     LOG_DIR = os.path.join(BASE_DIR, 'logs')
 
+    # Listă albă infrastructură — IP-uri care NU trebuie NICIODATĂ blocate
+    INFRASTRUCTURE_WHITELIST_ENABLED = True
+
     # Setări IDS (Intrusion Detection System)
     # Numărul de porturi scanate în intervalul de timp pentru a declanșa alerta de port scan
     PORT_SCAN_THRESHOLD = 15
@@ -175,3 +178,25 @@ config = {
     'production': ProductionConfig,
     'default': DevelopmentConfig
 }
+
+# Lista implicită de IP-uri de infrastructură (inițializată la pornire în BD)
+DEFAULT_INFRASTRUCTURE_WHITELIST = [
+    {
+        'ip_address': '192.168.2.40',
+        'hostname': 'proxmox-host',
+        'service_type': 'hypervisor',
+        'description': 'Proxmox Virtual Environment - Hypervisor Management',
+    },
+    {
+        'ip_address': '192.168.2.243',
+        'hostname': 'school-sec-vm',
+        'service_type': 'security-system',
+        'description': 'SchoolSec Security System VM',
+    },
+    {
+        'ip_address': '192.168.2.1',
+        'hostname': 'gateway',
+        'service_type': 'gateway',
+        'description': 'Network Gateway / Router',
+    },
+]

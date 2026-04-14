@@ -179,6 +179,12 @@
                                 <i class="bi bi-people me-2"></i>Utilizatori
                             </a>
                         </li>
+                        <li>
+                            <a class="dropdown-item {% if request.endpoint == 'infrastructure.whitelist_page' %}active{% endif %}"
+                               href="{{ url_for('infrastructure.whitelist_page') }}">
+                                <i class="bi bi-shield-check me-2"></i>Listă Albă Infrastructură
+                            </a>
+                        </li>
                         {% endif %}
                         <li>
                             <a class="dropdown-item {% if request.endpoint == 'dashboard.logs' %}active{% endif %}"

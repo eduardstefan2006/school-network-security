@@ -162,6 +162,9 @@ class IntrusionDetector:
         if self._is_whitelisted(source_ip):
             return
 
+        if self._is_whitelisted_infrastructure(source_ip):
+            return
+
         # Cooldown: nu bloca același IP mai des de o dată la 5 minute
         current_time = time.time()
         last_block = self._auto_block_cooldown.get(source_ip, 0)
@@ -293,6 +296,25 @@ class IntrusionDetector:
             except Exception:
                 return False
         return ip in _known_devices_cache
+
+    def _is_whitelisted_infrastructure(self, ip):
+        """Verifică dacă IP-ul este în lista albă de infrastructură (BD)."""
+        try:
+            from app.models import InfrastructureWhitelist
+            from flask import current_app
+            if current_app.config.get('INFRASTRUCTURE_WHITELIST_ENABLED', True):
+                entry = InfrastructureWhitelist.query.filter_by(
+                    ip_address=ip, is_active=True
+                ).first()
+                if entry:
+                    logger.info(
+                        '[IDS] IP infrastructură exclus de la blocare: %s (%s)',
+                        ip, entry.service_type,
+                    )
+                    return True
+        except Exception:
+            pass
+        return False
 
     def _is_blocked(self, ip):
         """Verifică dacă IP-ul este blocat în baza de date (cu cache TTL 60s)."""

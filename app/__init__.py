@@ -216,6 +216,26 @@ def _ensure_admin_user():
         print(f'[DB] Eroare la crearea utilizatorului admin implicit: {e}')
 
 
+def _init_infrastructure_whitelist():
+    """Inițializează lista albă de infrastructură cu intrările implicite la prima rulare."""
+    try:
+        from app.models import InfrastructureWhitelist
+        from config import DEFAULT_INFRASTRUCTURE_WHITELIST
+        if InfrastructureWhitelist.query.count() == 0:
+            for entry_data in DEFAULT_INFRASTRUCTURE_WHITELIST:
+                entry = InfrastructureWhitelist(
+                    ip_address=entry_data['ip_address'],
+                    hostname=entry_data.get('hostname'),
+                    service_type=entry_data['service_type'],
+                    description=entry_data.get('description'),
+                )
+                db.session.add(entry)
+            db.session.commit()
+            print('[DB] Listă albă infrastructură inițializată cu intrările implicite.')
+    except Exception as e:
+        print(f'[DB] Eroare la inițializarea listei albe de infrastructură: {e}')
+
+
 def _init_background_jobs(app):
     """Inițializează job-urile de fundal (scheduler APScheduler)."""
     try:
@@ -287,6 +307,7 @@ def create_app(config_name=None):
     from app.routes.setup import setup_bp
     from app.routes.response import response_bp
     from app.routes.monitoring import monitoring_bp
+    from app.routes.infrastructure import infrastructure_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -302,6 +323,7 @@ def create_app(config_name=None):
     app.register_blueprint(setup_bp)
     app.register_blueprint(response_bp)
     app.register_blueprint(monitoring_bp)
+    app.register_blueprint(infrastructure_bp)
 
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():
@@ -310,6 +332,8 @@ def create_app(config_name=None):
         _run_migrations(app)
         # Creare automată utilizator admin implicit la prima rulare
         _ensure_admin_user()
+        # Inițializare listă albă infrastructură implicită (la prima rulare)
+        _init_infrastructure_whitelist()
 
     # Pornire integrare MikroTik – prioritate: config din BD, fallback la .env
     _init_mikrotik(app)
