@@ -2054,7 +2054,10 @@ def start_sniffer(app):
                         port=alert_data.get('port'),
                         message=alert_data['message'],
                         severity=alert_data['severity'],
-                        status='active'
+                        status='active',
+                        anomaly_score=alert_data.get('anomaly_score'),
+                        model_confidence=alert_data.get('model_confidence'),
+                        is_ml_generated=alert_data.get('is_ml_generated', False),
                     )
                     db.session.add(alert)
 

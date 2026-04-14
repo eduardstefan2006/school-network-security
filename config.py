@@ -109,6 +109,24 @@ class Config:
     # Limită de siguranță pentru actualizări bulk (protecție la payload-uri mari/abuzive)
     BULK_UPDATE_MAX_ITEMS = int(os.environ.get('BULK_UPDATE_MAX_ITEMS', 200))
 
+    # -------------------------------------------------------------------------
+    # Configurare ML (detectare anomalii bazată pe Machine Learning)
+    # -------------------------------------------------------------------------
+    # Activează/dezactivează complet modulul ML
+    ML_ENABLED = os.environ.get('ML_ENABLED', 'true').lower() == 'true'
+    # Pragul scorului Isolation Forest (0-100) peste care se generează alertă ML
+    ML_ISOLATION_FOREST_THRESHOLD = float(os.environ.get('ML_ISOLATION_FOREST_THRESHOLD', 0.6))
+    # Pragul scorului LOF (0-100) — folosit intern în combinarea scorurilor
+    ML_LOF_THRESHOLD = float(os.environ.get('ML_LOF_THRESHOLD', 0.65))
+    # Activează/dezactivează Autoencoder (necesită TensorFlow)
+    ML_AUTOENCODER_ENABLED = os.environ.get('ML_AUTOENCODER_ENABLED', 'false').lower() == 'true'
+    # Fereastra de colectare a caracteristicilor (minute)
+    ML_FEATURE_WINDOW_MINUTES = int(os.environ.get('ML_FEATURE_WINDOW_MINUTES', 1))
+    # Intervalul de reantrenare a modelelor (ore)
+    ML_MODEL_RETRAIN_HOURS = int(os.environ.get('ML_MODEL_RETRAIN_HOURS', 24))
+    # Numărul minim de puncte de date înainte de a începe scoring-ul
+    ML_MIN_DATA_POINTS = int(os.environ.get('ML_MIN_DATA_POINTS', 100))
+
 
 class DevelopmentConfig(Config):
     """Configurare pentru dezvoltare."""

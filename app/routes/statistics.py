@@ -393,3 +393,130 @@ def export_app_usage_csv():
             'Content-Disposition': f'attachment; filename=app_usage_{period}_{timestamp}.csv'
         }
     )
+
+
+# =============================================================================
+# Anomaly Detection (ML)
+# =============================================================================
+
+@statistics_bp.route('/anomaly-detection')
+@login_required
+def anomaly_detection():
+    """Pagina de detectare a anomaliilor bazată pe ML."""
+    return render_template('anomaly_detection.html')
+
+
+@statistics_bp.route('/api/anomaly-detection/status')
+@login_required
+def api_anomaly_status():
+    """Returnează statusul modulului ML și scorurile de anomalie curente."""
+    try:
+        from app.ml.models import anomaly_models
+        from app.ml.anomaly_scorer import anomaly_scorer
+
+        top_anomalies = anomaly_scorer.get_top_anomalies(n=20)
+
+        # Formatăm timestamp-urile
+        for item in top_anomalies:
+            ts = item.get('last_seen', 0)
+            if ts:
+                item['last_seen'] = datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%H:%M:%S')
+            else:
+                item['last_seen'] = 'N/A'
+
+        return jsonify({
+            'ml_enabled': True,
+            'sklearn_available': anomaly_models.sklearn_available,
+            'models_trained': anomaly_models.is_trained,
+            'training_samples': anomaly_models.training_samples,
+            'top_anomalies': top_anomalies,
+        })
+    except Exception as exc:
+        return jsonify({
+            'ml_enabled': False,
+            'sklearn_available': False,
+            'models_trained': False,
+            'training_samples': 0,
+            'top_anomalies': [],
+            'error': str(exc),
+        })
+
+
+@statistics_bp.route('/api/anomaly-detection/metrics')
+@login_required
+def api_anomaly_metrics():
+    """Returnează metricile modelelor ML și statistici recente."""
+    from app.models import Alert as AlertModel
+
+    # Alerte ML din ultimele 24h
+    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    ml_alerts = AlertModel.query.filter(
+        AlertModel.is_ml_generated == True,  # noqa: E712
+        AlertModel.timestamp >= since_24h,
+    ).all()
+
+    total_ml = len(ml_alerts)
+    avg_score = (
+        sum(a.anomaly_score for a in ml_alerts if a.anomaly_score is not None) / total_ml
+        if total_ml > 0 else 0.0
+    )
+
+    by_severity = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+    for a in ml_alerts:
+        by_severity[a.severity] = by_severity.get(a.severity, 0) + 1
+
+    # Istoricul scorurilor ultimelor 24h (din alerte ML)
+    timeline = []
+    for alert in sorted(ml_alerts, key=lambda x: x.timestamp):
+        timeline.append({
+            'timestamp': alert.timestamp.strftime('%H:%M'),
+            'score': alert.anomaly_score or 0,
+            'ip': alert.source_ip,
+        })
+
+    try:
+        from app.ml.models import anomaly_models
+        from app.models import MLTrainingData
+        total_training_records = MLTrainingData.query.count()
+        recent_training = MLTrainingData.query.filter(
+            MLTrainingData.timestamp >= since_24h
+        ).count()
+    except Exception:
+        total_training_records = 0
+        recent_training = 0
+        anomaly_models = None
+
+    return jsonify({
+        'ml_alerts_24h': total_ml,
+        'avg_anomaly_score': round(avg_score, 1),
+        'by_severity': by_severity,
+        'timeline': timeline[-100:],  # Limităm la ultimele 100 puncte
+        'total_training_records': total_training_records,
+        'training_records_24h': recent_training,
+        'models_trained': anomaly_models.is_trained if anomaly_models else False,
+        'training_samples': anomaly_models.training_samples if anomaly_models else 0,
+    })
+
+
+@statistics_bp.route('/api/anomaly-detection/ip/<ip>')
+@login_required
+def api_anomaly_ip_history(ip):
+    """Returnează istoricul scorurilor de anomalie pentru un IP specific."""
+    try:
+        from app.ml.anomaly_scorer import anomaly_scorer
+
+        history = anomaly_scorer.get_score_history(ip, limit=60)
+        formatted = [
+            {
+                'timestamp': datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%H:%M:%S'),
+                'score': round(score, 1),
+            }
+            for ts, score in history
+        ]
+
+        return jsonify({
+            'ip': ip,
+            'history': formatted,
+        })
+    except Exception as exc:
+        return jsonify({'ip': ip, 'history': [], 'error': str(exc)})
