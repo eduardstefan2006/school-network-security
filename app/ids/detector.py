@@ -159,9 +159,12 @@ class IntrusionDetector:
         if severity not in auto_block_severities:
             return
 
+        # Verificăm lista albă statică/JSON/dispozitive Cunoscute
         if self._is_whitelisted(source_ip):
             return
 
+        # Verificăm lista albă de infrastructură persistentă (BD) —
+        # separată de lista albă statică pentru a proteja servicii critice
         if self._is_whitelisted_infrastructure(source_ip):
             return
 

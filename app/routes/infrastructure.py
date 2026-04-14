@@ -4,7 +4,6 @@ Permite adminilor să adauge/editeze/șteargă IP-uri de infrastructură
 care nu trebuie niciodată blocate de sistemul de securitate.
 """
 import logging
-from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request, render_template
 from flask_login import login_required, current_user
 from app.models import InfrastructureWhitelist
@@ -102,7 +101,6 @@ def update_whitelist(entry_id):
     if 'is_active' in data:
         entry.is_active = bool(data['is_active'])
 
-    entry.updated_at = datetime.now(timezone.utc)
     db.session.commit()
 
     logger.info('[Whitelist] Actualizat: %s de %s', entry.ip_address, current_user.username)
