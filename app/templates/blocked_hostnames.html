@@ -96,6 +96,7 @@
                             <form method="POST"
                                   action="{{ url_for('alerts.unblock_hostname', hostname_id=hn.id) }}"
                                   class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-sm btn-outline-success"
                                         title="Deblochează hostname-ul"
                                         onclick="return confirm('Ești sigur că vrei să deblochezi hostname-ul {{ hn.hostname }}?')">
