@@ -16,6 +16,9 @@ from app.ml.features import extract_features, features_to_vector
 
 logger = logging.getLogger(__name__)
 
+# Valoare mică pentru evitarea împărțirii la zero în calculele statistice
+_EPSILON = 1e-6
+
 # Ponderile modelelor în scorul final
 _WEIGHT_ISOLATION_FOREST = 0.5
 _WEIGHT_LOF = 0.4
@@ -123,7 +126,7 @@ class AnomalyScorer:
         )
 
         current_bytes = features.get('bytes_per_minute', 0)
-        z_bytes = abs(current_bytes - mean_bytes) / (std_bytes + 1e-6)
+        z_bytes = abs(current_bytes - mean_bytes) / (std_bytes + _EPSILON)
 
         # Calculăm z-score pentru packets per minute
         mean_pkts = sum(packets_history) / len(packets_history)
@@ -132,7 +135,7 @@ class AnomalyScorer:
         )
 
         current_pkts = features.get('packets_per_minute', 0)
-        z_pkts = abs(current_pkts - mean_pkts) / (std_pkts + 1e-6)
+        z_pkts = abs(current_pkts - mean_pkts) / (std_pkts + _EPSILON)
 
         # Combinăm z-score-urile și normalizăm la [0, 1]
         # Un z-score > 3 este considerat outlier semnificativ

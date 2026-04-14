@@ -136,10 +136,8 @@ class DataCollector:
         saved = 0
         for ip in active_ips:
             features = self.get_features(ip)
-            vec = features_to_vector(features)
-
-            # Nu salvăm vectori cu toate valorile zero
-            if all(v == 0.0 for v in vec):
+            # Optimizare: dacă nu există pachete, toate valorile sunt 0 — sărim
+            if features.get('packets_per_minute', 0) == 0:
                 continue
 
             entry = MLTrainingData(

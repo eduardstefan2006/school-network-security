@@ -97,9 +97,12 @@ class AnomalyModels:
             X_scaled = scaler.fit_transform(X)
 
             # Isolation Forest
+            # contamination=0.1: Estimăm că ~10% din traficul colectat poate fi anormal.
+            # Valoarea poate fi ajustată prin config (ML_ISOLATION_FOREST_CONTAMINATION).
+            # O valoare mai mică → mai puțini falși pozitivi, dar mai multe anomalii ratate.
             iso_forest = IsolationForest(
                 n_estimators=100,
-                contamination=0.1,  # Estimăm că 10% din trafic poate fi anormal
+                contamination=0.1,
                 random_state=42,
                 n_jobs=-1,
             )

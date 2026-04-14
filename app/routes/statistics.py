@@ -438,7 +438,6 @@ def api_anomaly_status():
             'models_trained': False,
             'training_samples': 0,
             'top_anomalies': [],
-            'error': str(exc),
         })
 
 
@@ -451,7 +450,7 @@ def api_anomaly_metrics():
     # Alerte ML din ultimele 24h
     since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
     ml_alerts = AlertModel.query.filter(
-        AlertModel.is_ml_generated == True,  # noqa: E712
+        AlertModel.is_ml_generated.is_(True),
         AlertModel.timestamp >= since_24h,
     ).all()
 
@@ -518,5 +517,5 @@ def api_anomaly_ip_history(ip):
             'ip': ip,
             'history': formatted,
         })
-    except Exception as exc:
-        return jsonify({'ip': ip, 'history': [], 'error': str(exc)})
+    except Exception:
+        return jsonify({'ip': ip, 'history': []}), 500

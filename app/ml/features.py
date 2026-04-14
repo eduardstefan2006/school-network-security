@@ -7,6 +7,11 @@ import math
 import time
 from collections import defaultdict
 
+# Valoarea maximă pentru varianța porturilor (cap pentru normalizare)
+_PORT_VARIANCE_CAP = 1_000_000_000  # 1e9 — porturile maxime sunt 65535, varianța nu poate depăși ~10^9
+# Valoarea maximă pentru raportul SYN/ACK (protecție împotriva valorilor infinite)
+_SYN_ACK_RATIO_CAP = 100.0  # Un IP legitim nu trimite mai mult de 100 SYN per ACK
+
 
 def compute_protocol_entropy(protocol_counts: dict) -> float:
     """Calculează entropia Shannon a distribuției protocoalelor.
@@ -97,7 +102,7 @@ def extract_features(ip_buffer: list, window_seconds: float = 60.0) -> dict:
     # SYN/ACK ratio
     syn_count = sum(1 for p in packets if p.get('is_tcp_syn'))
     ack_count = sum(1 for p in packets if p.get('is_tcp_ack'))
-    syn_ack_ratio = syn_count / (ack_count + 1)  # +1 pentru a evita împărțirea la 0
+    syn_ack_ratio = syn_count / ack_count if ack_count > 0 else 0.0
 
     # Data packets (non-SYN, non-DNS, cu bytes)
     data_packets = sum(1 for p in packets if p.get('size', 0) > 64 and not p.get('is_tcp_syn'))
@@ -136,7 +141,7 @@ def extract_features(ip_buffer: list, window_seconds: float = 60.0) -> dict:
         'icmp_ratio': icmp_ratio,
         'new_connections_per_minute': new_conns / (window_seconds / 60.0),
         'failed_connections_ratio': failed_ratio,
-        'port_variance': min(port_var, 1e9),  # limităm pentru normalizare
+        'port_variance': min(port_var, _PORT_VARIANCE_CAP),  # limităm pentru normalizare
         'protocol_entropy': proto_entropy,
         'hour_of_day': hour_of_day,
         'bytes_per_packet_avg': bytes_per_packet,
@@ -144,7 +149,7 @@ def extract_features(ip_buffer: list, window_seconds: float = 60.0) -> dict:
         'time_since_last_packet': min(time_since_last, window_seconds),
         'connection_diversity': unique_dst_ips,
         'dns_query_rate': dns_count / (window_seconds / 60.0),
-        'syn_ack_ratio': min(syn_ack_ratio, 100.0),  # limităm
+        'syn_ack_ratio': min(syn_ack_ratio, _SYN_ACK_RATIO_CAP),  # limităm
         'data_packet_ratio': data_packet_ratio,
     }
 

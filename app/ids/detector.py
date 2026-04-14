@@ -21,7 +21,7 @@ try:
     from app.ml.anomaly_scorer import anomaly_scorer as _ml_anomaly_scorer
     from app.ml.models import anomaly_models as _ml_anomaly_models
     _ML_AVAILABLE = True
-except Exception as _ml_import_err:  # pragma: no cover
+except (ImportError, ModuleNotFoundError) as _ml_import_err:  # pragma: no cover
     _ML_AVAILABLE = False
     logger.debug("[IDS] Module ML indisponibile: %s", _ml_import_err)
 
