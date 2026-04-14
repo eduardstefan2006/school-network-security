@@ -1,0 +1,168 @@
+<!-- Widget monitorizare spațiu disc – include în dashboard -->
+<div class="disk-monitor-widget">
+    <h3><i class="fas fa-database"></i> Disk Status</h3>
+
+    <div class="disk-bar-container">
+        <div class="disk-bar">
+            <div class="disk-used green" id="diskUsedBar" style="width: 0%;">
+                <span class="disk-label" id="diskPercent">--%</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="disk-stats">
+        <div class="stat-row">
+            <span class="stat-label">Total:</span>
+            <span class="stat-value" id="diskTotal">-- GB</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Used:</span>
+            <span class="stat-value" id="diskUsed">-- GB</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Free:</span>
+            <span class="stat-value" id="diskFree">-- GB</span>
+        </div>
+    </div>
+
+    <div class="disk-status-indicator">
+        <span id="diskStatus" class="status-indicator status-healthy">
+            <i class="fas fa-circle"></i> Healthy
+        </span>
+    </div>
+</div>
+
+<style>
+.disk-monitor-widget {
+    background: #252d47;
+    border: 1px solid #00ff88;
+    border-radius: 6px;
+    padding: 20px;
+    margin: 10px 0;
+}
+
+.disk-bar-container {
+    margin: 15px 0;
+}
+
+.disk-bar {
+    width: 100%;
+    height: 24px;
+    background: #1a1f3a;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #444;
+}
+
+.disk-used {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.disk-used.green  { background: #00ff88; }
+.disk-used.yellow { background: #ffcc00; }
+.disk-used.red    { background: #ff6666; }
+.disk-used.black  { background: #cc0000; }
+
+.disk-label {
+    color: #1a1f3a;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.disk-stats {
+    margin: 15px 0;
+    font-size: 13px;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+}
+
+.stat-label { color: #888; }
+.stat-value  { color: #00ff88; font-weight: bold; }
+
+.disk-status-indicator {
+    margin-top: 10px;
+    text-align: center;
+}
+
+.status-indicator {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.status-healthy   { background: rgba(0, 255, 136, 0.2); color: #00ff88; }
+.status-warning   { background: rgba(255, 204, 0, 0.2);  color: #ffcc00; }
+.status-critical  { background: rgba(255, 102, 102, 0.2); color: #ff6666; }
+.status-emergency {
+    background: rgba(204, 0, 0, 0.3);
+    color: #ff3333;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.7; }
+}
+</style>
+
+<script>
+function updateDiskStatus() {
+    fetch('/api/monitoring/disk-status')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var status = data.status.overall;
+            if (!status) return;
+
+            var percent = status.percent_used;
+
+            document.getElementById('diskTotal').textContent   = status.total_gb.toFixed(1) + ' GB';
+            document.getElementById('diskUsed').textContent    = status.used_gb.toFixed(1)  + ' GB';
+            document.getElementById('diskFree').textContent    = status.free_gb.toFixed(1)  + ' GB';
+            document.getElementById('diskPercent').textContent = percent.toFixed(1) + '%';
+
+            var bar = document.getElementById('diskUsedBar');
+            bar.style.width = percent + '%';
+
+            var statusClass;
+            if (percent > 95) {
+                statusClass = 'emergency';
+            } else if (percent > 85) {
+                statusClass = 'critical';
+            } else if (percent > 70) {
+                statusClass = 'warning';
+            } else {
+                statusClass = 'healthy';
+            }
+
+            var barClass = statusClass === 'healthy'   ? 'green'  :
+                           statusClass === 'warning'   ? 'yellow' :
+                           statusClass === 'critical'  ? 'red'    : 'black';
+            bar.className = 'disk-used ' + barClass;
+
+            var label = statusClass === 'healthy'   ? 'Healthy'   :
+                        statusClass === 'warning'   ? 'Warning'   :
+                        statusClass === 'critical'  ? 'Critical'  : 'Emergency';
+
+            var el = document.getElementById('diskStatus');
+            el.className = 'status-indicator status-' + statusClass;
+            el.innerHTML = '<i class="fas fa-circle"></i> ' + label;
+        })
+        .catch(function(err) {
+            console.error('Disk status fetch error:', err);
+        });
+}
+
+// Actualizare la fiecare 30 de secunde
+setInterval(updateDiskStatus, 30000);
+updateDiskStatus();
+</script>

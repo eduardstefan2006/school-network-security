@@ -651,3 +651,34 @@ class IncidentTicket(db.Model):
 
     def __repr__(self):
         return f'<IncidentTicket {self.source_ip} [{self.status}]>'
+
+
+# =============================================================================
+# Model Notificări de Sistem
+# =============================================================================
+class SystemNotification(db.Model):
+    """Notificări de sistem generate automat (ex: alertă spațiu disc)."""
+    __tablename__ = 'system_notifications'
+
+    id = db.Column(db.Integer, primary_key=True)
+    message = db.Column(db.Text, nullable=False)
+    # Nivelul alertei: INFO, WARNING, CRITICAL, YELLOW, RED, BLACK
+    level = db.Column(db.String(20), default='INFO', nullable=False)
+    is_read = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'message': self.message,
+            'level': self.level,
+            'is_read': self.is_read,
+            'created_at': self.created_at.isoformat(),
+        }
+
+    def __repr__(self):
+        return f'<SystemNotification [{self.level}] at {self.created_at}>'

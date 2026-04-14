@@ -216,6 +216,31 @@ def _ensure_admin_user():
         print(f'[DB] Eroare la crearea utilizatorului admin implicit: {e}')
 
 
+def _init_background_jobs(app):
+    """Inițializează job-urile de fundal (scheduler APScheduler)."""
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from app.monitoring.disk_monitor import disk_monitor
+
+        scheduler = BackgroundScheduler()
+
+        # Verifică discul la fiecare 5 minute
+        scheduler.add_job(
+            func=lambda: disk_monitor.check_and_alert(),
+            trigger='interval',
+            minutes=5,
+            id='disk_monitor',
+            name='Disk Monitor',
+        )
+
+        scheduler.start()
+        print('[Scheduler] Job de monitorizare disc pornit (interval: 5 min).')
+    except ImportError:
+        print('[Scheduler] APScheduler nu este instalat – monitorizarea discului nu rulează automat.')
+    except Exception as e:
+        print(f'[Scheduler] Eroare la pornirea scheduler-ului: {e}')
+
+
 def create_app(config_name=None):
     """
     Factory function pentru crearea aplicației Flask.
@@ -261,6 +286,7 @@ def create_app(config_name=None):
     from app.routes.external import external_bp
     from app.routes.setup import setup_bp
     from app.routes.response import response_bp
+    from app.routes.monitoring import monitoring_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -275,6 +301,7 @@ def create_app(config_name=None):
     app.register_blueprint(external_bp)
     app.register_blueprint(setup_bp)
     app.register_blueprint(response_bp)
+    app.register_blueprint(monitoring_bp)
 
     # Crearea tabelelor în baza de date dacă nu există
     with app.app_context():
@@ -296,6 +323,11 @@ def create_app(config_name=None):
         from app.ml.trainer import start_ml_trainer
         retrain_hours = app.config.get('ML_MODEL_RETRAIN_HOURS', 24)
         start_ml_trainer(app, retrain_interval=retrain_hours * 3600)
+
+    # Inițializare modul de monitorizare disc
+    from app.monitoring.disk_monitor import disk_monitor
+    disk_monitor.init_app(app)
+    _init_background_jobs(app)
 
     @app.template_filter('to_local')
     def to_local_filter(dt):
