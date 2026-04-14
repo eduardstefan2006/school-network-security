@@ -159,7 +159,8 @@ document.querySelectorAll('.incident-status-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
         var incidentId = this.dataset.incidentId;
         var newStatus = this.dataset.newStatus;
-        var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrfToken = csrfMeta ? csrfMeta.content : '';
 
         fetch('/api/incidents/' + incidentId + '/status', {
             method: 'POST',

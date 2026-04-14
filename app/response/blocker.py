@@ -18,6 +18,7 @@ def _is_randomized_mac(mac: str) -> bool:
         first_octet = int(mac.split(':')[0], 16)
         return bool(first_octet & 0x02)
     except (ValueError, IndexError):
+        logger.debug('[Blocker] Format MAC invalid ignorat: %s', mac[:17])
         return False
 
 
@@ -215,7 +216,7 @@ class ResponseBlocker:
                     return True
 
         except Exception as exc:
-            logger.error('[Blocker] Eroare la deblocare %s (%s): %s', target, action_type, exc)
+            logger.error('[Blocker] Eroare la deblocare (tip: %s): %s', action_type, exc)
             try:
                 from app import db
                 db.session.rollback()

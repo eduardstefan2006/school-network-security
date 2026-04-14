@@ -191,7 +191,8 @@ document.querySelectorAll('.override-btn').forEach(function(btn) {
         if (!confirm('Ești sigur că vrei să anulezi această acțiune de blocare?')) return;
 
         var actionId = this.dataset.actionId;
-        var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrfToken = csrfMeta ? csrfMeta.content : '';
 
         fetch('/api/response/override/' + actionId, {
             method: 'POST',

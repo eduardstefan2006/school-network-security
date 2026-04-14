@@ -39,7 +39,7 @@ class ResponseOrchestrator:
         """
         try:
             from flask import current_app
-            if not current_app.config.get('RESPONSE_ENABLED', True):
+            if not current_app.config.get('RESPONSE_ENABLED', False):
                 return {}
         except Exception:
             return {}
