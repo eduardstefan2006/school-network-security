@@ -5,6 +5,7 @@
 /* Main navbar */
 .schoolsec-navbar {
     background-color: #12182a !important;
+    width: 100%;
     height: 60px;
     padding-top: 0;
     padding-bottom: 0;
