@@ -7,6 +7,7 @@ Funcționalități:
 - Fallback: antrenare cu date din buffer-ul curent dacă BD-ul are puține date
 """
 import logging
+import os
 import threading
 import time
 
@@ -16,7 +17,10 @@ logger = logging.getLogger(__name__)
 _RETRAIN_INTERVAL = 24 * 3600
 
 # Numărul minim de eșantioane în BD pentru reantrenare
-_MIN_DB_SAMPLES = 50
+_MIN_DB_SAMPLES = int(os.environ.get('ML_MIN_DB_SAMPLES', 20))
+
+# Numărul minim de eșantioane în buffer pentru fallback
+_MIN_BUFFER_SAMPLES = int(os.environ.get('ML_MIN_BUFFER_SAMPLES', 5))
 
 # Intervalul de verificare dacă se poate antrena (secunde)
 _CHECK_INTERVAL = 60
@@ -78,18 +82,43 @@ def _trainer_loop(app, retrain_interval: int = _RETRAIN_INTERVAL) -> None:
             should_train = (not initial_trained) or (now - last_retrain >= retrain_interval)
 
             if should_train:
+                min_db_samples = int(app.config.get('ML_MIN_DB_SAMPLES', _MIN_DB_SAMPLES))
+                min_buffer_samples = int(app.config.get('ML_MIN_BUFFER_SAMPLES', _MIN_BUFFER_SAMPLES))
+
                 # Încearcă să încarce date din BD
                 vectors = _load_training_data_from_db(app)
+                db_sample_count = len(vectors)
 
-                if len(vectors) < _MIN_DB_SAMPLES:
+                if db_sample_count < min_db_samples:
+                    logger.info(
+                        "[ML Trainer] Date insuficiente în BD (%d/%d). Se încearcă fallback din buffer.",
+                        db_sample_count,
+                        min_db_samples,
+                    )
+
                     # Fallback la datele din buffer-ul curent
                     buffer_vectors = data_collector.get_feature_vectors_for_training()
-                    if len(buffer_vectors) >= 10:
+                    buffer_sample_count = len(buffer_vectors)
+                    if buffer_sample_count >= min_buffer_samples:
                         vectors = buffer_vectors
                         logger.info(
-                            "[ML Trainer] Antrenare cu date din buffer: %d eșantioane.",
-                            len(vectors),
+                            "[ML Trainer] Antrenare cu date din buffer: %d eșantioane (prag minim: %d).",
+                            buffer_sample_count,
+                            min_buffer_samples,
                         )
+                    else:
+                        vectors = []
+                        logger.info(
+                            "[ML Trainer] Fallback indisponibil: buffer are %d/%d eșantioane.",
+                            buffer_sample_count,
+                            min_buffer_samples,
+                        )
+                else:
+                    logger.info(
+                        "[ML Trainer] Antrenare cu date din BD: %d eșantioane (prag minim: %d).",
+                        db_sample_count,
+                        min_db_samples,
+                    )
 
                 if vectors:
                     success = anomaly_models.train(vectors)
@@ -103,9 +132,8 @@ def _trainer_loop(app, retrain_interval: int = _RETRAIN_INTERVAL) -> None:
                     else:
                         logger.warning("[ML Trainer] Antrenarea modelelor a eșuat.")
                 else:
-                    logger.debug(
-                        "[ML Trainer] Date insuficiente pentru antrenare "
-                        "(min %d eșantioane necesare).", _MIN_DB_SAMPLES
+                    logger.info(
+                        "[ML Trainer] Antrenare amânată: date insuficiente în BD și buffer."
                     )
 
             # Salvare periodică a caracteristicilor în BD

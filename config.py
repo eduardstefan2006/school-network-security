@@ -125,6 +125,10 @@ class Config:
     ML_FEATURE_WINDOW_MINUTES = int(os.environ.get('ML_FEATURE_WINDOW_MINUTES', 1))
     # Intervalul de reantrenare a modelelor (ore)
     ML_MODEL_RETRAIN_HOURS = int(os.environ.get('ML_MODEL_RETRAIN_HOURS', 24))
+    # Numărul minim de eșantioane în BD necesar pentru antrenare
+    ML_MIN_DB_SAMPLES = int(os.environ.get('ML_MIN_DB_SAMPLES', 20))
+    # Numărul minim de eșantioane din buffer pentru fallback de antrenare
+    ML_MIN_BUFFER_SAMPLES = int(os.environ.get('ML_MIN_BUFFER_SAMPLES', 5))
     # Numărul minim de puncte de date înainte de a începe scoring-ul
     ML_MIN_DATA_POINTS = int(os.environ.get('ML_MIN_DATA_POINTS', 100))
     # Intervalul minim între două evaluări ML per IP (secunde)
