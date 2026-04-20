@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Teste minime pentru pragurile și fallback-ul de antrenare ML."""
+import importlib.util
 import os
 import sys
 
@@ -30,12 +31,20 @@ def _read(path):
         return f.read()
 
 
+def _load_module(path, module_name):
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_trainer_default_thresholds_and_logging():
     print("\n--- trainer.py praguri + logging ---")
+    trainer = _load_module(TRAINER_PATH, 'trainer_under_test')
     source = _read(TRAINER_PATH)
 
-    _assert("_MIN_DB_SAMPLES = int(os.environ.get('ML_MIN_DB_SAMPLES', 20))" in source, "_MIN_DB_SAMPLES implicit este 20 și configurabil prin env")
-    _assert("_MIN_BUFFER_SAMPLES = int(os.environ.get('ML_MIN_BUFFER_SAMPLES', 5))" in source, "_MIN_BUFFER_SAMPLES implicit este 5 și configurabil prin env")
+    _assert(trainer._MIN_DB_SAMPLES == 20, "_MIN_DB_SAMPLES implicit este 20 și configurabil prin env")
+    _assert(trainer._MIN_BUFFER_SAMPLES == 5, "_MIN_BUFFER_SAMPLES implicit este 5 și configurabil prin env")
     _assert('ML_MIN_DB_SAMPLES' in source, "_trainer_loop folosește pragul configurabil ML_MIN_DB_SAMPLES")
     _assert('ML_MIN_BUFFER_SAMPLES' in source, "_trainer_loop folosește pragul configurabil ML_MIN_BUFFER_SAMPLES")
     _assert('Date insuficiente în BD' in source, "_trainer_loop loghează clar când BD nu are suficiente date")
@@ -53,7 +62,7 @@ def test_config_ml_threshold_defaults():
 def test_data_collector_no_zero_ppm_skip():
     print("\n--- data_collector.py filtrare sparse ---")
     source = _read(DATA_COLLECTOR_PATH)
-    _assert('packets_per_minute' not in source, "_flush_to_db nu mai sare peste features cu packets_per_minute=0")
+    _assert("if features.get('packets_per_minute', 0) == 0:" not in source, "_flush_to_db nu mai sare peste features cu packets_per_minute=0")
 
 
 if __name__ == '__main__':

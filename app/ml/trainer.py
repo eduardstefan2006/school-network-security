@@ -73,6 +73,8 @@ def _trainer_loop(app, retrain_interval: int = _RETRAIN_INTERVAL) -> None:
     logger.info("[ML Trainer] Thread de antrenare pornit.")
     last_retrain = 0.0
     initial_trained = False
+    min_db_samples = int(app.config.get('ML_MIN_DB_SAMPLES', _MIN_DB_SAMPLES))
+    min_buffer_samples = int(app.config.get('ML_MIN_BUFFER_SAMPLES', _MIN_BUFFER_SAMPLES))
 
     while True:
         try:
@@ -82,9 +84,6 @@ def _trainer_loop(app, retrain_interval: int = _RETRAIN_INTERVAL) -> None:
             should_train = (not initial_trained) or (now - last_retrain >= retrain_interval)
 
             if should_train:
-                min_db_samples = int(app.config.get('ML_MIN_DB_SAMPLES', _MIN_DB_SAMPLES))
-                min_buffer_samples = int(app.config.get('ML_MIN_BUFFER_SAMPLES', _MIN_BUFFER_SAMPLES))
-
                 # Încearcă să încarce date din BD
                 vectors = _load_training_data_from_db(app)
                 db_sample_count = len(vectors)
